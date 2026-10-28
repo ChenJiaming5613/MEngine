@@ -1,0 +1,13 @@
+build*/
+out/
+.vs/
+.vscode/
+.idea/
+.codebuddy/
+CMakeUserPresets.json
+
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/local.properties
