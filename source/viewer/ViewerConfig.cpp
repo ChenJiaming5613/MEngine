@@ -69,6 +69,41 @@ std::optional<std::string> ReadRelativePath(JsonValue value, const char* name, c
     return std::string(*text);
 }
 
+// Absent: nullopt. Invalid: logs and clears ok.
+std::optional<CameraConfig> ReadCamera(JsonValue camera, const std::string& prefix, const std::string& path, bool* ok)
+{
+    if (!camera.IsValid())
+    {
+        return std::nullopt;
+    }
+    if (!camera.IsObject())
+    {
+        MENGINE_LOG_ERROR("%s: \"%s\" must be an object", path.c_str(), prefix.c_str());
+        *ok = false;
+        return std::nullopt;
+    }
+    auto name = [&](const char* member) { return prefix + "." + member; };
+    CameraConfig cameraConfig;
+    cameraConfig.position = ReadVec3(camera["position"], name("position").c_str(), path, ok).value_or(glm::vec3(0.0f));
+    cameraConfig.yawDegrees = ReadNumber(camera["yawDegrees"], name("yawDegrees").c_str(), path, ok).value_or(0.0f);
+    cameraConfig.pitchDegrees = ReadNumber(camera["pitchDegrees"], name("pitchDegrees").c_str(), path, ok).value_or(0.0f);
+    cameraConfig.fovYDegrees = ReadNumber(camera["fovYDegrees"], name("fovYDegrees").c_str(), path, ok).value_or(60.0f);
+    if (cameraConfig.fovYDegrees <= 1.0f || cameraConfig.fovYDegrees >= 179.0f)
+    {
+        MENGINE_LOG_ERROR("%s: \"%s\" must be in (1, 179)", path.c_str(), name("fovYDegrees").c_str());
+        *ok = false;
+    }
+    return cameraConfig;
+}
+
+std::string FileStem(std::string_view path)
+{
+    const size_t slash = path.find_last_of('/');
+    std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
+    const size_t dot = name.find_last_of('.');
+    return std::string(dot == std::string_view::npos || dot == 0 ? name : name.substr(0, dot));
+}
+
 } // namespace
 
 std::optional<ViewerConfig> LoadViewerConfig(std::string_view assetPath)
@@ -97,9 +132,45 @@ std::optional<ViewerConfig> LoadViewerConfig(std::string_view assetPath)
 
     bool ok = true;
     ViewerConfig config;
-    if (const std::optional<std::string> scene = ReadRelativePath(root["scene"], "scene", path, &ok))
+    const JsonValue scenes = root["scenes"];
+    if (!scenes.IsArray() || scenes.Size() == 0)
     {
-        config.scenePath = JoinPath("models", *scene);
+        MENGINE_LOG_ERROR("%s: \"scenes\" must be a non-empty array of {\"name\", \"path\", \"camera\"} objects", path.c_str());
+        return std::nullopt;
+    }
+    for (size_t i = 0; i < scenes.Size(); ++i)
+    {
+        const JsonValue scene = scenes.At(i);
+        const std::string prefix = "scenes[" + std::to_string(i) + "]";
+        if (!scene.IsObject())
+        {
+            MENGINE_LOG_ERROR("%s: \"%s\" must be an object", path.c_str(), prefix.c_str());
+            ok = false;
+            continue;
+        }
+        SceneConfig sceneConfig;
+        const std::optional<std::string> scenePath = ReadRelativePath(scene["path"], (prefix + ".path").c_str(), path, &ok);
+        if (!scenePath)
+        {
+            continue;
+        }
+        sceneConfig.path = JoinPath("models", *scenePath);
+        sceneConfig.name = FileStem(*scenePath);
+        if (scene["name"].IsValid())
+        {
+            const std::optional<std::string_view> name = scene["name"].AsString();
+            if (!name || name->empty())
+            {
+                MENGINE_LOG_ERROR("%s: \"%s.name\" must be a non-empty string", path.c_str(), prefix.c_str());
+                ok = false;
+            }
+            else
+            {
+                sceneConfig.name = std::string(*name);
+            }
+        }
+        sceneConfig.camera = ReadCamera(scene["camera"], prefix + ".camera", path, &ok);
+        config.scenes.push_back(std::move(sceneConfig));
     }
     if (root["environment"].IsValid())
     {
@@ -107,27 +178,6 @@ std::optional<ViewerConfig> LoadViewerConfig(std::string_view assetPath)
         {
             config.environmentPath = *environment;
         }
-    }
-
-    const JsonValue camera = root["camera"];
-    if (camera.IsValid())
-    {
-        if (!camera.IsObject())
-        {
-            MENGINE_LOG_ERROR("%s: \"camera\" must be an object", path.c_str());
-            return std::nullopt;
-        }
-        CameraConfig cameraConfig;
-        cameraConfig.position = ReadVec3(camera["position"], "camera.position", path, &ok).value_or(glm::vec3(0.0f));
-        cameraConfig.yawDegrees = ReadNumber(camera["yawDegrees"], "camera.yawDegrees", path, &ok).value_or(0.0f);
-        cameraConfig.pitchDegrees = ReadNumber(camera["pitchDegrees"], "camera.pitchDegrees", path, &ok).value_or(0.0f);
-        cameraConfig.fovYDegrees = ReadNumber(camera["fovYDegrees"], "camera.fovYDegrees", path, &ok).value_or(60.0f);
-        if (ok && (cameraConfig.fovYDegrees <= 1.0f || cameraConfig.fovYDegrees >= 179.0f))
-        {
-            MENGINE_LOG_ERROR("%s: \"camera.fovYDegrees\" must be in (1, 179)", path.c_str());
-            ok = false;
-        }
-        config.camera = cameraConfig;
     }
 
     const JsonValue light = root["directionalLight"];

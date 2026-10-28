@@ -30,6 +30,9 @@ struct FrameConstants
 // set 1: per material ----------------------------------------------------------------------------------------------------
 
 static const uint kMaterialFlagNormalTexture = 1u;
+// KHR_materials_pbrSpecularGlossiness: baseColor* hold diffuse, metallicRoughnessTexture holds specular (RGB) and
+// glossiness (A), scaled by specularGlossinessFactor.
+static const uint kMaterialFlagSpecularGlossiness = 2u;
 
 struct MaterialData
 {
@@ -42,11 +45,12 @@ struct MaterialData
     float alphaCutoff;
     uint flags;
     float2 padding;
+    float4 specularGlossinessFactor; // rgb specular, a glossiness
 };
 
 [[vk::binding(0, 1)]] ConstantBuffer<MaterialData> material;
 [[vk::binding(1, 1)]] Sampler2D baseColorTexture;         // sRGB
-[[vk::binding(2, 1)]] Sampler2D metallicRoughnessTexture; // G roughness, B metallic
+[[vk::binding(2, 1)]] Sampler2D metallicRoughnessTexture; // G roughness, B metallic (specular-glossiness: sRGB RGB, A)
 [[vk::binding(3, 1)]] Sampler2D normalTexture;
 [[vk::binding(4, 1)]] Sampler2D occlusionTexture;         // R
 [[vk::binding(5, 1)]] Sampler2D emissiveTexture;          // sRGB

@@ -22,18 +22,22 @@ namespace {
 constexpr uint32_t kRequiredVulkanVersion = VK_API_VERSION_1_1;
 [[maybe_unused]] constexpr const char* kValidationLayerName = "VK_LAYER_KHRONOS_validation";
 
-constexpr uint32_t kBufferPoolSize = 4096;
+constexpr uint32_t kBufferPoolSize = 16384;
 constexpr uint32_t kTexturePoolSize = 1024;
 constexpr uint32_t kSamplerPoolSize = 64;
 constexpr uint32_t kDescriptorSetLayoutPoolSize = 64;
-constexpr uint32_t kDescriptorSetPoolSize = 1024;
+constexpr uint32_t kDescriptorSetPoolSize = 2048;
 constexpr uint32_t kPipelinePoolSize = 128;
 constexpr uint32_t kRenderPassPoolSize = 32;
 
-constexpr uint32_t kDescriptorsPerType = 1024;
-constexpr uint32_t kMaxDescriptorSets = 512;
+// Sized for scenes with a few hundred materials (six combined image samplers each).
+constexpr uint32_t kDescriptorsPerType = 4096;
+constexpr uint32_t kMaxDescriptorSets = 2048;
 constexpr uint32_t kRecreateRetryDelayMilliseconds = 16;
 constexpr VkDeviceSize kStagingLevelAlignment = 16;
+// An upload batch is submitted early once its staging buffers exceed this, so loading a multi-GB scene does not keep
+// all of it in host visible memory at once.
+constexpr VkDeviceSize kUploadStagingBudget = VkDeviceSize{256} << 20;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL OnValidationMessage(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
     VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void*)
@@ -357,6 +361,8 @@ void GpuDevice::CreateLogicalDevice()
     VkPhysicalDeviceFeatures enabled{};
     m_samplerAnisotropy = supported.samplerAnisotropy == VK_TRUE;
     enabled.samplerAnisotropy = supported.samplerAnisotropy;
+    m_textureCompressionBc = supported.textureCompressionBC == VK_TRUE;
+    enabled.textureCompressionBC = supported.textureCompressionBC;
 
     const VkDeviceCreateInfo deviceInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -613,6 +619,13 @@ void GpuDevice::WaitIdle()
     }
 }
 
+void GpuDevice::WaitIdleAndReleaseDeferred()
+{
+    MENGINE_ASSERT(!m_frameActive);
+    WaitIdle();
+    ProcessPendingDestructions(true);
+}
+
 // =====================================================================================================================
 // Deferred destruction
 
@@ -645,6 +658,11 @@ void GpuDevice::BeginUploadBatch()
     {
         return;
     }
+    BeginUploadCommands();
+}
+
+void GpuDevice::BeginUploadCommands()
+{
     CheckVk(vkResetCommandPool(m_device, m_uploadPool, 0), "vkResetCommandPool");
     const VkCommandBufferBeginInfo beginInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -665,7 +683,11 @@ void GpuDevice::EndUploadBatch()
     {
         return;
     }
+    SubmitUploadCommands();
+}
 
+void GpuDevice::SubmitUploadCommands()
+{
     if (m_uploadHasBufferCopies)
     {
         const VkMemoryBarrier buffersReady{
@@ -694,10 +716,18 @@ void GpuDevice::EndUploadBatch()
         vmaDestroyBuffer(m_allocator, staging.buffer, staging.allocation);
     }
     m_uploadStaging.clear();
+    m_uploadStagingBytes = 0;
 }
 
 GpuDevice::StagingBuffer GpuDevice::CreateStagingBuffer(VkDeviceSize size)
 {
+    // Every command recorded so far is complete, so the batch can be submitted here and continued in a new one.
+    if (!m_uploadStaging.empty() && m_uploadStagingBytes + size > kUploadStagingBudget)
+    {
+        SubmitUploadCommands();
+        BeginUploadCommands();
+    }
+
     const VkBufferCreateInfo bufferInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
@@ -713,6 +743,7 @@ GpuDevice::StagingBuffer GpuDevice::CreateStagingBuffer(VkDeviceSize size)
     CheckVk(vmaCreateBuffer(m_allocator, &bufferInfo, &allocationInfo, &staging.buffer, &staging.allocation, &info), "vmaCreateBuffer (staging)");
     staging.mappedData = info.pMappedData;
     m_uploadStaging.push_back(staging);
+    m_uploadStagingBytes += size;
     return staging;
 }
 
@@ -957,19 +988,20 @@ TextureHandle GpuDevice::CreateTexture(const TextureCreation& creation)
 
 void GpuDevice::UploadTexture(Texture& texture, const void* data, size_t dataSize, uint32_t providedLevels, bool generateMips)
 {
-    const uint32_t texelSize = FormatTexelSize(texture.format);
-    if (texelSize == 0)
+    if (FormatLevelSize(texture.format, 1, 1) == 0)
     {
         throw std::runtime_error("UploadTexture: unsupported upload format for " + texture.name);
     }
 
-    // Source levels are tightly packed; staging levels are aligned so every copy offset is texel and 4-byte aligned.
+    // Source levels are tightly packed; staging levels are aligned so every copy offset is texel (or 16 byte block)
+    // and 4-byte aligned.
     std::vector<VkDeviceSize> levelSizes(providedLevels);
     VkDeviceSize sourceSize = 0;
     VkDeviceSize stagingSize = 0;
     for (uint32_t level = 0; level < providedLevels; ++level)
     {
-        levelSizes[level] = VkDeviceSize{MipExtent(texture.width, level)} * MipExtent(texture.height, level) * texelSize * texture.layerCount;
+        levelSizes[level] = FormatLevelSize(texture.format, MipExtent(texture.width, level), MipExtent(texture.height, level))
+            * texture.layerCount;
         sourceSize += levelSizes[level];
         stagingSize = AlignUp(stagingSize, kStagingLevelAlignment) + levelSizes[level];
     }

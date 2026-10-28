@@ -112,6 +112,8 @@ public:
     bool IsSwapchainSrgb() const { return IsSrgbFormat(m_swapchain.SurfaceFormat().format); }
 
     VkFormat GetDepthFormat() const { return m_depthFormat; }
+    // textureCompressionBC: BC1-BC7 can be sampled (desktop GPUs; rare on Android).
+    bool SupportsTextureCompressionBc() const { return m_textureCompressionBc; }
     bool SupportsLinearBlit(VkFormat format) const;
     // Linear filtering of sampled images; for depth formats this enables hardware 2x2 PCF with compare samplers.
     bool SupportsLinearFilter(VkFormat format) const;
@@ -137,6 +139,9 @@ public:
     VmaAllocator GetAllocator() const { return m_allocator; }
 
     void WaitIdle();
+    // Outside a frame: waits for the GPU and destroys every deferred object at once, so a scene switch does not hold
+    // the old and the new scene in memory together.
+    void WaitIdleAndReleaseDeferred();
 
     // VK_EXT_debug_utils helpers; no-ops when the extension is not enabled.
     void SetResourceName(VkObjectType type, uint64_t handle, const char* name);
@@ -182,6 +187,8 @@ private:
 
     StagingBuffer CreateStagingBuffer(VkDeviceSize size);
     VkCommandBuffer UploadCommandBuffer() const;
+    void BeginUploadCommands();
+    void SubmitUploadCommands();
 
     void CreateTextureObjects(Texture& texture);
     void DeferTextureObjects(Texture& texture);
@@ -206,6 +213,7 @@ private:
     bool m_validationEnabled = false;
     bool m_debugUtilsEnabled = false;
     bool m_samplerAnisotropy = false;
+    bool m_textureCompressionBc = false;
 
     PFN_vkSetDebugUtilsObjectNameEXT m_setObjectName = nullptr;
     PFN_vkCmdBeginDebugUtilsLabelEXT m_cmdBeginLabel = nullptr;
@@ -241,6 +249,7 @@ private:
     uint32_t m_uploadDepth = 0;
     bool m_uploadHasBufferCopies = false;
     std::vector<StagingBuffer> m_uploadStaging;
+    VkDeviceSize m_uploadStagingBytes = 0;
 
     // -- Pools and caches -----------------------------------------------------------------------------------------------
     ResourcePool<Buffer, BufferHandle> m_buffers;

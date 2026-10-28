@@ -2,7 +2,7 @@ plugins {
      id 'com.android.application'
 }
 
-// CMake stages config.json, textures, environments, the configured glTF scene directory and compiled shaders here.
+// CMake stages config.json, textures, environments, the configured glTF scene directories and compiled shaders here.
 def mengineStagedAssetDir = layout.buildDirectory.dir("generated/mengine_assets").get().asFile
 
 android {

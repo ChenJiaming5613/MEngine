@@ -36,7 +36,8 @@ public:
     void Init(rhi::GpuDevice& device);
     void Shutdown();
 
-    // Replaces the scene; returns false (with an empty scene) when loading fails.
+    // Replaces the scene; returns false (with an empty scene) when loading fails. Call outside a frame: it waits for
+    // the GPU and frees the previous scene first.
     bool LoadScene(std::string_view assetPath);
     // Replaces the environment; falls back to a uniform environment when loading fails.
     void LoadEnvironment(std::optional<std::string_view> directory);

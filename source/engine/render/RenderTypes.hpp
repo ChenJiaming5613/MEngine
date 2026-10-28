@@ -34,6 +34,9 @@ static_assert(offsetof(FrameConstants, directionalDirection) == 368);
 static_assert(offsetof(FrameConstants, iblParams) == 416);
 
 constexpr uint32_t kMaterialFlagNormalTexture = 1u << 0;
+// KHR_materials_pbrSpecularGlossiness: baseColorFactor / texture hold diffuse, the metallic-roughness slot holds the
+// specular (RGB) + glossiness (A) texture and specularGlossinessFactor its factors.
+constexpr uint32_t kMaterialFlagSpecularGlossiness = 1u << 1;
 
 struct MaterialData
 {
@@ -46,11 +49,13 @@ struct MaterialData
     float alphaCutoff = 0.5f;
     uint32_t flags = 0;
     float padding[2] = {};
+    glm::vec4 specularGlossinessFactor{1.0f}; // rgb specular, a glossiness
 };
-static_assert(sizeof(MaterialData) == 64);
+static_assert(sizeof(MaterialData) == 80);
 static_assert(offsetof(MaterialData, metallicFactor) == 32);
 static_assert(offsetof(MaterialData, alphaCutoff) == 48);
 static_assert(offsetof(MaterialData, flags) == 52);
+static_assert(offsetof(MaterialData, specularGlossinessFactor) == 64);
 
 // Push constants of the forward pass (128 bytes, the guaranteed minimum).
 struct DrawConstants

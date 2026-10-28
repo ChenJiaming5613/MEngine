@@ -126,8 +126,25 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
 
     // glTF: roughness in G, metallic in B, both multiplied by their factors.
     float4 metallicRoughness = metallicRoughnessTexture.Sample(input.texCoord);
-    float metallic = saturate(material.metallicFactor * metallicRoughness.b);
-    float roughness = saturate(material.roughnessFactor * metallicRoughness.g);
+    float3 specularColor;
+    float3 diffuseColor;
+    float roughness;
+    if ((material.flags & kMaterialFlagSpecularGlossiness) != 0)
+    {
+        // KHR_materials_pbrSpecularGlossiness: specular is F0 directly, roughness = 1 - glossiness, and the
+        // extension's reference model scales diffuse by 1 - max(specular) to conserve energy.
+        float4 specularGlossiness = material.specularGlossinessFactor * metallicRoughness;
+        specularColor = saturate(specularGlossiness.rgb);
+        roughness = saturate(1.0 - specularGlossiness.a);
+        diffuseColor = baseColor.rgb * (1.0 - max(specularColor.r, max(specularColor.g, specularColor.b)));
+    }
+    else
+    {
+        float metallic = saturate(material.metallicFactor * metallicRoughness.b);
+        roughness = saturate(material.roughnessFactor * metallicRoughness.g);
+        specularColor = SpecularColorFromMetallic(baseColor.rgb, metallic);
+        diffuseColor = DiffuseColorFromMetallic(baseColor.rgb, metallic);
+    }
 
     // Back faces of double sided materials use the reversed normal (glTF 2.0, 3.9.5).
     float3 N = normalize(input.normal);
@@ -142,8 +159,6 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
     }
 
     float3 V = normalize(frame.cameraPosition.xyz - input.worldPosition);
-    float3 specularColor = SpecularColorFromMetallic(baseColor.rgb, metallic);
-    float3 diffuseColor = DiffuseColorFromMetallic(baseColor.rgb, metallic);
     float NoV = saturate(dot(N, V));
 
     // Direct light, no occlusion: one point light (eq. 9 falloff) plus one shadowed directional light (no falloff).

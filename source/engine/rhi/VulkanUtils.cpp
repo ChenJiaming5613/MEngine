@@ -100,6 +100,23 @@ uint32_t FormatTexelSize(VkFormat format)
     }
 }
 
+bool IsBlockCompressedFormat(VkFormat format)
+{
+    return format >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && format <= VK_FORMAT_BC7_SRGB_BLOCK;
+}
+
+VkDeviceSize FormatLevelSize(VkFormat format, uint32_t width, uint32_t height)
+{
+    if (IsBlockCompressedFormat(format))
+    {
+        // BC1 and BC4 use 8 bytes per 4x4 block, the other BC formats 16.
+        const bool eightBytes = format <= VK_FORMAT_BC1_RGBA_SRGB_BLOCK || format == VK_FORMAT_BC4_UNORM_BLOCK ||
+                                format == VK_FORMAT_BC4_SNORM_BLOCK;
+        return VkDeviceSize{(width + 3) / 4} * ((height + 3) / 4) * (eightBytes ? 8u : 16u);
+    }
+    return VkDeviceSize{width} * height * FormatTexelSize(format);
+}
+
 uint32_t ComputeMipCount(uint32_t width, uint32_t height)
 {
     const uint32_t largest = std::max(std::max(width, height), 1u);

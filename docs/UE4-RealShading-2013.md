@@ -416,6 +416,11 @@ IblBaker 中原文 HLSL 的 C++ 移植保持逐行对应（变量名、循环结
   - 去痤疮：投射端用管线静态深度偏移（常量 1.25、斜率 1.75），接收端沿几何法线偏移 `Normal Offset × 阴影 texel 世界尺寸`（默认 1.5 texel）。
   - 软化：3×3 PCF；设备支持 D16 线性过滤时，比较采样器使用 LINEAR，每个 tap 本身就是硬件 2×2 PCF。
   - 只在光方向、场景或阴影开关变化时重绘；只作用于方向光的直接光项，点光源不投射阴影。
+- **Specular-Glossiness 材质**（`KHR_materials_pbrSpecularGlossiness`，Bistro 的大多数材质）：原文只定义了 Metallic 工作流。MEngine 把它映射到同一套着色模型：
+  - \(F_0 = specular\)（扩展本身就是 F0 颜色），\(Roughness = 1 - glossiness\)，再进入式 3–5 和 split sum IBL；
+  - \(c_{diff} = diffuse \cdot (1 - \max(F_0.r, F_0.g, F_0.b))\)，按扩展参考实现做能量守恒；
+  - specular 与 diffuse 贴图按 sRGB 采样，glossiness 在 A 通道保持线性。
+- **透射材质**（`KHR_materials_transmission`）：不实现折射，这类图元不绘制，也不投射阴影。
 - **色调映射**：曝光后用 Hable 的 Uncharted 2 filmic 曲线，按白点 11.2 归一化，默认曝光 4.5。常量和默认值与 Vulkan-glTF-PBR 相同，最后按 sRGB 编码输出。天空盒与场景共用这一步，没有单独的曝光。
 
 ### 6.3 本次不做

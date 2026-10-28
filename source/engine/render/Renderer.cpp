@@ -101,6 +101,9 @@ void Renderer::Shutdown()
 bool Renderer::LoadScene(std::string_view assetPath)
 {
     ++m_sceneVersion;
+    // Free the previous scene before loading the next one, so both never occupy memory together.
+    m_scene.Destroy(*m_device);
+    m_device->WaitIdleAndReleaseDeferred();
     return LoadGltfScene(*m_device, assetPath, m_materialLayout, m_scene);
 }
 

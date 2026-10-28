@@ -51,6 +51,9 @@ struct SceneMaterial
     rhi::DescriptorSetHandle descriptorSet;
     AlphaMode alphaMode = AlphaMode::Opaque;
     bool doubleSided = false;
+    // KHR_materials_transmission (glass): refraction is not implemented and an opaque pane would seal windows and
+    // block the sun, so such primitives get no draws.
+    bool transmissive = false;
 };
 
 struct SceneDraw

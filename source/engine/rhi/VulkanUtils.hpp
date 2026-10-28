@@ -41,6 +41,9 @@ bool HasStencil(VkFormat format);
 bool IsSrgbFormat(VkFormat format);
 // Bytes per texel for the uncompressed formats the engine uploads; 0 for anything else.
 uint32_t FormatTexelSize(VkFormat format);
+bool IsBlockCompressedFormat(VkFormat format); // BC1 ... BC7
+// Tightly packed bytes of one width x height level (BC formats in whole 4x4 blocks); 0 for unsupported formats.
+VkDeviceSize FormatLevelSize(VkFormat format, uint32_t width, uint32_t height);
 uint32_t ComputeMipCount(uint32_t width, uint32_t height);
 
 VkAttachmentLoadOp ToVkLoadOp(RenderPassOperation operation);

@@ -1,32 +1,17 @@
 # Script mode, incremental: file(COPY) skips files whose destination already has the same timestamp.
 #
-#   cmake -DMODE=STAGE -DASSET_SOURCE_DIR=... -DSCENE_SOURCE_DIR=... -DSCENE_DIR=... -DDESTINATION_DIR=... -P CopyAssets.cmake
+#   cmake -DMODE=STAGE -DASSET_SOURCE_DIR=... -DSCENE_SOURCE_ROOT=... -DSCENE_DIRS=a/b|c/d -DDESTINATION_DIR=... -P CopyAssets.cmake
 #   cmake -DMODE=MIRROR -DSOURCE_DIR=... -DDESTINATION_DIR=... -P CopyAssets.cmake
 #   cmake -DMODE=PRUNE_SHADERS -DDESTINATION_DIR=... -DKEEP_SHADERS=a.spv|b.spv -P CopyAssets.cmake
 #
-# PRUNE_SHADERS deletes <dir>/shaders/*.spv not named in KEEP_SHADERS. STAGE deletes staged files and directories that
-# no longer exist in assets/ (models/ and shaders/ are managed separately); MIRROR deletes everything that no longer
-# exists in the staged directory. Removed or renamed assets therefore never linger in the build or the APK.
-#
-# <dir>/models/.scene records which scene directory models/ holds. When it changes, models/ is removed first
-# so a previously staged scene never lingers. Dot files are not packaged by AAPT.
+# STAGE copies assets/ to <dir>/ and every <SCENE_SOURCE_ROOT>/<scene dir> to <dir>/models/<scene dir>. It deletes
+# staged files and directories that no longer exist in assets/ (shaders/ is managed by PRUNE_SHADERS), and anything in
+# models/ that is outside the configured scene directories or no longer exists in their sources. MIRROR deletes
+# everything that no longer exists in the staged directory. Removed scenes or assets therefore never linger in the
+# build or the APK.
 
 # Script mode starts without policies, if(IN_LIST) needs CMP0057.
 cmake_minimum_required(VERSION 3.22)
-
-function(MEngineDropStaleModels DESTINATION NEW_SCENE_DIR)
-    set(STAMP_FILE "${DESTINATION}/models/.scene")
-    set(OLD_SCENE_DIR "")
-    if(EXISTS "${STAMP_FILE}")
-        file(READ "${STAMP_FILE}" OLD_SCENE_DIR)
-    endif()
-    if(NOT OLD_SCENE_DIR STREQUAL NEW_SCENE_DIR)
-        if(EXISTS "${DESTINATION}/models")
-            message(STATUS "Removing stale models/ (was \"${OLD_SCENE_DIR}\", now \"${NEW_SCENE_DIR}\")")
-            file(REMOVE_RECURSE "${DESTINATION}/models")
-        endif()
-    endif()
-endfunction()
 
 # MEnginePruneShaders(<dir> <file names to keep>)
 function(MEnginePruneShaders SHADER_DIR KEEP_NAMES)
@@ -58,35 +43,50 @@ function(MEnginePruneMissing SOURCE DESTINATION)
     endforeach()
 endfunction()
 
+# MEnginePruneModels(<models dir> <scene source root> <scene dirs>): keeps the parents of each scene directory and the
+# entries inside one that still exist in its source; removes everything else.
+function(MEnginePruneModels MODELS_DIR SOURCE_ROOT SCENE_DIRS)
+    if(NOT EXISTS "${MODELS_DIR}")
+        return()
+    endif()
+    file(GLOB_RECURSE MODEL_ENTRIES LIST_DIRECTORIES true RELATIVE "${MODELS_DIR}" "${MODELS_DIR}/*")
+    list(SORT MODEL_ENTRIES)
+    foreach(ENTRY IN LISTS MODEL_ENTRIES)
+        if(NOT EXISTS "${MODELS_DIR}/${ENTRY}")
+            continue()
+        endif()
+        set(KEEP FALSE)
+        foreach(SCENE_DIR IN LISTS SCENE_DIRS)
+            string(FIND "${SCENE_DIR}/" "${ENTRY}/" PARENT_POSITION)
+            string(FIND "${ENTRY}/" "${SCENE_DIR}/" INSIDE_POSITION)
+            if(PARENT_POSITION EQUAL 0 OR (INSIDE_POSITION EQUAL 0 AND EXISTS "${SOURCE_ROOT}/${ENTRY}"))
+                set(KEEP TRUE)
+                break()
+            endif()
+        endforeach()
+        if(NOT KEEP)
+            message(STATUS "Removing stale models/${ENTRY}")
+            file(REMOVE_RECURSE "${MODELS_DIR}/${ENTRY}")
+        endif()
+    endforeach()
+endfunction()
+
 if(NOT DEFINED DESTINATION_DIR OR DESTINATION_DIR STREQUAL "")
     message(FATAL_ERROR "CopyAssets.cmake: DESTINATION_DIR is required")
 endif()
 
 if(MODE STREQUAL "STAGE")
-    MEngineDropStaleModels("${DESTINATION_DIR}" "${SCENE_DIR}")
+    string(REPLACE "|" ";" SCENE_DIR_LIST "${SCENE_DIRS}")
 
     file(MAKE_DIRECTORY "${DESTINATION_DIR}")
     MEnginePruneMissing("${ASSET_SOURCE_DIR}" "${DESTINATION_DIR}" models shaders)
+    MEnginePruneModels("${DESTINATION_DIR}/models" "${SCENE_SOURCE_ROOT}" "${SCENE_DIR_LIST}")
     file(COPY "${ASSET_SOURCE_DIR}/" DESTINATION "${DESTINATION_DIR}")
 
-    if(NOT SCENE_DIR STREQUAL "")
-        file(COPY "${SCENE_SOURCE_DIR}/" DESTINATION "${DESTINATION_DIR}/models/${SCENE_DIR}")
-        set(STAMP_FILE "${DESTINATION_DIR}/models/.scene")
-        set(CURRENT_STAMP "")
-        if(EXISTS "${STAMP_FILE}")
-            file(READ "${STAMP_FILE}" CURRENT_STAMP)
-        endif()
-        if(NOT CURRENT_STAMP STREQUAL SCENE_DIR)
-            file(WRITE "${STAMP_FILE}" "${SCENE_DIR}")
-        endif()
-    endif()
+    foreach(SCENE_DIR IN LISTS SCENE_DIR_LIST)
+        file(COPY "${SCENE_SOURCE_ROOT}/${SCENE_DIR}/" DESTINATION "${DESTINATION_DIR}/models/${SCENE_DIR}")
+    endforeach()
 elseif(MODE STREQUAL "MIRROR")
-    set(SOURCE_SCENE_DIR "")
-    if(EXISTS "${SOURCE_DIR}/models/.scene")
-        file(READ "${SOURCE_DIR}/models/.scene" SOURCE_SCENE_DIR)
-    endif()
-    MEngineDropStaleModels("${DESTINATION_DIR}" "${SOURCE_SCENE_DIR}")
-
     file(MAKE_DIRECTORY "${DESTINATION_DIR}")
     if(EXISTS "${SOURCE_DIR}")
         MEnginePruneMissing("${SOURCE_DIR}" "${DESTINATION_DIR}")

@@ -1,15 +1,30 @@
 {
-  "scene": "Sponza/glTF/Sponza.gltf",
+  "scenes": [
+    {
+      "name": "Sponza",
+      "path": "glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf",
+      "camera": {
+        "position": [0.0, 2.5, 2.0],
+        "yawDegrees": 0.0,
+        "pitchDegrees": 0.0,
+        "fovYDegrees": 60.0
+      }
+    },
+    {
+      "name": "Bistro",
+      "path": "RTXDI-Assets/bistro/bistro.gltf",
+      "camera": {
+        "position": [-20.0, 1.8, 12.0],
+        "yawDegrees": -90.0,
+        "pitchDegrees": 0.0,
+        "fovYDegrees": 60.0
+      }
+    }
+  ],
   "environment": "environments/papermill",
   "directionalLight": {
     "direction": [-0.3, -1.0, -0.2],
     "color": [1.0, 0.96, 0.9],
     "intensity": 3.0
-  },
-  "camera": {
-    "position": [0.0, 2.5, 2.0],
-    "yawDegrees": 0.0,
-    "pitchDegrees": 0.0,
-    "fovYDegrees": 60.0
   }
 }

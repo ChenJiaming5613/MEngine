@@ -33,6 +33,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace mengine {
 
@@ -73,6 +74,14 @@ protected:
 
     void OnFrame(double deltaSeconds) override
     {
+        // Scene switches requested by the panel run here, outside BeginFrame / EndFrame.
+        if (m_pendingScene)
+        {
+            const size_t index = *m_pendingScene;
+            m_pendingScene.reset();
+            LoadSceneAt(index);
+        }
+
         const float cameraStep = static_cast<float>(std::min(deltaSeconds, kMaxCameraStepSeconds));
         m_cameraController.Update(m_camera, GetInput(), GetWindow(), cameraStep, m_imGui.WantsKeyboard());
 
@@ -119,22 +128,31 @@ protected:
 private:
     void LoadConfiguredScene()
     {
-        const std::optional<ViewerConfig> config = LoadViewerConfig(kConfigPath);
-        if (config && !config->scenePath.empty())
+        m_config = LoadViewerConfig(kConfigPath);
+        if (m_config && m_config->environmentPath)
         {
-            m_renderer.LoadScene(config->scenePath);
-        }
-        else
-        {
-            MENGINE_LOG_WARN("No usable %s, starting with an empty scene", kConfigPath);
-        }
-        if (config && config->environmentPath)
-        {
-            m_renderer.LoadEnvironment(*config->environmentPath);
+            m_renderer.LoadEnvironment(*m_config->environmentPath);
         }
         else
         {
             MENGINE_LOG_INFO("No environment configured; using a uniform environment");
+        }
+        if (!m_config)
+        {
+            MENGINE_LOG_WARN("No usable %s, starting with an empty scene", kConfigPath);
+        }
+        LoadSceneAt(0);
+    }
+
+    // Loads config scene `index` (none without a config) and resets the camera and both lights for it.
+    void LoadSceneAt(size_t index)
+    {
+        const SceneConfig* sceneConfig = m_config && index < m_config->scenes.size() ? &m_config->scenes[index] : nullptr;
+        if (sceneConfig != nullptr)
+        {
+            m_currentScene = index;
+            MENGINE_LOG_INFO("Loading scene %s (%s)", sceneConfig->name.c_str(), sceneConfig->path.c_str());
+            m_renderer.LoadScene(sceneConfig->path);
         }
 
         const render::Scene& scene = m_renderer.GetScene();
@@ -146,12 +164,13 @@ private:
             radius = std::max(0.5f * glm::length(scene.boundsMax - scene.boundsMin), 1e-3f);
         }
 
-        if (config && config->camera)
+        m_camera = render::Camera{};
+        if (sceneConfig != nullptr && sceneConfig->camera)
         {
-            m_camera.position = config->camera->position;
-            m_camera.yawDegrees = config->camera->yawDegrees;
-            m_camera.pitchDegrees = config->camera->pitchDegrees;
-            m_camera.fovYDegrees = config->camera->fovYDegrees;
+            m_camera.position = sceneConfig->camera->position;
+            m_camera.yawDegrees = sceneConfig->camera->yawDegrees;
+            m_camera.pitchDegrees = sceneConfig->camera->pitchDegrees;
+            m_camera.fovYDegrees = sceneConfig->camera->fovYDegrees;
         }
         else
         {
@@ -165,15 +184,17 @@ private:
 
         // The light starts just above the camera with E = 1 at the scene center, like Vulkan-glTF-PBR's unit color
         // directional light under the same exposure.
+        m_settings.light = render::PointLight{};
         m_settings.light.position = m_camera.position + glm::vec3(0.0f, 1.0f, 0.0f);
         const float lightDistance = glm::length(m_settings.light.position - center);
         m_settings.light.radius = std::max(2.0f * radius, 2.0f * lightDistance);
         m_settings.light.intensity = lightDistance * lightDistance + 1.0f;
 
         render::DirectionalLight& directional = m_settings.directional;
-        if (config && config->directionalLight)
+        directional = render::DirectionalLight{};
+        if (m_config && m_config->directionalLight)
         {
-            const DirectionalLightConfig& lightConfig = *config->directionalLight;
+            const DirectionalLightConfig& lightConfig = *m_config->directionalLight;
             directional.direction = lightConfig.direction.value_or(directional.direction);
             directional.color = lightConfig.color.value_or(directional.color);
             directional.intensity = lightConfig.intensity.value_or(directional.intensity);
@@ -212,6 +233,28 @@ private:
 
         const render::Scene& scene = m_renderer.GetScene();
         const render::Environment& environment = m_renderer.GetEnvironment();
+        if (m_config && !m_config->scenes.empty())
+        {
+            const std::vector<SceneConfig>& scenes = m_config->scenes;
+            if (ImGui::BeginCombo("Scene", scenes[std::min(m_currentScene, scenes.size() - 1)].name.c_str()))
+            {
+                for (size_t i = 0; i < scenes.size(); ++i)
+                {
+                    ImGui::PushID(static_cast<int>(i));
+                    const bool selected = i == m_currentScene;
+                    if (ImGui::Selectable(scenes[i].name.c_str(), selected) && !selected)
+                    {
+                        m_pendingScene = i;
+                    }
+                    if (selected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+        }
         ImGui::Text("Scene: %s", scene.path.empty() ? "<none>" : scene.path.c_str());
         ImGui::Text("Draws: %zu  Materials: %zu  Textures: %zu", scene.draws.size(), scene.materials.size(), scene.textures.size());
         ImGui::Text("Environment: %s", environment.isFallback ? "<uniform fallback>" : environment.directory.c_str());
@@ -277,7 +320,7 @@ private:
             ImGui::Text("Position: %.2f %.2f %.2f", m_camera.position.x, m_camera.position.y, m_camera.position.z);
             ImGui::Text("Yaw %.1f  Pitch %.1f", m_camera.yawDegrees, m_camera.pitchDegrees);
             ImGui::SliderFloat("Move Speed", &m_cameraController.moveSpeed, 0.1f, 50.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
-            ImGui::TextDisabled("RMB + WASD/QE, or one finger look / two fingers forward");
+            ImGui::TextDisabled("RMB + WASD/QE; touch: left half joystick, right half look");
         }
 
         const ImVec2 position = ImGui::GetWindowPos();
@@ -287,7 +330,31 @@ private:
         ImGui::End();
         m_anyPopupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
+        DrawJoystick();
         m_imGui.EndFrame();
+    }
+
+    // Touch devices only: a faint ring where the stick usually sits, and the live stick while a finger holds it.
+    void DrawJoystick() const
+    {
+        if (!m_cameraController.UsesTouch())
+        {
+            return;
+        }
+        const CameraController::Joystick& joystick = m_cameraController.GetJoystick();
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        const ImVec2 center(joystick.center.x, joystick.center.y);
+        const float thickness = std::max(2.0f, joystick.radius * 0.04f);
+        if (!joystick.active)
+        {
+            drawList->AddCircle(center, joystick.radius, IM_COL32(255, 255, 255, 60), 48, thickness);
+            drawList->AddCircleFilled(center, joystick.radius * 0.35f, IM_COL32(255, 255, 255, 40), 32);
+            return;
+        }
+        drawList->AddCircleFilled(center, joystick.radius, IM_COL32(0, 0, 0, 50), 48);
+        drawList->AddCircle(center, joystick.radius, IM_COL32(255, 255, 255, 150), 48, thickness);
+        drawList->AddCircleFilled(ImVec2(joystick.knob.x, joystick.knob.y), joystick.radius * 0.35f,
+            IM_COL32(255, 255, 255, 140), 32);
     }
 
     rhi::GpuDevice m_device;
@@ -296,6 +363,10 @@ private:
     render::Camera m_camera;
     render::RenderSettings m_settings;
     CameraController m_cameraController;
+
+    std::optional<ViewerConfig> m_config;
+    size_t m_currentScene = 0;
+    std::optional<size_t> m_pendingScene;
 
     glm::vec2 m_panelMin{0.0f};
     glm::vec2 m_panelMax{-1.0f};

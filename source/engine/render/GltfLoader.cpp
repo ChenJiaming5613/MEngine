@@ -1,8 +1,11 @@
 #include "render/GltfLoader.hpp"
 
+#include "asset/Bc7Decoder.hpp"
 #include "asset/ImageLoader.hpp"
+#include "asset/Ktx2.hpp"
 #include "core/FileSystem.hpp"
 #include "core/Log.hpp"
+#include "render/DdsFile.hpp"
 #include "rhi/GpuDevice.hpp"
 
 #include <tiny_gltf_v3.h>
@@ -24,6 +27,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -56,6 +60,104 @@ std::string Describe(tg3_str name, std::string_view kind, uint32_t index)
     }
     return result;
 }
+
+// --- extension JSON (tinygltf keeps unknown extensions as generic values) --------------------------------------------
+
+const tg3_value* FindExtension(const tg3_extras_ext& ext, std::string_view name)
+{
+    for (uint32_t i = 0; i < ext.extensions_count; ++i)
+    {
+        if (ToView(ext.extensions[i].name) == name)
+        {
+            return &ext.extensions[i].value;
+        }
+    }
+    return nullptr;
+}
+
+const tg3_value* FindMember(const tg3_value* object, std::string_view key)
+{
+    if (object == nullptr || object->type != TG3_VALUE_OBJECT)
+    {
+        return nullptr;
+    }
+    for (uint32_t i = 0; i < object->object_count; ++i)
+    {
+        if (ToView(object->object_data[i].key) == key)
+        {
+            return &object->object_data[i].value;
+        }
+    }
+    return nullptr;
+}
+
+std::optional<double> AsNumber(const tg3_value* value)
+{
+    if (value == nullptr)
+    {
+        return std::nullopt;
+    }
+    if (value->type == TG3_VALUE_INT)
+    {
+        return static_cast<double>(value->int_val);
+    }
+    if (value->type == TG3_VALUE_REAL)
+    {
+        return value->real_val;
+    }
+    return std::nullopt;
+}
+
+float ReadFloat(const tg3_value* value, float fallback)
+{
+    const std::optional<double> number = AsNumber(value);
+    return number ? static_cast<float>(*number) : fallback;
+}
+
+// Fills the first count components of *out from a numeric array of exactly count elements; leaves it otherwise.
+void ReadNumberArray(const tg3_value* value, uint32_t count, float* out)
+{
+    if (value == nullptr || value->type != TG3_VALUE_ARRAY || value->array_count != count)
+    {
+        return;
+    }
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        if (const std::optional<double> number = AsNumber(&value->array_data[i]))
+        {
+            out[i] = static_cast<float>(*number);
+        }
+    }
+}
+
+struct TextureReference
+{
+    int32_t index = -1;
+    int32_t texCoord = 0;
+};
+
+// A glTF textureInfo object inside an extension.
+TextureReference ReadTextureReference(const tg3_value* value)
+{
+    TextureReference reference;
+    if (const std::optional<double> index = AsNumber(FindMember(value, "index")))
+    {
+        reference.index = static_cast<int32_t>(*index);
+    }
+    if (const std::optional<double> texCoord = AsNumber(FindMember(value, "texCoord")))
+    {
+        reference.texCoord = static_cast<int32_t>(*texCoord);
+    }
+    return reference;
+}
+
+constexpr std::string_view kExtensionSpecularGlossiness = "KHR_materials_pbrSpecularGlossiness";
+constexpr std::string_view kExtensionTransmission = "KHR_materials_transmission";
+constexpr std::string_view kExtensionTextureDds = "MSFT_texture_dds";
+
+// Software decoded BC7 (devices without textureCompressionBC, i.e. most Android GPUs) starts at the first mip level
+// that fits this extent: decoding is slow and RGBA8 is four times larger than BC7.
+constexpr uint32_t kMaxDecodedBcExtent = 512;
 
 int HexValue(char c)
 {
@@ -266,11 +368,131 @@ struct IndexBinding
     uint32_t count = 0;
 };
 
-struct DecodedImage
+// A texture ready for GpuDevice::CreateTexture, produced on a worker thread.
+struct PreparedTexture
 {
-    std::optional<asset::Image8> image;
-    std::string error;
+    std::vector<uint8_t> bytes; // owns the pixel data, which starts at dataOffset
+    size_t dataOffset = 0;
+    size_t dataSize = 0;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t mipLevels = 1; // levels present in the data, or 0 with generateMips
+    bool generateMips = false;
+    bool decodedBc = false; // BC7 decoded on the CPU
+    std::string error;      // non-empty: use a fallback texture
 };
+
+bool IsDds(std::span<const uint8_t> bytes)
+{
+    return bytes.size() >= 4 && std::memcmp(bytes.data(), "DDS ", 4) == 0;
+}
+
+// glTF decides the color space by usage (base color, emissive and specular-glossiness are sRGB, the rest linear),
+// so the DDS format is switched to the matching variant where one exists.
+VkFormat WithColorSpace(VkFormat format, bool srgb)
+{
+    struct Pair
+    {
+        VkFormat unorm;
+        VkFormat srgb;
+    };
+    static constexpr std::array<Pair, 6> kPairs = {{
+        {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB},
+        {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_B8G8R8A8_SRGB},
+        {VK_FORMAT_BC1_RGBA_UNORM_BLOCK, VK_FORMAT_BC1_RGBA_SRGB_BLOCK},
+        {VK_FORMAT_BC2_UNORM_BLOCK, VK_FORMAT_BC2_SRGB_BLOCK},
+        {VK_FORMAT_BC3_UNORM_BLOCK, VK_FORMAT_BC3_SRGB_BLOCK},
+        {VK_FORMAT_BC7_UNORM_BLOCK, VK_FORMAT_BC7_SRGB_BLOCK},
+    }};
+    for (const Pair& pair : kPairs)
+    {
+        if (format == pair.unorm || format == pair.srgb)
+        {
+            return srgb ? pair.srgb : pair.unorm;
+        }
+    }
+    return format;
+}
+
+// DDS (MSFT_texture_dds): uploaded as stored when the device can sample the format; BC7 without textureCompressionBC
+// is decoded to RGBA8 from the first mip level that fits kMaxDecodedBcExtent.
+void PrepareDds(PreparedTexture& prepared, bool srgb, bool bcSupported)
+{
+    TextureData info;
+    info.data = prepared.bytes;
+    if (!LoadDDSTextureFromMemory(info))
+    {
+        prepared.error = "invalid or unsupported DDS file";
+        return;
+    }
+    if (info.dimension != TextureDimension::Texture2D || info.arraySize != 1 || info.width == 0 || info.height == 0)
+    {
+        prepared.error = "only single 2D DDS textures are supported";
+        return;
+    }
+    const std::vector<TextureSubresourceData>& levels = info.dataLayout[0];
+    const VkFormat format = WithColorSpace(info.format, srgb);
+
+    if (rhi::IsBlockCompressedFormat(format) && !bcSupported)
+    {
+        if (format != VK_FORMAT_BC7_UNORM_BLOCK && format != VK_FORMAT_BC7_SRGB_BLOCK)
+        {
+            prepared.error = "BC format " + std::to_string(static_cast<int>(format)) +
+                             " needs textureCompressionBC (only BC7 is decoded on the CPU)";
+            return;
+        }
+        uint32_t level = 0;
+        while (level + 1 < info.mipLevels &&
+               std::max(asset::MipExtent(info.width, level), asset::MipExtent(info.height, level)) > kMaxDecodedBcExtent)
+        {
+            ++level;
+        }
+        prepared.width = asset::MipExtent(info.width, level);
+        prepared.height = asset::MipExtent(info.height, level);
+        std::vector<uint8_t> rgba = asset::DecodeBc7(
+            std::span<const uint8_t>(prepared.bytes.data() + levels[level].dataOffset, levels[level].dataSize),
+            prepared.width, prepared.height);
+        prepared.bytes = std::move(rgba);
+        prepared.dataOffset = 0;
+        prepared.dataSize = prepared.bytes.size();
+        prepared.format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+        prepared.mipLevels = 0;
+        prepared.generateMips = true;
+        prepared.decodedBc = true;
+        return;
+    }
+    if (!rhi::IsBlockCompressedFormat(format) && rhi::FormatTexelSize(format) == 0)
+    {
+        prepared.error = "DDS format " + std::to_string(static_cast<int>(format)) + " is not supported";
+        return;
+    }
+
+    // A single 2D slice: the levels are tightly packed one after another, as TextureCreation expects.
+    prepared.format = format;
+    prepared.width = info.width;
+    prepared.height = info.height;
+    prepared.mipLevels = info.mipLevels;
+    prepared.dataOffset = static_cast<size_t>(levels.front().dataOffset);
+    prepared.dataSize = static_cast<size_t>(levels.back().dataOffset - levels.front().dataOffset) + levels.back().dataSize;
+}
+
+void PrepareEncodedImage(PreparedTexture& prepared, bool srgb)
+{
+    std::optional<asset::Image8> image = asset::DecodeImageRgba8(prepared.bytes, &prepared.error);
+    if (!image)
+    {
+        return;
+    }
+    prepared.width = image->width;
+    prepared.height = image->height;
+    prepared.bytes = std::move(image->rgba);
+    prepared.dataOffset = 0;
+    prepared.dataSize = prepared.bytes.size();
+    prepared.format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+    prepared.mipLevels = 0;
+    prepared.generateMips = true;
+}
 
 struct TextureBinding
 {
@@ -613,8 +835,8 @@ private:
         return bytes;
     }
 
-    // Collects every (image, color space) pair referenced by a material, decodes them on worker threads (a bounded
-    // window keeps memory in check) and records all uploads and mip generation into a single submission.
+    // Collects every (image, color space) pair referenced by a material, prepares them on worker threads (a bounded
+    // window keeps memory in check) and records the uploads into the device's upload batch.
     void LoadTextures()
     {
         auto request = [&](const tg3_texture_info& info, bool srgb) { RequestTexture(info.index, srgb); };
@@ -626,38 +848,57 @@ private:
             RequestTexture(material.normal_texture.index, false);
             RequestTexture(material.occlusion_texture.index, false);
             request(material.emissive_texture, true);
+            if (const tg3_value* specularGlossiness = FindExtension(material.ext, kExtensionSpecularGlossiness))
+            {
+                // The specular color is sRGB like the diffuse texture; glossiness in alpha stays linear either way.
+                RequestTexture(ReadTextureReference(FindMember(specularGlossiness, "diffuseTexture")).index, true);
+                RequestTexture(ReadTextureReference(FindMember(specularGlossiness, "specularGlossinessTexture")).index, true);
+            }
         }
         if (m_imageRequests.empty())
         {
             return;
         }
 
+        const bool bcSupported = m_device.SupportsTextureCompressionBc();
         const size_t window = std::max<size_t>(2, std::thread::hardware_concurrency());
-        std::deque<std::future<DecodedImage>> pending;
+        std::deque<std::future<PreparedTexture>> pending;
         size_t launched = 0;
         auto launch = [&]() {
-            const uint32_t imageIndex = m_imageRequests[launched++].first;
-            std::string error;
+            const auto [imageIndex, srgb] = m_imageRequests[launched++];
+            PreparedTexture prepared;
             std::optional<std::vector<uint8_t>> bytes;
             try
             {
-                bytes = ReadImageBytes(imageIndex, &error);
+                bytes = ReadImageBytes(imageIndex, &prepared.error);
             }
             catch (const std::exception& exception)
             {
-                error = exception.what();
+                prepared.error = exception.what();
             }
-            pending.push_back(std::async(std::launch::async, [bytes = std::move(bytes), error]() mutable {
-                DecodedImage result;
-                result.error = std::move(error);
-                if (bytes)
-                {
-                    result.image = asset::DecodeImageRgba8(*bytes, &result.error);
-                }
-                return result;
-            }));
+            if (bytes)
+            {
+                prepared.bytes = std::move(*bytes);
+            }
+            const bool hasBytes = bytes.has_value();
+            pending.push_back(std::async(std::launch::async,
+                [prepared = std::move(prepared), hasBytes, srgb, bcSupported]() mutable {
+                    if (hasBytes)
+                    {
+                        if (IsDds(prepared.bytes))
+                        {
+                            PrepareDds(prepared, srgb, bcSupported);
+                        }
+                        else
+                        {
+                            PrepareEncodedImage(prepared, srgb);
+                        }
+                    }
+                    return std::move(prepared);
+                }));
         };
 
+        size_t decodedBcCount = 0;
         m_imageTextures.resize(m_imageRequests.size());
         for (size_t i = 0; i < m_imageRequests.size(); ++i)
         {
@@ -665,25 +906,27 @@ private:
             {
                 launch();
             }
-            DecodedImage decoded = pending.front().get();
+            PreparedTexture prepared = pending.front().get();
             pending.pop_front();
 
-            const auto [imageIndex, srgb] = m_imageRequests[i];
+            const uint32_t imageIndex = m_imageRequests[i].first;
             const std::string label = Describe(m_model.images[imageIndex].name, "image", imageIndex);
-            if (!decoded.image)
+            if (prepared.format == VK_FORMAT_UNDEFINED)
             {
-                MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_path.c_str(), label.c_str(), decoded.error.c_str());
+                MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_path.c_str(), label.c_str(),
+                    prepared.error.empty() ? "no image data" : prepared.error.c_str());
                 continue;
             }
+            decodedBcCount += prepared.decodedBc ? 1 : 0;
 
             rhi::TextureCreation creation;
-            creation.width = decoded.image->width;
-            creation.height = decoded.image->height;
-            creation.mipLevels = 0;
-            creation.format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-            creation.flags = rhi::kTextureFlagGenerateMips;
-            creation.initialData = decoded.image->rgba.data();
-            creation.initialDataSize = decoded.image->rgba.size();
+            creation.width = prepared.width;
+            creation.height = prepared.height;
+            creation.mipLevels = prepared.mipLevels;
+            creation.format = prepared.format;
+            creation.flags = prepared.generateMips ? rhi::kTextureFlagGenerateMips : 0;
+            creation.initialData = prepared.bytes.data() + prepared.dataOffset;
+            creation.initialDataSize = prepared.dataSize;
             creation.name = label.c_str();
             try
             {
@@ -695,20 +938,41 @@ private:
                 MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_path.c_str(), label.c_str(), exception.what());
             }
         }
+        if (decodedBcCount > 0)
+        {
+            MENGINE_LOG_INFO("%s: the device lacks textureCompressionBC, decoded %zu BC7 textures to RGBA8 (at most %ux%u)",
+                m_path.c_str(), decodedBcCount, kMaxDecodedBcExtent, kMaxDecodedBcExtent);
+        }
+    }
+
+    // The image a texture samples: MSFT_texture_dds's DDS source when present (Bistro ships only the DDS files),
+    // otherwise texture.source. -1 when neither is valid.
+    int32_t TextureImage(int32_t textureIndex) const
+    {
+        if (textureIndex < 0 || static_cast<uint32_t>(textureIndex) >= m_model.textures_count)
+        {
+            return -1;
+        }
+        const tg3_texture& texture = m_model.textures[textureIndex];
+        auto valid = [&](int32_t image) { return image >= 0 && static_cast<uint32_t>(image) < m_model.images_count; };
+        if (const std::optional<double> dds = AsNumber(FindMember(FindExtension(texture.ext, kExtensionTextureDds), "source")))
+        {
+            if (valid(static_cast<int32_t>(*dds)))
+            {
+                return static_cast<int32_t>(*dds);
+            }
+        }
+        return valid(texture.source) ? texture.source : -1;
     }
 
     void RequestTexture(int32_t textureIndex, bool srgb)
     {
-        if (textureIndex < 0 || static_cast<uint32_t>(textureIndex) >= m_model.textures_count)
+        const int32_t image = TextureImage(textureIndex);
+        if (image < 0)
         {
             return;
         }
-        const int32_t source = m_model.textures[textureIndex].source;
-        if (source < 0 || static_cast<uint32_t>(source) >= m_model.images_count)
-        {
-            return;
-        }
-        const std::pair<uint32_t, bool> key{static_cast<uint32_t>(source), srgb};
+        const std::pair<uint32_t, bool> key{static_cast<uint32_t>(image), srgb};
         if (m_imageRequestIndex.emplace(key, m_imageRequests.size()).second)
         {
             m_imageRequests.push_back(key);
@@ -798,11 +1062,12 @@ private:
                 texCoord);
         }
         const tg3_texture& texture = m_model.textures[textureIndex];
-        if (texture.source < 0 || static_cast<uint32_t>(texture.source) >= m_model.images_count)
+        const int32_t image = TextureImage(textureIndex);
+        if (image < 0)
         {
             return {};
         }
-        const auto it = m_imageRequestIndex.find({static_cast<uint32_t>(texture.source), srgb});
+        const auto it = m_imageRequestIndex.find({static_cast<uint32_t>(image), srgb});
         if (it == m_imageRequestIndex.end() || !m_imageTextures[it->second].IsValid())
         {
             return {};
@@ -878,6 +1143,28 @@ private:
             if (normal.texture.IsValid())
             {
                 data.flags |= kMaterialFlagNormalTexture;
+            }
+
+            // The extension replaces pbrMetallicRoughness: diffuse goes to the base color slot, specular-glossiness
+            // to the metallic-roughness slot (see kMaterialFlagSpecularGlossiness).
+            if (const tg3_value* specularGlossiness = FindExtension(source->ext, kExtensionSpecularGlossiness))
+            {
+                data.flags |= kMaterialFlagSpecularGlossiness;
+                data.baseColorFactor = glm::vec4(1.0f);
+                ReadNumberArray(FindMember(specularGlossiness, "diffuseFactor"), 4, &data.baseColorFactor.x);
+                data.specularGlossinessFactor = glm::vec4(1.0f);
+                ReadNumberArray(FindMember(specularGlossiness, "specularFactor"), 3, &data.specularGlossinessFactor.x);
+                data.specularGlossinessFactor.w = ReadFloat(FindMember(specularGlossiness, "glossinessFactor"), 1.0f);
+
+                const TextureReference diffuse = ReadTextureReference(FindMember(specularGlossiness, "diffuseTexture"));
+                const TextureReference specular =
+                    ReadTextureReference(FindMember(specularGlossiness, "specularGlossinessTexture"));
+                baseColor = ResolveTexture(diffuse.index, diffuse.texCoord, true, material.name);
+                metallicRoughness = ResolveTexture(specular.index, specular.texCoord, true, material.name);
+            }
+            if (const tg3_value* transmission = FindExtension(source->ext, kExtensionTransmission))
+            {
+                material.transmissive = ReadFloat(FindMember(transmission, "transmissionFactor"), 0.0f) > 0.0f;
             }
         }
 
@@ -1192,6 +1479,11 @@ private:
     {
         const ScenePrimitive& primitive = m_scene.primitives[primitiveIndex];
         const SceneMaterial& material = m_scene.materials[primitive.material];
+        if (material.transmissive)
+        {
+            ++m_skippedTransmissiveDraws;
+            return;
+        }
 
         SceneDraw draw;
         draw.primitive = primitiveIndex;
@@ -1266,6 +1558,11 @@ private:
         {
             VisitNode(root, glm::mat4(1.0f), 0);
         }
+        if (m_skippedTransmissiveDraws > 0)
+        {
+            MENGINE_LOG_WARN("%s: KHR_materials_transmission is not supported, skipped %zu transmissive (glass) draws",
+                m_path.c_str(), m_skippedTransmissiveDraws);
+        }
 
         std::stable_sort(m_scene.draws.begin(), m_scene.draws.end(), [](const SceneDraw& a, const SceneDraw& b) {
             const uint32_t maskA = a.pipelineKey & kPipelineKeyAlphaMask;
@@ -1284,7 +1581,8 @@ private:
 
     void WarnAboutExtensions() const
     {
-        static constexpr std::array<std::string_view, 0> kSupported{};
+        static constexpr std::array<std::string_view, 3> kSupported{
+            kExtensionSpecularGlossiness, kExtensionTextureDds, kExtensionTransmission};
         for (uint32_t i = 0; i < m_model.extensions_required_count; ++i)
         {
             const std::string_view name = ToView(m_model.extensions_required[i]);
@@ -1310,6 +1608,7 @@ private:
     std::vector<rhi::TextureHandle> m_imageTextures;
     std::optional<uint32_t> m_defaultMaterial;
     std::vector<std::vector<uint32_t>> m_meshPrimitives;
+    size_t m_skippedTransmissiveDraws = 0;
 };
 
 // Keeps the device's upload batch balanced even when loading throws halfway.

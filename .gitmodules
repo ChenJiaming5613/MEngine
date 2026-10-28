@@ -21,3 +21,7 @@
 	path = third_party/tinygltf
 	url = https://github.com/syoyo/tinygltf.git
 	branch = release
+[submodule "third_party/RTXDI-Assets"]
+	path = third_party/RTXDI-Assets
+	url = https://github.com/NVIDIA-RTX/RTXDI-Assets.git
+	shallow = true
