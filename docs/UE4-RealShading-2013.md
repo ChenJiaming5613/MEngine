@@ -394,6 +394,7 @@ LineNormalization = \frac{\alpha}{\alpha'} \quad(20)
 | `ApproximateSpecularIBL` | p7 | `ApproximateSpecularIbl`（`Brdf.slang`），在 `Pbr.slang` 中调用 |
 | 非金属 F0 = 0.04，Metallic 工作流 | p9 | `SpecularColorFromMetallic` / `DiffuseColorFromMetallic`（`Brdf.slang`） |
 | 窗口化平方反比衰减 | 式 9 | `LightFalloff`，`lightRadius` 可在 ImGui 调节 |
+| 方向光（式 1–5，无衰减） | 式 1–5 | `EvaluateDirectLight`（`Pbr.slang`），与点光源共用；radiance = color × intensity × 阴影 |
 
 IblBaker 中原文 HLSL 的 C++ 移植保持逐行对应（变量名、循环结构、`saturate` 位置都不变），只把函数名改为项目的大小写风格，并在注释里注明原文出处。
 
@@ -409,6 +410,12 @@ IblBaker 中原文 HLSL 的 C++ 移植保持逐行对应（变量名、循环结
 - **输出格式**：specular、irradiance 为 RGBA16F，BRDF LUT 为 RG16F（满足原文脚注 2 对精度的要求），都存成未压缩的 KTX2。LUT 的 texel \((x, y)\) 对应 `NoV = (x + 0.5) / size`、`Roughness = (y + 0.5) / size`。
 - **并行**：按“面 × 行”分发到 `std::thread`，每个 texel 的计算彼此独立，输出与线程数无关。
 - **AO**：glTF 的 occlusion 贴图只作用于间接光（IBL），相当于原文 Cavity 的小尺度遮蔽用途；直接光不乘 AO。
+- **方向光阴影**：原文没有涉及阴影。MEngine 为方向光渲染一张阴影贴图：
+  - 2048² 的 D16 深度图，光空间正交投影贴合场景包围盒（外扩 2 个 texel），和相机投影一样翻转 Y，因此沿用前向 pass 的绕序和剔除规则。
+  - alpha MASK 材质在阴影 pass 中按 `alphaCutoff` 镂空。
+  - 去痤疮：投射端用管线静态深度偏移（常量 1.25、斜率 1.75），接收端沿几何法线偏移 `Normal Offset × 阴影 texel 世界尺寸`（默认 1.5 texel）。
+  - 软化：3×3 PCF；设备支持 D16 线性过滤时，比较采样器使用 LINEAR，每个 tap 本身就是硬件 2×2 PCF。
+  - 只在光方向、场景或阴影开关变化时重绘；只作用于方向光的直接光项，点光源不投射阴影。
 - **色调映射**：曝光后用 Hable 的 Uncharted 2 filmic 曲线，按白点 11.2 归一化，默认曝光 4.5。常量和默认值与 Vulkan-glTF-PBR 相同，最后按 sRGB 编码输出。天空盒与场景共用这一步，没有单独的曝光。
 
 ### 6.3 本次不做

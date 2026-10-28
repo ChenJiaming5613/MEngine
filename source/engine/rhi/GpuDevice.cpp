@@ -810,6 +810,13 @@ bool GpuDevice::SupportsLinearBlit(VkFormat format) const
     return (properties.optimalTilingFeatures & kRequired) == kRequired;
 }
 
+bool GpuDevice::SupportsLinearFilter(VkFormat format) const
+{
+    VkFormatProperties properties{};
+    vkGetPhysicalDeviceFormatProperties(m_physicalDevice, format, &properties);
+    return (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
+}
+
 void GpuDevice::CreateTextureObjects(Texture& texture)
 {
     const bool cube = texture.type == TextureType::TextureCube;
@@ -1119,9 +1126,11 @@ SamplerHandle GpuDevice::CreateSampler(const SamplerCreation& creation)
         .addressModeW = creation.addressModeW,
         .anisotropyEnable = anisotropy ? VK_TRUE : VK_FALSE,
         .maxAnisotropy = anisotropy ? std::min(creation.maxAnisotropy, m_properties.limits.maxSamplerAnisotropy) : 1.0f,
+        .compareEnable = creation.compareEnable ? VK_TRUE : VK_FALSE,
+        .compareOp = creation.compareOp,
         .minLod = 0.0f,
         .maxLod = creation.maxLod,
-        .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK,
+        .borderColor = creation.borderColor,
     };
     Sampler sampler;
     CheckVk(vkCreateSampler(m_device, &samplerInfo, nullptr, &sampler.sampler), "vkCreateSampler");
@@ -1383,16 +1392,17 @@ VkRenderPass GpuDevice::GetVulkanRenderPass(const RenderPassOutput& output)
     const bool hasDepth = output.depthFormat != VK_FORMAT_UNDEFINED;
     if (hasDepth)
     {
+        const VkImageLayout depthFinalLayout =
+            output.sampleDepth ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         attachments[attachmentCount] = VkAttachmentDescription{
             .format = output.depthFormat,
             .samples = VK_SAMPLE_COUNT_1_BIT,
             .loadOp = ToVkLoadOp(output.depthOperation),
-            .storeOp = output.storeDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .storeOp = output.storeDepth || output.sampleDepth ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout = output.depthOperation == RenderPassOperation::Load ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-                                                                                : VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            .initialLayout = output.depthOperation == RenderPassOperation::Load ? depthFinalLayout : VK_IMAGE_LAYOUT_UNDEFINED,
+            .finalLayout = depthFinalLayout,
         };
         depthReference = VkAttachmentReference{.attachment = attachmentCount, .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
         ++attachmentCount;
@@ -1500,6 +1510,7 @@ RenderPassHandle GpuDevice::CreateRenderPass(const RenderPassCreation& creation)
     output.colorOperation = creation.colorOperation;
     output.depthOperation = creation.depthOperation;
     output.storeDepth = creation.storeDepth;
+    output.sampleDepth = creation.sampleDepth;
     for (uint32_t index = 0; index < creation.renderTargetCount; ++index)
     {
         const Texture* texture = m_textures.Access(creation.outputTextures[index]);
@@ -1705,6 +1716,10 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
             .polygonMode = creation.rasterization.polygonMode,
             .cullMode = creation.rasterization.cullMode,
             .frontFace = creation.rasterization.frontFace,
+            .depthBiasEnable = creation.rasterization.depthBiasEnable ? VK_TRUE : VK_FALSE,
+            .depthBiasConstantFactor = creation.rasterization.depthBiasConstantFactor,
+            .depthBiasClamp = 0.0f,
+            .depthBiasSlopeFactor = creation.rasterization.depthBiasSlopeFactor,
             .lineWidth = 1.0f,
         };
         const VkPipelineMultisampleStateCreateInfo multisampleState{

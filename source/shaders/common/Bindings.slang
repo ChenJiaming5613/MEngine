@@ -10,16 +10,22 @@ struct FrameConstants
     float4x4 viewProjection;
     // inverse(projection * rotation-only view), maps clip space to a world space direction for the skybox.
     float4x4 skyboxInverseViewProjection;
-    float4 cameraPosition;      // xyz
-    float4 lightPositionRadius; // xyz position, w lightRadius of eq. 9
-    float4 lightColorIntensity; // rgb color, w intensity
-    float4 iblParams;           // x intensity, y specular mip count
+    // World space to the directional shadow map's clip space (orthographic, Y flipped like the camera).
+    float4x4 lightViewProjection;
+    float4 cameraPosition;            // xyz
+    float4 lightPositionRadius;       // xyz position, w lightRadius of eq. 9
+    float4 lightColorIntensity;       // rgb color, w intensity
+    float4 directionalDirection;      // xyz normalized direction the light travels
+    float4 directionalColorIntensity; // rgb color, w intensity
+    float4 shadowParams;              // x enabled, y 1 / shadow map size, z normal offset in world units
+    float4 iblParams;                 // x intensity, y specular mip count
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<FrameConstants> frame;
 [[vk::binding(1, 0)]] SamplerCube irradianceMap; // E(n) / pi, see programs/IblBaker/Irradiance.cpp
 [[vk::binding(2, 0)]] SamplerCube specularMap;   // PrefilterEnvMap, Roughness = mip / (mipCount - 1)
 [[vk::binding(3, 0)]] Sampler2D brdfLut;         // IntegrateBRDF, u = NoV, v = Roughness
+[[vk::binding(4, 0)]] Sampler2DShadow shadowMap; // directional light depth, compare sampler (LESS_OR_EQUAL)
 
 // set 1: per material ----------------------------------------------------------------------------------------------------
 

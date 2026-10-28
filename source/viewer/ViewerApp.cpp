@@ -169,6 +169,16 @@ private:
         const float lightDistance = glm::length(m_settings.light.position - center);
         m_settings.light.radius = std::max(2.0f * radius, 2.0f * lightDistance);
         m_settings.light.intensity = lightDistance * lightDistance + 1.0f;
+
+        render::DirectionalLight& directional = m_settings.directional;
+        if (config && config->directionalLight)
+        {
+            const DirectionalLightConfig& lightConfig = *config->directionalLight;
+            directional.direction = lightConfig.direction.value_or(directional.direction);
+            directional.color = lightConfig.color.value_or(directional.color);
+            directional.intensity = lightConfig.intensity.value_or(directional.intensity);
+        }
+        directional.direction = glm::normalize(directional.direction);
     }
 
     bool HitsUi(float x, float y) const
@@ -224,6 +234,31 @@ private:
         {
             ImGui::SliderFloat("Exposure", &m_settings.exposure, 0.1f, 32.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
             ImGui::SliderFloat("IBL Intensity", &m_settings.iblIntensity, 0.0f, 4.0f, "%.2f");
+
+            render::DirectionalLight& directional = m_settings.directional;
+            ImGui::PushID("Directional");
+            ImGui::SeparatorText("Directional Light");
+            ImGui::ColorEdit3("Color", &directional.color.x);
+            ImGui::DragFloat("Intensity", &directional.intensity, 0.02f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
+            glm::vec3 direction = directional.direction;
+            if (ImGui::DragFloat3("Direction", &direction.x, 0.005f, -1.0f, 1.0f, "%.3f"))
+            {
+                // Kept normalized; a zero vector keeps the previous direction.
+                const float length = glm::length(direction);
+                if (length > 1e-4f)
+                {
+                    directional.direction = direction / length;
+                }
+            }
+            if (ImGui::Button("Use Camera Direction"))
+            {
+                directional.direction = m_camera.Forward();
+            }
+            ImGui::Checkbox("Cast Shadows", &directional.castShadows);
+            ImGui::SliderFloat("Normal Offset", &directional.normalOffsetTexels, 0.0f, 5.0f, "%.2f texels");
+            ImGui::PopID();
+
+            ImGui::PushID("Point");
             ImGui::SeparatorText("Point Light");
             ImGui::DragFloat3("Position", &m_settings.light.position.x, 0.05f);
             ImGui::ColorEdit3("Color", &m_settings.light.color.x);
@@ -234,6 +269,7 @@ private:
             {
                 m_settings.light.position = m_camera.position;
             }
+            ImGui::PopID();
         }
 
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))

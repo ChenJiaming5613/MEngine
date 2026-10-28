@@ -16,8 +16,8 @@ namespace mengine::render {
 
 struct Scene;
 
-// Direct lighting (one point light) plus IBL for every glTF draw, into the HDR target. Pipeline variants are keyed by
-// PipelineKeyBits and created on first use.
+// Direct lighting (point light, shadowed directional light) plus IBL for every glTF draw, into the HDR target. Pipeline
+// variants are keyed by PipelineKeyBits and created on first use.
 class ForwardPbrPass
 {
 public:

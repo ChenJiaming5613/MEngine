@@ -115,6 +115,7 @@ uint64_t RenderPassOutput::Hash() const
     HashCombine(hash, static_cast<uint64_t>(colorOperation));
     HashCombine(hash, static_cast<uint64_t>(depthOperation));
     HashCombine(hash, storeDepth ? 1u : 0u);
+    HashCombine(hash, sampleDepth ? 1u : 0u);
     HashCombine(hash, presentable ? 1u : 0u);
     return hash;
 }

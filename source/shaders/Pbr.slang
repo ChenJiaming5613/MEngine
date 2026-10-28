@@ -1,5 +1,6 @@
 #include "common/Bindings.slang"
 #include "common/Brdf.slang"
+#include "common/ShadowSampling.slang"
 
 // 0 = OPAQUE, 1 = MASK (alpha test against material.alphaCutoff).
 [vk::constant_id(0)] const uint kAlphaMask = 0;
@@ -91,6 +92,29 @@ float3 ApplyNormalMap(VertexOutput input, float3 N, bool frontFacing)
     return normalize(T * tangentNormal.x + B * tangentNormal.y + N * tangentNormal.z);
 }
 
+// Eq. 1-5 for one light: Lo = (f_d + f_s) * radiance * (n.l), with radiance = color * intensity * falloff * shadow.
+float3 EvaluateDirectLight(float3 N, float3 V, float3 L, float3 radiance, float3 diffuseColor, float3 specularColor,
+                           float roughness, float NoV)
+{
+    float NoL = saturate(dot(N, L));
+    if (NoL <= 0.0)
+    {
+        return float3(0.0);
+    }
+    float3 brdf = DiffuseLambert(diffuseColor);
+    if (NoV > 0.0)
+    {
+        float3 H = normalize(L + V);
+        float NoH = saturate(dot(N, H));
+        float VoH = saturate(dot(V, H));
+        float D = DGgx(roughness, NoH);
+        float3 F = FSchlickSg(specularColor, VoH);
+        float G = GSmithAnalytic(roughness, NoV, NoL);
+        brdf += SpecularCookTorrance(D, F, G, NoL, NoV);
+    }
+    return brdf * radiance * NoL;
+}
+
 [shader("fragment")]
 float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_Target
 {
@@ -111,6 +135,7 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
     {
         N = -N;
     }
+    float3 geometricNormal = N;
     if ((material.flags & kMaterialFlagNormalTexture) != 0)
     {
         N = ApplyNormalMap(input, N, frontFacing);
@@ -121,29 +146,25 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
     float3 diffuseColor = DiffuseColorFromMetallic(baseColor.rgb, metallic);
     float NoV = saturate(dot(N, V));
 
-    // Direct light: one point light, Lo = (f_d + f_s) * color * intensity * falloff * (n.l). No occlusion here.
+    // Direct light, no occlusion: one point light (eq. 9 falloff) plus one shadowed directional light (no falloff).
     float3 direct = float3(0.0);
     float3 toLight = frame.lightPositionRadius.xyz - input.worldPosition;
     float distance = length(toLight);
     if (distance > 0.0)
     {
-        float3 L = toLight / distance;
-        float NoL = saturate(dot(N, L));
-        if (NoL > 0.0)
+        float falloff = LightFalloff(distance, frame.lightPositionRadius.w);
+        float3 radiance = frame.lightColorIntensity.rgb * frame.lightColorIntensity.w * falloff;
+        direct += EvaluateDirectLight(N, V, toLight / distance, radiance, diffuseColor, specularColor, roughness, NoV);
+    }
+
+    float3 directionalRadiance = frame.directionalColorIntensity.rgb * frame.directionalColorIntensity.w;
+    if (any(directionalRadiance > 0.0))
+    {
+        float3 L = -frame.directionalDirection.xyz;
+        if (dot(N, L) > 0.0)
         {
-            float3 brdf = DiffuseLambert(diffuseColor);
-            if (NoV > 0.0)
-            {
-                float3 H = normalize(L + V);
-                float NoH = saturate(dot(N, H));
-                float VoH = saturate(dot(V, H));
-                float D = DGgx(roughness, NoH);
-                float3 F = FSchlickSg(specularColor, VoH);
-                float G = GSmithAnalytic(roughness, NoV, NoL);
-                brdf += SpecularCookTorrance(D, F, G, NoL, NoV);
-            }
-            float falloff = LightFalloff(distance, frame.lightPositionRadius.w);
-            direct = brdf * frame.lightColorIntensity.rgb * frame.lightColorIntensity.w * falloff * NoL;
+            float shadow = DirectionalShadow(input.worldPosition, geometricNormal);
+            direct += EvaluateDirectLight(N, V, L, directionalRadiance * shadow, diffuseColor, specularColor, roughness, NoV);
         }
     }
 

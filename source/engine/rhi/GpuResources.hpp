@@ -78,6 +78,10 @@ struct SamplerCreation
     float maxLod = VK_LOD_CLAMP_NONE;
     // 0 disables anisotropic filtering; larger values are clamped to the device limit.
     float maxAnisotropy = 0.0f;
+    // Depth comparison (shadow maps): sampling returns compareOp(reference, texel) instead of the texel.
+    bool compareEnable = false;
+    VkCompareOp compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    VkBorderColor borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
     const char* name = nullptr;
 };
 
@@ -167,6 +171,10 @@ struct RasterizationCreation
     VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
     VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
+    // Static depth bias (no depthBiasClamp, which needs a device feature).
+    bool depthBiasEnable = false;
+    float depthBiasConstantFactor = 0.0f;
+    float depthBiasSlopeFactor = 0.0f;
 };
 
 struct DepthStencilCreation
@@ -201,6 +209,8 @@ struct RenderPassOutput
     RenderPassOperation depthOperation = RenderPassOperation::Clear;
     // Depth is only kept when a later pass loads it; mobile tilers then skip the write back.
     bool storeDepth = false;
+    // Depth is stored and ends in SHADER_READ_ONLY for sampling by later passes (shadow maps).
+    bool sampleDepth = false;
     // Swapchain outputs end in PRESENT_SRC, offscreen color outputs in SHADER_READ_ONLY for sampling by later passes.
     bool presentable = false;
 
@@ -218,6 +228,7 @@ struct RenderPassCreation
     RenderPassOperation colorOperation = RenderPassOperation::Clear;
     RenderPassOperation depthOperation = RenderPassOperation::Clear;
     bool storeDepth = false;
+    bool sampleDepth = false;
     const char* name = nullptr;
 
     RenderPassCreation& AddRenderTexture(TextureHandle texture);

@@ -119,6 +119,9 @@ MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Skybox.slang" VertexMain)
 MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Skybox.slang" FragmentMain)
 MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Tonemap.slang" VertexMain)
 MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Tonemap.slang" FragmentMain)
+MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Shadow.slang" VertexMain)
+MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Shadow.slang" VertexMainMask)
+MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Shadow.slang" FragmentMask)
 MEngineAddShaderTarget(MEngineShaders)
 
 # Gradle only builds the shared library targets, so staging and shaders hang off the application target.

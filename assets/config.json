@@ -1,6 +1,11 @@
 {
   "scene": "Sponza/glTF/Sponza.gltf",
   "environment": "environments/papermill",
+  "directionalLight": {
+    "direction": [-0.3, -1.0, -0.2],
+    "color": [1.0, 0.96, 0.9],
+    "intensity": 3.0
+  },
   "camera": {
     "position": [0.0, 2.5, 2.0],
     "yawDegrees": 0.0,

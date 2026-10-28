@@ -4,6 +4,9 @@
 #include "core/Json.hpp"
 #include "core/Log.hpp"
 
+#include <glm/geometric.hpp>
+#include <glm/vector_relational.hpp>
+
 #include <cmath>
 #include <string>
 #include <vector>
@@ -25,6 +28,33 @@ std::optional<float> ReadNumber(JsonValue value, const char* name, const std::st
         return std::nullopt;
     }
     return static_cast<float>(*number);
+}
+
+// Absent: nullopt with ok unchanged. Present but not three numbers: logs, clears ok and returns nullopt.
+std::optional<glm::vec3> ReadVec3(JsonValue value, const char* name, const std::string& path, bool* ok)
+{
+    if (!value.IsValid())
+    {
+        return std::nullopt;
+    }
+    glm::vec3 result(0.0f);
+    bool valid = value.IsArray() && value.Size() == 3;
+    for (size_t i = 0; valid && i < 3; ++i)
+    {
+        const std::optional<double> number = value.At(i).AsNumber();
+        valid = number && std::isfinite(*number);
+        if (valid)
+        {
+            result[static_cast<glm::length_t>(i)] = static_cast<float>(*number);
+        }
+    }
+    if (!valid)
+    {
+        MENGINE_LOG_ERROR("%s: \"%s\" must be an array of three numbers", path.c_str(), name);
+        *ok = false;
+        return std::nullopt;
+    }
+    return result;
 }
 
 std::optional<std::string> ReadRelativePath(JsonValue value, const char* name, const std::string& path, bool* ok)
@@ -88,27 +118,7 @@ std::optional<ViewerConfig> LoadViewerConfig(std::string_view assetPath)
             return std::nullopt;
         }
         CameraConfig cameraConfig;
-        const JsonValue position = camera["position"];
-        if (position.IsValid())
-        {
-            if (!position.IsArray() || position.Size() != 3)
-            {
-                MENGINE_LOG_ERROR("%s: \"camera.position\" must be an array of three numbers", path.c_str());
-                return std::nullopt;
-            }
-            for (size_t i = 0; i < 3; ++i)
-            {
-                if (const std::optional<float> value = ReadNumber(position.At(i), "camera.position", path, &ok))
-                {
-                    cameraConfig.position[static_cast<glm::length_t>(i)] = *value;
-                }
-                else if (ok)
-                {
-                    MENGINE_LOG_ERROR("%s: \"camera.position\" must be an array of three numbers", path.c_str());
-                    ok = false;
-                }
-            }
-        }
+        cameraConfig.position = ReadVec3(camera["position"], "camera.position", path, &ok).value_or(glm::vec3(0.0f));
         cameraConfig.yawDegrees = ReadNumber(camera["yawDegrees"], "camera.yawDegrees", path, &ok).value_or(0.0f);
         cameraConfig.pitchDegrees = ReadNumber(camera["pitchDegrees"], "camera.pitchDegrees", path, &ok).value_or(0.0f);
         cameraConfig.fovYDegrees = ReadNumber(camera["fovYDegrees"], "camera.fovYDegrees", path, &ok).value_or(60.0f);
@@ -118,6 +128,55 @@ std::optional<ViewerConfig> LoadViewerConfig(std::string_view assetPath)
             ok = false;
         }
         config.camera = cameraConfig;
+    }
+
+    const JsonValue light = root["directionalLight"];
+    if (light.IsValid())
+    {
+        if (!light.IsObject())
+        {
+            MENGINE_LOG_ERROR("%s: \"directionalLight\" must be an object", path.c_str());
+            return std::nullopt;
+        }
+        DirectionalLightConfig lightConfig;
+        if (const std::optional<glm::vec3> direction = ReadVec3(light["direction"], "directionalLight.direction", path, &ok))
+        {
+            const float length = glm::length(*direction);
+            if (length > 1e-6f)
+            {
+                lightConfig.direction = *direction / length;
+            }
+            else
+            {
+                MENGINE_LOG_ERROR("%s: \"directionalLight.direction\" must not be zero", path.c_str());
+                ok = false;
+            }
+        }
+        if (const std::optional<glm::vec3> color = ReadVec3(light["color"], "directionalLight.color", path, &ok))
+        {
+            if (glm::all(glm::greaterThanEqual(*color, glm::vec3(0.0f))))
+            {
+                lightConfig.color = *color;
+            }
+            else
+            {
+                MENGINE_LOG_ERROR("%s: \"directionalLight.color\" must not be negative", path.c_str());
+                ok = false;
+            }
+        }
+        if (const std::optional<float> intensity = ReadNumber(light["intensity"], "directionalLight.intensity", path, &ok))
+        {
+            if (*intensity >= 0.0f)
+            {
+                lightConfig.intensity = *intensity;
+            }
+            else
+            {
+                MENGINE_LOG_ERROR("%s: \"directionalLight.intensity\" must not be negative", path.c_str());
+                ok = false;
+            }
+        }
+        config.directionalLight = lightConfig;
     }
 
     if (!ok)

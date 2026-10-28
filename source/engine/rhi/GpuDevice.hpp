@@ -113,6 +113,8 @@ public:
 
     VkFormat GetDepthFormat() const { return m_depthFormat; }
     bool SupportsLinearBlit(VkFormat format) const;
+    // Linear filtering of sampled images; for depth formats this enables hardware 2x2 PCF with compare samplers.
+    bool SupportsLinearFilter(VkFormat format) const;
 
     TextureHandle GetDummyTexture() const { return m_dummyTexture; }
     TextureHandle GetDummyCubeTexture() const { return m_dummyCubeTexture; }

@@ -17,15 +17,21 @@ struct FrameConstants
     glm::mat4 projection{1.0f};
     glm::mat4 viewProjection{1.0f};
     glm::mat4 skyboxInverseViewProjection{1.0f};
+    glm::mat4 lightViewProjection{1.0f}; // directional shadow map, Y flipped like the camera projection
     glm::vec4 cameraPosition{0.0f};
     glm::vec4 lightPositionRadius{0.0f};
     glm::vec4 lightColorIntensity{0.0f};
-    glm::vec4 iblParams{0.0f}; // x intensity, y specular mip count
+    glm::vec4 directionalDirection{0.0f};      // xyz normalized direction the light travels
+    glm::vec4 directionalColorIntensity{0.0f}; // rgb color, w intensity
+    glm::vec4 shadowParams{0.0f};              // x enabled, y 1 / shadow map size, z normal offset in world units
+    glm::vec4 iblParams{0.0f};                 // x intensity, y specular mip count
 };
-static_assert(sizeof(FrameConstants) == 320);
+static_assert(sizeof(FrameConstants) == 432);
 static_assert(offsetof(FrameConstants, skyboxInverseViewProjection) == 192);
-static_assert(offsetof(FrameConstants, cameraPosition) == 256);
-static_assert(offsetof(FrameConstants, iblParams) == 304);
+static_assert(offsetof(FrameConstants, lightViewProjection) == 256);
+static_assert(offsetof(FrameConstants, cameraPosition) == 320);
+static_assert(offsetof(FrameConstants, directionalDirection) == 368);
+static_assert(offsetof(FrameConstants, iblParams) == 416);
 
 constexpr uint32_t kMaterialFlagNormalTexture = 1u << 0;
 
@@ -91,12 +97,22 @@ struct PointLight
     float intensity = 50.0f;
 };
 
+struct DirectionalLight
+{
+    glm::vec3 direction{-0.3f, -1.0f, -0.2f}; // direction the light travels; normalized when used
+    glm::vec3 color{1.0f};
+    float intensity = 3.0f; // illuminance on a surface facing the light
+    bool castShadows = true;
+    float normalOffsetTexels = 1.5f; // shadow receiver offset along the geometric normal, in shadow map texels
+};
+
 struct RenderSettings
 {
     // Vulkan-glTF-PBR's default for its Uncharted 2 curve.
     float exposure = 4.5f;
     float iblIntensity = 1.0f;
     PointLight light;
+    DirectionalLight directional;
 };
 
 } // namespace mengine::render
