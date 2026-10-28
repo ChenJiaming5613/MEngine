@@ -401,11 +401,15 @@ IblBaker 中原文 HLSL 的 C++ 移植保持逐行对应（变量名、循环结
 
 - **漫反射 IBL**：原文只讲了镜面 IBL。MEngine 把式 6 应用于式 1：Lambert 项 \(c_{diff}/\pi\) 与 \(\mathbf{l}\) 无关，可以提到积分外，剩下的 \(\frac{1}{\pi}\int_H L_i\cos\theta_l\,d\mathbf{l} = E(\mathbf{n})/\pi\) 用余弦加权的 Hammersley 样本离线估计（pdf \(\cos\theta/\pi\) 与被积函数中的 \(\cos\theta/\pi\) 相消，结果就是 \(\frac{1}{N}\sum L_i(\mathbf{l}_k)\)）。结果存进 `irradiance.ktx2`，运行时计算 \(c_{diff}\cdot irradiance(\mathbf{n})\)。实现见 `Irradiance.cpp` 的 `IrradianceOverPi`。
 - **Mip 和粗糙度的映射**：原文没有给出。MEngine 采用线性映射 `Roughness = mip / (mipCount - 1)`，运行时 `textureLod(R, Roughness * (mipCount - 1))`。mip0 不做特殊处理：Roughness 为 0 时 GGX 样本全部落在镜面方向，结果等于源贴图。
-- **环境贴图输入**：等距柱状投影 `.hdr` 用双线性采样转换为立方体贴图，面的顺序和方向遵循 Vulkan 规范的 Cube Map Face Selection。
+- **环境贴图输入**：
+  - 等距柱状投影 `.hdr`：用双线性采样转换为立方体贴图。
+  - KTX 1.1 立方体贴图（RGBA16F/32F，例如 Vulkan-glTF-PBR 的 `papermill.ktx`）：直接取 mip0，尺寸不同时双线性重采样。
+  - 面的顺序和方向遵循 Vulkan 规范的 Cube Map Face Selection。
+  - `--flip-y` 把输入沿 y 镜像，即 \(L'(x,y,z) = L(x,-y,z)\)，属于精确的 texel 重排。Vulkan-glTF-PBR 的世界坐标是 glTF 坐标取反 y（`pbr.vert` 中 `locPos.y = -locPos.y`，`material_pbr.frag` 中 `n.y *= -1`），它的环境贴图因此“天空在 -Y”，在 MEngine 的 Y 朝上世界里要做这次镜像。
 - **输出格式**：specular、irradiance 为 RGBA16F，BRDF LUT 为 RG16F（满足原文脚注 2 对精度的要求），都存成未压缩的 KTX2。LUT 的 texel \((x, y)\) 对应 `NoV = (x + 0.5) / size`、`Roughness = (y + 0.5) / size`。
 - **并行**：按“面 × 行”分发到 `std::thread`，每个 texel 的计算彼此独立，输出与线程数无关。
 - **AO**：glTF 的 occlusion 贴图只作用于间接光（IBL），相当于原文 Cavity 的小尺度遮蔽用途；直接光不乘 AO。
-- **色调映射**：曝光 + ACES 拟合。
+- **色调映射**：曝光后用 Hable 的 Uncharted 2 filmic 曲线，按白点 11.2 归一化，默认曝光 4.5。常量和默认值与 Vulkan-glTF-PBR 相同，最后按 sRGB 编码输出。天空盒与场景共用这一步，没有单独的曝光。
 
 ### 6.3 本次不做
 

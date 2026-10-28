@@ -1,6 +1,6 @@
 {
   "scene": "Sponza/glTF/Sponza.gltf",
-  "environment": "environments/default",
+  "environment": "environments/papermill",
   "camera": {
     "position": [0.0, 2.5, 2.0],
     "yawDegrees": 0.0,

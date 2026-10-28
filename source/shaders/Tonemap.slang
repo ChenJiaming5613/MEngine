@@ -1,4 +1,5 @@
-// Resolves the HDR forward target into the swapchain: exposure, then the ACES filmic fit (Narkowicz 2015).
+// Resolves the HDR forward target into the swapchain: exposure, then John Hable's Uncharted 2 filmic curve normalized
+// by its value at the white point 11.2, with the same constants and default exposure (4.5) as Vulkan-glTF-PBR.
 // Tone mapping is not covered by the UE4 notes; it is MEngine's addition.
 
 struct TonemapConstants
@@ -28,14 +29,22 @@ VertexOutput VertexMain(uint vertexId : SV_VulkanVertexID)
     return output;
 }
 
-float3 AcesFilmic(float3 x)
+// http://filmicworlds.com/blog/filmic-tonemapping-operators/
+float3 Uncharted2Curve(float3 x)
 {
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
+    const float A = 0.15; // shoulder strength
+    const float B = 0.50; // linear strength
+    const float C = 0.10; // linear angle
+    const float D = 0.20; // toe strength
+    const float E = 0.02; // toe numerator
+    const float F = 0.30; // toe denominator
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+
+float3 Uncharted2Filmic(float3 x)
+{
+    const float whitePoint = 11.2;
+    return saturate(Uncharted2Curve(x) / Uncharted2Curve(float3(whitePoint)));
 }
 
 float3 LinearToSrgb(float3 color)
@@ -48,7 +57,7 @@ float3 LinearToSrgb(float3 color)
 [shader("fragment")]
 float4 FragmentMain(VertexOutput input) : SV_Target
 {
-    float3 color = AcesFilmic(hdrColor.SampleLevel(input.texCoord, 0.0).rgb * tonemap.exposure);
+    float3 color = Uncharted2Filmic(hdrColor.SampleLevel(input.texCoord, 0.0).rgb * tonemap.exposure);
     if (tonemap.encodeSrgb != 0)
     {
         color = LinearToSrgb(color);

@@ -5,6 +5,8 @@ add_executable(IblBaker
     Cubemap.cpp
     Cubemap.hpp
     Irradiance.cpp
+    Ktx1Cube.cpp
+    Ktx1Cube.hpp
     Prefilter.cpp
     SelfTest.cpp
     SelfTest.hpp

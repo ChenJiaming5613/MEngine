@@ -1,16 +1,19 @@
-// IblBaker: bakes the image based lighting inputs of MEngine from an equirectangular HDR image, following the split sum
-// of Brian Karis, "Real Shading in Unreal Engine 4" (SIGGRAPH 2013 course notes). See README.md and
-// docs/UE4-RealShading-2013.md, section 6.
+// IblBaker: bakes the image based lighting inputs of MEngine from an equirectangular HDR image or a KTX 1 cube map,
+// following the split sum of Brian Karis, "Real Shading in Unreal Engine 4" (SIGGRAPH 2013 course notes). See README.md
+// and docs/UE4-RealShading-2013.md, section 6.
 //
-//   IblBaker <in.hdr> <out_dir> [--cube-size 512] [--specular-mips 6] [--irradiance-size 32] [--lut-size 256]
-//            [--samples 1024]
+//   IblBaker <in.hdr|in.ktx> <out_dir> [--cube-size 512] [--specular-mips 6] [--irradiance-size 32] [--lut-size 256]
+//            [--samples 1024] [--flip-y]
 //   IblBaker --self-test [--samples 1024] [--lut-size 256]
+//
+// --flip-y mirrors the input along y, for cube maps authored in a Y down world such as Vulkan-glTF-PBR's papermill.ktx.
 //
 // Writes <out_dir>/specular.ktx2 (RGBA16F cube, PrefilterEnvMap per mip), irradiance.ktx2 (RGBA16F cube, E / pi) and
 // brdf_lut.ktx2 (RG16F, IntegrateBrdf).
 
 #include "Bake.hpp"
 #include "Cubemap.hpp"
+#include "Ktx1Cube.hpp"
 #include "SelfTest.hpp"
 
 #include "asset/ImageLoader.hpp"
@@ -42,6 +45,7 @@ struct Options
     uint32_t irradianceSize = 32;
     uint32_t lutSize = 256;
     uint32_t samples = 1024;
+    bool flipY = false;
     bool selfTest = false;
 };
 
@@ -49,8 +53,8 @@ void PrintUsage()
 {
     std::fprintf(stderr,
         "Usage:\n"
-        "  IblBaker <in.hdr> <out_dir> [--cube-size 512] [--specular-mips 6] [--irradiance-size 32]\n"
-        "           [--lut-size 256] [--samples 1024]\n"
+        "  IblBaker <in.hdr|in.ktx> <out_dir> [--cube-size 512] [--specular-mips 6] [--irradiance-size 32]\n"
+        "           [--lut-size 256] [--samples 1024] [--flip-y]\n"
         "  IblBaker --self-test [--samples 1024] [--lut-size 256]\n");
 }
 
@@ -76,6 +80,11 @@ std::optional<Options> ParseOptions(int argc, char** argv)
         if (argument == "--self-test")
         {
             options.selfTest = true;
+            continue;
+        }
+        if (argument == "--flip-y")
+        {
+            options.flipY = true;
             continue;
         }
         uint32_t* target = nullptr;
@@ -247,11 +256,12 @@ int main(int argc, char** argv)
         PrintUsage();
         return 2;
     }
-    const uint32_t threads = std::max(1u, std::thread::hardware_concurrency());
 
     if (options->selfTest)
     {
-        return iblbaker::RunSelfTest(options->samples, options->lutSize, threads) ? 0 : 1;
+        return iblbaker::RunSelfTest(options->samples, options->lutSize, std::max(1u, std::thread::hardware_concurrency()))
+                   ? 0
+                   : 1;
     }
 
     std::ifstream file(options->input, std::ios::binary);
@@ -262,15 +272,42 @@ int main(int argc, char** argv)
     }
     const std::vector<uint8_t> encoded((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     std::string error;
-    const std::optional<mengine::asset::ImageFloat> source = mengine::asset::DecodeImageHdr(encoded, &error);
-    if (!source)
+    const uint32_t threads = std::max(1u, std::thread::hardware_concurrency());
+    Stopwatch total;
+
+    // A KTX 1 cube is used as is (resampled only when --cube-size differs); an HDR image is projected onto the cube.
+    iblbaker::Cubemap cube;
+    std::string sourceDescription;
+    if (iblbaker::IsKtx1(encoded))
     {
-        std::fprintf(stderr, "Cannot decode %s: %s\n", options->input.c_str(), error.c_str());
-        return 1;
+        std::optional<iblbaker::Cubemap> source = iblbaker::DecodeKtx1Cube(encoded, &error);
+        if (!source)
+        {
+            std::fprintf(stderr, "Cannot decode %s: %s\n", options->input.c_str(), error.c_str());
+            return 1;
+        }
+        sourceDescription = "KTX cube " + std::to_string(source->Size());
+        cube = source->Size() == options->cubeSize ? std::move(*source)
+                                                   : iblbaker::ResampleCube(*source, options->cubeSize, threads);
     }
-    std::printf("%s: %ux%u, cube %u, %u specular mips, irradiance %u, LUT %u, %u samples, %u threads\n",
-        options->input.c_str(), source->width, source->height, options->cubeSize, options->specularMips,
-        options->irradianceSize, options->lutSize, options->samples, threads);
+    else
+    {
+        const std::optional<mengine::asset::ImageFloat> source = mengine::asset::DecodeImageHdr(encoded, &error);
+        if (!source)
+        {
+            std::fprintf(stderr, "Cannot decode %s: %s\n", options->input.c_str(), error.c_str());
+            return 1;
+        }
+        sourceDescription = "equirect " + std::to_string(source->width) + "x" + std::to_string(source->height);
+        cube = iblbaker::EquirectToCube(*source, options->cubeSize, threads);
+    }
+    if (options->flipY)
+    {
+        cube = iblbaker::MirrorY(cube);
+    }
+    std::printf("%s: %s%s, cube %u, %u specular mips, irradiance %u, LUT %u, %u samples, %u threads\n",
+        options->input.c_str(), sourceDescription.c_str(), options->flipY ? " (y mirrored)" : "", options->cubeSize,
+        options->specularMips, options->irradianceSize, options->lutSize, options->samples, threads);
 
     const std::filesystem::path outputDirectory(options->outputDirectory);
     std::error_code directoryError;
@@ -280,9 +317,6 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "Cannot create %s: %s\n", outputDirectory.string().c_str(), directoryError.message().c_str());
         return 1;
     }
-
-    Stopwatch total;
-    const iblbaker::Cubemap cube = iblbaker::EquirectToCube(*source, options->cubeSize, threads);
 
     Stopwatch specularTime;
     const std::vector<iblbaker::Cubemap> specular =

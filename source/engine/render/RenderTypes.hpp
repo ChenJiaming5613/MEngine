@@ -93,7 +93,8 @@ struct PointLight
 
 struct RenderSettings
 {
-    float exposure = 1.0f;
+    // Vulkan-glTF-PBR's default for its Uncharted 2 curve.
+    float exposure = 4.5f;
     float iblIntensity = 1.0f;
     PointLight light;
 };

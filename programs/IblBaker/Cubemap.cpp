@@ -175,6 +175,37 @@ Cubemap ConstantCube(uint32_t size, const glm::vec3& value)
     return cube;
 }
 
+Cubemap MirrorY(const Cubemap& source)
+{
+    // TexelDirection: negating y maps (face, x, y) to (face with +Y / -Y swapped, x, size - 1 - y).
+    constexpr std::array<uint32_t, 6> kMirroredFace = {0, 1, 3, 2, 4, 5};
+    const uint32_t size = source.Size();
+    Cubemap mirrored(size);
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        for (uint32_t y = 0; y < size; ++y)
+        {
+            for (uint32_t x = 0; x < size; ++x)
+            {
+                mirrored.At(face, x, y) = source.At(kMirroredFace[face], x, size - 1 - y);
+            }
+        }
+    }
+    return mirrored;
+}
+
+Cubemap ResampleCube(const Cubemap& source, uint32_t size, uint32_t threads)
+{
+    Cubemap cube(size);
+    ForEachCubeRow(size, threads, [&](uint32_t face, uint32_t y) {
+        for (uint32_t x = 0; x < size; ++x)
+        {
+            cube.At(face, x, y) = source.Sample(TexelDirection(face, x, y, size));
+        }
+    });
+    return cube;
+}
+
 void ParallelFor(uint32_t count, uint32_t threads, const std::function<void(uint32_t index)>& function)
 {
     threads = std::max(1u, std::min(threads, count));

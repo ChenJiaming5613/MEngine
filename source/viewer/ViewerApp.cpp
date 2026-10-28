@@ -163,11 +163,12 @@ private:
         m_camera.farPlane = std::max(kMinFarPlane, 2.0f * (glm::length(m_camera.position - center) + radius));
         m_cameraController.moveSpeed = std::max(0.5f, radius * 0.25f);
 
-        // The light starts just above the camera, bright enough to light the scene center (about E = 5 there).
+        // The light starts just above the camera with E = 1 at the scene center, like Vulkan-glTF-PBR's unit color
+        // directional light under the same exposure.
         m_settings.light.position = m_camera.position + glm::vec3(0.0f, 1.0f, 0.0f);
         const float lightDistance = glm::length(m_settings.light.position - center);
         m_settings.light.radius = std::max(2.0f * radius, 2.0f * lightDistance);
-        m_settings.light.intensity = 5.0f * (lightDistance * lightDistance + 1.0f);
+        m_settings.light.intensity = lightDistance * lightDistance + 1.0f;
     }
 
     bool HitsUi(float x, float y) const
@@ -221,7 +222,7 @@ private:
 
         if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            ImGui::SliderFloat("Exposure", &m_settings.exposure, 0.05f, 8.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
+            ImGui::SliderFloat("Exposure", &m_settings.exposure, 0.1f, 32.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
             ImGui::SliderFloat("IBL Intensity", &m_settings.iblIntensity, 0.0f, 4.0f, "%.2f");
             ImGui::SeparatorText("Point Light");
             ImGui::DragFloat3("Position", &m_settings.light.position.x, 0.05f);

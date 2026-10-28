@@ -40,6 +40,13 @@ Cubemap EquirectToCube(const mengine::asset::ImageFloat& image, uint32_t size, u
 
 Cubemap ConstantCube(uint32_t size, const glm::vec3& value);
 
+// result(x, y, z) = source(x, -y, z): converts a cube authored for a Y down world (Vulkan-glTF-PBR negates y of world
+// positions and normals) to MEngine's Y up glTF world. Exact texel remap: +Y and -Y swap, every face flips its rows.
+Cubemap MirrorY(const Cubemap& source);
+
+// Bilinear resample to another face size.
+Cubemap ResampleCube(const Cubemap& source, uint32_t size, uint32_t threads);
+
 // Calls rowFunction(face, y) for every row of a size x size cube on `threads` workers. Every texel is computed
 // independently, so the result does not depend on the thread count.
 void ForEachCubeRow(uint32_t size, uint32_t threads, const std::function<void(uint32_t face, uint32_t y)>& rowFunction);

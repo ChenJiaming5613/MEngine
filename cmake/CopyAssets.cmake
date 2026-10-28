@@ -4,8 +4,9 @@
 #   cmake -DMODE=MIRROR -DSOURCE_DIR=... -DDESTINATION_DIR=... -P CopyAssets.cmake
 #   cmake -DMODE=PRUNE_SHADERS -DDESTINATION_DIR=... -DKEEP_SHADERS=a.spv|b.spv -P CopyAssets.cmake
 #
-# PRUNE_SHADERS deletes <dir>/shaders/*.spv not named in KEEP_SHADERS; MIRROR deletes destination shaders
-# that no longer exist in the source.
+# PRUNE_SHADERS deletes <dir>/shaders/*.spv not named in KEEP_SHADERS. STAGE deletes staged files and directories that
+# no longer exist in assets/ (models/ and shaders/ are managed separately); MIRROR deletes everything that no longer
+# exists in the staged directory. Removed or renamed assets therefore never linger in the build or the APK.
 #
 # <dir>/models/.scene records which scene directory models/ holds. When it changes, models/ is removed first
 # so a previously staged scene never lingers. Dot files are not packaged by AAPT.
@@ -39,6 +40,24 @@ function(MEnginePruneShaders SHADER_DIR KEEP_NAMES)
     endforeach()
 endfunction()
 
+# MEnginePruneMissing(<source dir> <destination dir> [top level names to keep...])
+function(MEnginePruneMissing SOURCE DESTINATION)
+    set(KEEP_TOP_LEVEL ${ARGN})
+    file(GLOB_RECURSE DESTINATION_ENTRIES LIST_DIRECTORIES true RELATIVE "${DESTINATION}" "${DESTINATION}/*")
+    # Sorted, so a removed directory comes before its contents; EXISTS then skips the contents.
+    list(SORT DESTINATION_ENTRIES)
+    foreach(ENTRY IN LISTS DESTINATION_ENTRIES)
+        string(REGEX REPLACE "/.*$" "" TOP_LEVEL "${ENTRY}")
+        if(TOP_LEVEL IN_LIST KEEP_TOP_LEVEL OR NOT EXISTS "${DESTINATION}/${ENTRY}")
+            continue()
+        endif()
+        if(NOT EXISTS "${SOURCE}/${ENTRY}")
+            message(STATUS "Removing stale ${ENTRY}")
+            file(REMOVE_RECURSE "${DESTINATION}/${ENTRY}")
+        endif()
+    endforeach()
+endfunction()
+
 if(NOT DEFINED DESTINATION_DIR OR DESTINATION_DIR STREQUAL "")
     message(FATAL_ERROR "CopyAssets.cmake: DESTINATION_DIR is required")
 endif()
@@ -47,6 +66,7 @@ if(MODE STREQUAL "STAGE")
     MEngineDropStaleModels("${DESTINATION_DIR}" "${SCENE_DIR}")
 
     file(MAKE_DIRECTORY "${DESTINATION_DIR}")
+    MEnginePruneMissing("${ASSET_SOURCE_DIR}" "${DESTINATION_DIR}" models shaders)
     file(COPY "${ASSET_SOURCE_DIR}/" DESTINATION "${DESTINATION_DIR}")
 
     if(NOT SCENE_DIR STREQUAL "")
@@ -69,15 +89,8 @@ elseif(MODE STREQUAL "MIRROR")
 
     file(MAKE_DIRECTORY "${DESTINATION_DIR}")
     if(EXISTS "${SOURCE_DIR}")
+        MEnginePruneMissing("${SOURCE_DIR}" "${DESTINATION_DIR}")
         file(COPY "${SOURCE_DIR}/" DESTINATION "${DESTINATION_DIR}")
-
-        file(GLOB SOURCE_SHADERS "${SOURCE_DIR}/shaders/*.spv")
-        set(SOURCE_SHADER_NAMES)
-        foreach(SOURCE_SHADER IN LISTS SOURCE_SHADERS)
-            get_filename_component(SOURCE_SHADER_NAME "${SOURCE_SHADER}" NAME)
-            list(APPEND SOURCE_SHADER_NAMES "${SOURCE_SHADER_NAME}")
-        endforeach()
-        MEnginePruneShaders("${DESTINATION_DIR}/shaders" "${SOURCE_SHADER_NAMES}")
     endif()
 elseif(MODE STREQUAL "PRUNE_SHADERS")
     string(REPLACE "|" ";" KEEP_SHADER_NAMES "${KEEP_SHADERS}")
