@@ -1,0 +1,10 @@
+{
+  "scene": "Sponza/glTF/Sponza.gltf",
+  "environment": "environments/default",
+  "camera": {
+    "position": [0.0, 2.5, 2.0],
+    "yawDegrees": 0.0,
+    "pitchDegrees": 0.0,
+    "fovYDegrees": 60.0
+  }
+}

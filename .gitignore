@@ -6,6 +6,10 @@ out/
 .codebuddy/
 CMakeUserPresets.json
 
+# glTF models come from third_party/glTF-Sample-Assets; HDR sources are only inputs to IblBaker.
+assets/models/
+assets_src/
+
 android/.gradle/
 android/build/
 android/app/build/

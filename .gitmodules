@@ -13,3 +13,11 @@
 [submodule "third_party/stb"]
 	path = third_party/stb
 	url = https://github.com/nothings/stb.git
+[submodule "third_party/glTF-Sample-Assets"]
+	path = third_party/glTF-Sample-Assets
+	url = https://github.com/KhronosGroup/glTF-Sample-Assets.git
+	shallow = true
+[submodule "third_party/tinygltf"]
+	path = third_party/tinygltf
+	url = https://github.com/syoyo/tinygltf.git
+	branch = release

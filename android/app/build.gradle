@@ -2,6 +2,9 @@ plugins {
      id 'com.android.application'
 }
 
+// CMake stages config.json, textures, environments, the configured glTF scene directory and compiled shaders here.
+def mengineStagedAssetDir = layout.buildDirectory.dir("generated/mengine_assets").get().asFile
+
 android {
     // SDLActivity and its helpers live in org.libsdl.app, so the namespace stays; applicationId is the app identity.
     namespace = "org.libsdl.app"
@@ -16,7 +19,8 @@ android {
         versionName "0.1.0"
         externalNativeBuild {
             cmake {
-                arguments "-DANDROID_PLATFORM=android-24", "-DANDROID_STL=c++_static"
+                arguments "-DANDROID_PLATFORM=android-24", "-DANDROID_STL=c++_static",
+                    "-DMENGINE_STAGED_ASSET_DIR=${mengineStagedAssetDir.absolutePath.replace('\\', '/')}"
                 abiFilters 'arm64-v8a'
             }
         }
@@ -34,7 +38,7 @@ android {
     if (!project.hasProperty('EXCLUDE_NATIVE_LIBS')) {
         sourceSets.main {
             jniLibs.srcDir 'libs'
-            assets.srcDir '../../assets'
+            assets.srcDir mengineStagedAssetDir
         }
         externalNativeBuild {
             cmake {
