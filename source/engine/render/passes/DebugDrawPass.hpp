@@ -27,6 +27,9 @@ public:
     void Execute(FrameGraphContext& context) override;
     bool IsActive() const override;
     void OnCompiled(const FrameGraphResources& resources) override;
+    // PassInspectors.cpp.
+    const char* Description() const override;
+    bool DrawInspector(RenderSettings& settings) override;
 
 private:
     rhi::GpuDevice* m_device = nullptr;

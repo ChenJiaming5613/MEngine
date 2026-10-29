@@ -51,6 +51,7 @@ public:
     void Setup(FrameGraphBuilder& builder) override;
     void Execute(FrameGraphContext& context) override;
     bool IsActive() const override { return m_layer != nullptr && m_layer->IsReady(); }
+    const char* Description() const override { return "Draws the Dear ImGui user interface over the backbuffer."; }
 
 private:
     ImGuiLayer* m_layer = nullptr;

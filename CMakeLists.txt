@@ -31,6 +31,7 @@ set(VMA_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/VulkanMemoryAllocator)
 
 include(ImGui)
+include(ImGuiNodeEditor)
 include(TinyGltf)
 include(SpirvReflect)
 include(GenerateShaderLayouts)
@@ -127,7 +128,7 @@ else()
     set(MENGINE_TARGET MEngine)
 endif()
 
-target_link_libraries(${MENGINE_TARGET} PRIVATE MEngineCore)
+target_link_libraries(${MENGINE_TARGET} PRIVATE MEngineCore imgui_node_editor)
 MEngineSetWarnings(${MENGINE_TARGET})
 
 MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Pbr.slang" VertexMain)

@@ -2,6 +2,7 @@
 
 #include "CameraController.hpp"
 #include "FlyCameraController.hpp"
+#include "FrameGraphViewer.hpp"
 #include "OrbitCameraController.hpp"
 #include "ViewerConfig.hpp"
 #include "core/FileSystem.hpp"
@@ -92,6 +93,7 @@ protected:
         }
         m_device.Init(deviceCreation);
         m_imGui.Init(m_device, GetWindow());
+        m_frameGraphViewer.Init();
         m_renderer.Init(m_device);
         GetInput().SetUiHitTest([this](float x, float y) { return HitsUi(x, y); });
         LoadConfiguredScene();
@@ -107,6 +109,7 @@ protected:
         GetInput().SetUiHitTest({});
         ActiveCameraController().Deactivate(GetWindow());
         m_renderer.Shutdown();
+        m_frameGraphViewer.Shutdown();
         m_imGui.Shutdown();
         m_device.Shutdown();
     }
@@ -152,7 +155,12 @@ protected:
 
     SDL_AppResult OnEvent(const SDL_Event& event) override
     {
-        m_imGui.ProcessEvent(event);
+        // The graph viewer recognizes two finger pinches on its canvas and keeps the touch emulated mouse from ImGui
+        // while one runs.
+        if (!m_frameGraphViewer.HandleEvent(event, GetInput()))
+        {
+            m_imGui.ProcessEvent(event);
+        }
 
         switch (event.type)
         {
@@ -260,6 +268,10 @@ private:
     bool HitsUi(float x, float y) const
     {
         if (m_anyPopupOpen)
+        {
+            return true;
+        }
+        if (m_frameGraphViewer.Contains(x, y))
         {
             return true;
         }
@@ -412,6 +424,11 @@ private:
 
         if (ImGui::CollapsingHeader("Frame Graph"))
         {
+            bool showViewer = m_frameGraphViewer.IsOpen();
+            if (ImGui::Checkbox("Show Graph Viewer", &showViewer))
+            {
+                m_frameGraphViewer.SetOpen(showViewer);
+            }
             BuildFrameGraphPanel();
         }
 
@@ -420,6 +437,9 @@ private:
         m_panelMin = glm::vec2(position.x, position.y);
         m_panelMax = glm::vec2(position.x + size.x, position.y + size.y);
         ImGui::End();
+
+        m_frameGraphViewer.Draw(m_renderer.GetFrameGraph(), m_settings, kImGuiPassName, GetInput());
+        // After every window, so popups of the graph viewer count too.
         m_anyPopupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
         ActiveCameraController().DrawOverlay();
@@ -562,6 +582,7 @@ private:
 
     rhi::GpuDevice m_device;
     render::ImGuiLayer m_imGui;
+    FrameGraphViewer m_frameGraphViewer;
     render::Renderer m_renderer;
     render::Camera m_camera;
     render::RenderSettings m_settings;

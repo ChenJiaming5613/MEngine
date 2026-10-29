@@ -32,6 +32,9 @@ public:
     void Setup(FrameGraphBuilder& builder) override;
     void Execute(FrameGraphContext& context) override;
     void OnCompiled(const FrameGraphResources& resources) override;
+    // PassInspectors.cpp.
+    const char* Description() const override;
+    bool DrawInspector(RenderSettings& settings) override;
 
 private:
     rhi::PipelineHandle Pipeline(uint32_t key);

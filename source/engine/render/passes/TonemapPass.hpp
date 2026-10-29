@@ -23,6 +23,9 @@ public:
     void Execute(FrameGraphContext& context) override;
     // Rebinds the HDR input, which every compile may recreate.
     void OnCompiled(const FrameGraphResources& resources) override;
+    // PassInspectors.cpp.
+    const char* Description() const override;
+    bool DrawInspector(RenderSettings& settings) override;
 
 private:
     rhi::GpuDevice* m_device = nullptr;

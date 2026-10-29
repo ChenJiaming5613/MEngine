@@ -1001,6 +1001,78 @@ void FrameGraph::BuildDebugInfo()
             .renderPass = node.renderPass == kNone ? -1 : static_cast<int>(node.renderPass),
         });
     }
+
+    // Pins and links, with the read / write classification of CullAndSchedule. Links run to the last earlier writer of
+    // any state so disabled passes stay connected; when that writer is inactive, the last active writer, which really
+    // provides the data, gets a link as well.
+    std::vector<uint32_t> lastWriter(m_resources.size(), kNone);
+    std::vector<uint32_t> lastActiveWriter(m_resources.size(), kNone);
+    auto addLink = [&](uint32_t from, uint32_t to, uint32_t resource) {
+        for (const FrameGraphDebugInfo::Link& link : info.links)
+        {
+            if (link.fromNode == from && link.toNode == to && link.resource == resource)
+            {
+                return;
+            }
+        }
+        info.links.push_back({
+            .fromNode = from,
+            .toNode = to,
+            .resource = resource,
+            .live = m_nodes[from].scheduled && m_nodes[to].scheduled,
+        });
+    };
+    for (uint32_t index = 0; index < m_nodes.size(); ++index)
+    {
+        const Node& node = m_nodes[index];
+        std::vector<FrameGraphDebugInfo::Pin>& pins = info.nodes[index].pins;
+        auto addPin = [&pins](uint32_t resource, bool output) {
+            for (const FrameGraphDebugInfo::Pin& pin : pins)
+            {
+                if (pin.resource == resource && pin.output == output)
+                {
+                    return;
+                }
+            }
+            pins.push_back({.resource = resource, .output = output});
+        };
+
+        for (const Access& access : node.accesses)
+        {
+            const bool attachment = access.kind == AccessKind::ColorAttachment || access.kind == AccessKind::DepthAttachment;
+            const bool reads = access.kind == AccessKind::Read || access.kind == AccessKind::ReadWrite
+                || (attachment && access.operation == RenderPassOperation::Load);
+            if (!reads)
+            {
+                continue;
+            }
+            addPin(access.resource, false);
+            const uint32_t writer = lastWriter[access.resource];
+            if (writer != kNone)
+            {
+                addLink(writer, index, access.resource);
+                const uint32_t activeWriter = lastActiveWriter[access.resource];
+                if (!m_nodes[writer].active && activeWriter != kNone)
+                {
+                    addLink(activeWriter, index, access.resource);
+                }
+            }
+        }
+        for (const Access& access : node.accesses)
+        {
+            if (access.kind == AccessKind::Read)
+            {
+                continue;
+            }
+            addPin(access.resource, true);
+            lastWriter[access.resource] = index;
+            if (node.active)
+            {
+                lastActiveWriter[access.resource] = index;
+            }
+        }
+    }
+
     for (const Resource& resource : m_resources)
     {
         const char* kind = "unresolved";

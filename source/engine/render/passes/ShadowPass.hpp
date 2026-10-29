@@ -43,6 +43,9 @@ public:
     void Execute(FrameGraphContext& context) override;
     bool IsActive() const override { return m_dirty; }
     void OnCompiled(const FrameGraphResources& resources) override;
+    // PassInspectors.cpp.
+    const char* Description() const override;
+    bool DrawInspector(RenderSettings& settings) override;
 
     rhi::TextureHandle Texture() const { return m_texture; }
     rhi::SamplerHandle Sampler() const { return m_sampler; }

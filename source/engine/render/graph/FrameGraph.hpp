@@ -29,6 +29,7 @@ namespace mengine::render {
 // - Compile() runs when the structure changes (start, resize, enabled flags); Execute() only walks the schedule.
 
 struct RenderView;
+struct RenderSettings;
 class FrameGraph;
 class FrameGraphBuilder;
 class FrameGraphResources;
@@ -80,6 +81,15 @@ public:
     virtual bool IsActive() const { return true; }
     // Called after every Compile() that schedules the pass: textures and render passes may have been recreated.
     virtual void OnCompiled(const FrameGraphResources& resources) { (void)resources; }
+
+    // One line shown by the frame graph viewer; nullptr when there is none.
+    virtual const char* Description() const { return nullptr; }
+    // Draws the pass's parameters with ImGui, editing the settings it consumes. Returns false when it has none.
+    virtual bool DrawInspector(RenderSettings& settings)
+    {
+        (void)settings;
+        return false;
+    }
 };
 
 // Passed to FrameGraphPass::Setup. Resources are referenced by name; the ids stay valid until the next Compile().
@@ -140,6 +150,22 @@ private:
 // Snapshot of the last Compile() for the debug panel.
 struct FrameGraphDebugInfo
 {
+    // One resource a node accesses. A resource the pass reads and writes (ReadWrite, loaded attachments) has both an
+    // input and an output pin.
+    struct Pin
+    {
+        uint32_t resource = 0; // index into resources
+        bool output = false;   // false: input (read), true: output (written)
+    };
+    // The data flow from a writer to a later reader of the same resource, following the dependency rule of culling
+    // (the last earlier writer), over every node including disabled ones.
+    struct Link
+    {
+        uint32_t fromNode = 0;
+        uint32_t toNode = 0;
+        uint32_t resource = 0;
+        bool live = false; // both ends scheduled
+    };
     struct Node
     {
         std::string name;
@@ -150,6 +176,8 @@ struct FrameGraphDebugInfo
         std::string status;
         // Index into renderPasses, -1 for compute and unscheduled passes.
         int renderPass = -1;
+        // Inputs first, then outputs, each in declaration order.
+        std::vector<Pin> pins;
     };
     struct Resource
     {
@@ -174,6 +202,7 @@ struct FrameGraphDebugInfo
     std::vector<Node> nodes;
     std::vector<Resource> resources;
     std::vector<RenderPass> renderPasses;
+    std::vector<Link> links;
     uint32_t physicalTextures = 0;
     uint32_t compileCount = 0;
 };
@@ -205,6 +234,8 @@ public:
     void Execute(rhi::CommandBuffer& commandBuffer, const RenderView& view);
 
     const FrameGraphDebugInfo& GetDebugInfo() const { return m_debugInfo; }
+    // The pass of a node, in AddPass order (FrameGraphDebugInfo::nodes uses the same indices); nullptr when out of range.
+    FrameGraphPass* GetPass(uint32_t node) const { return node < m_nodes.size() ? m_nodes[node].pass : nullptr; }
 
 private:
     friend class FrameGraphBuilder;
