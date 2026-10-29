@@ -176,6 +176,9 @@ void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGu
     if (m_graph.NeedsCompile())
     {
         m_graph.Compile();
+        // Incompatible outputs dropped the passes' pipelines; recreate the scene's variants before recording.
+        m_forwardPbr.WarmPipelines(m_scene);
+        m_shadow.WarmPipelines(m_scene);
     }
     const VkExtent2D extent = device.GetSwapchainExtent();
 

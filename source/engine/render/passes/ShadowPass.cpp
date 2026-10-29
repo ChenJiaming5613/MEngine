@@ -2,6 +2,7 @@
 
 #include "core/Assert.hpp"
 #include "render/RenderView.hpp"
+#include "render/passes/PipelineVariants.hpp"
 #include "render/Scene.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/GpuDevice.hpp"
@@ -67,7 +68,7 @@ void ShadowPass::DestroyPipelines()
     }
 }
 
-rhi::PipelineHandle ShadowPass::Pipeline(uint32_t key)
+rhi::PipelineHandle ShadowPass::GetOrCreatePipeline(uint32_t key)
 {
     rhi::PipelineHandle& pipeline = m_pipelines[key];
     if (pipeline.IsValid())
@@ -117,7 +118,7 @@ void ShadowPass::WarmPipelines(const Scene& scene)
 {
     for (const SceneDraw& draw : scene.draws)
     {
-        Pipeline(draw.pipelineKey & kKeyMask);
+        GetOrCreatePipeline(draw.pipelineKey & kKeyMask);
     }
 }
 
@@ -155,16 +156,28 @@ void ShadowPass::Execute(FrameGraphContext& context)
         const uint32_t frameOffset = view.frameOffset;
         uint32_t boundKey = ~0u;
         uint32_t boundMaterial = ~0u;
+        bool pipelineBound = false;
         for (const SceneDraw& draw : scene.draws)
         {
             const uint32_t key = draw.pipelineKey & kKeyMask;
             const bool alphaMask = (key & kPipelineKeyAlphaMask) != 0;
             if (key != boundKey)
             {
-                commandBuffer.BindPipeline(Pipeline(key));
-                commandBuffer.BindDescriptorSet(view.frameSet, 0, {&frameOffset, 1});
                 boundKey = key;
                 boundMaterial = ~0u;
+                // Recording never creates pipelines (it may run on a worker thread); WarmPipelines must have.
+                pipelineBound = m_pipelines[key].IsValid();
+                if (!pipelineBound)
+                {
+                    ReportMissingPipeline(m_missingPipelineReported, "Shadow", key);
+                    continue;
+                }
+                commandBuffer.BindPipeline(m_pipelines[key]);
+                commandBuffer.BindDescriptorSet(view.frameSet, 0, {&frameOffset, 1});
+            }
+            if (!pipelineBound)
+            {
+                continue;
             }
             if (alphaMask && draw.material != boundMaterial)
             {

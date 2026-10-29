@@ -36,7 +36,7 @@ public:
     bool DrawInspector(RenderSettings& settings) override;
 
 private:
-    rhi::PipelineHandle Pipeline(uint32_t key);
+    rhi::PipelineHandle GetOrCreatePipeline(uint32_t key);
     void DestroyPipelines();
 
     rhi::GpuDevice* m_device = nullptr;
@@ -47,6 +47,7 @@ private:
     std::vector<uint32_t> m_vertexTangentCode;
     std::vector<uint32_t> m_fragmentCode;
     std::array<rhi::PipelineHandle, kPipelineKeyCount> m_pipelines{};
+    bool m_missingPipelineReported = false;
     // Last Execute's recorded / total draws, for the inspector.
     uint32_t m_drawCount = 0;
     uint32_t m_sceneDrawCount = 0;

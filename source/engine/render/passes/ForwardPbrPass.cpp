@@ -2,6 +2,7 @@
 
 #include "core/Assert.hpp"
 #include "render/RenderView.hpp"
+#include "render/passes/PipelineVariants.hpp"
 #include "render/Scene.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/GpuDevice.hpp"
@@ -60,7 +61,7 @@ void ForwardPbrPass::OnCompiled(const FrameGraphResources& resources)
     m_output = output;
 }
 
-rhi::PipelineHandle ForwardPbrPass::Pipeline(uint32_t key)
+rhi::PipelineHandle ForwardPbrPass::GetOrCreatePipeline(uint32_t key)
 {
     rhi::PipelineHandle& pipeline = m_pipelines[key];
     if (pipeline.IsValid())
@@ -109,7 +110,7 @@ void ForwardPbrPass::WarmPipelines(const Scene& scene)
 {
     for (const SceneDraw& draw : scene.draws)
     {
-        Pipeline(draw.pipelineKey);
+        GetOrCreatePipeline(draw.pipelineKey);
     }
 }
 
@@ -121,15 +122,27 @@ void ForwardPbrPass::Execute(FrameGraphContext& context)
     const uint32_t frameOffset = context.view.frameOffset;
     uint32_t boundKey = ~0u;
     uint32_t boundMaterial = ~0u;
+    bool pipelineBound = false;
     for (const uint32_t drawIndex : context.view.visibleDraws)
     {
         const SceneDraw& draw = scene.draws[drawIndex];
         if (draw.pipelineKey != boundKey)
         {
-            commandBuffer.BindPipeline(Pipeline(draw.pipelineKey));
-            commandBuffer.BindDescriptorSet(frameSet, 0, {&frameOffset, 1});
             boundKey = draw.pipelineKey;
             boundMaterial = ~0u;
+            // Recording never creates pipelines (it may run on a worker thread); WarmPipelines must have.
+            pipelineBound = m_pipelines[boundKey].IsValid();
+            if (!pipelineBound)
+            {
+                ReportMissingPipeline(m_missingPipelineReported, "ForwardPbr", boundKey);
+                continue;
+            }
+            commandBuffer.BindPipeline(m_pipelines[boundKey]);
+            commandBuffer.BindDescriptorSet(frameSet, 0, {&frameOffset, 1});
+        }
+        if (!pipelineBound)
+        {
+            continue;
         }
         if (draw.material != boundMaterial)
         {

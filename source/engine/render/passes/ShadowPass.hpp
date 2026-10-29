@@ -51,7 +51,7 @@ public:
 private:
     static constexpr uint32_t kKeyMask = kPipelineKeyAlphaMask | kPipelineKeyDoubleSided | kPipelineKeyMirrored;
 
-    rhi::PipelineHandle Pipeline(uint32_t key);
+    rhi::PipelineHandle GetOrCreatePipeline(uint32_t key);
     void DestroyPipelines();
 
     rhi::GpuDevice* m_device = nullptr;
@@ -64,6 +64,7 @@ private:
     std::vector<uint32_t> m_vertexMaskCode;
     std::vector<uint32_t> m_fragmentMaskCode;
     std::array<rhi::PipelineHandle, kKeyMask + 1> m_pipelines{};
+    bool m_missingPipelineReported = false;
 
     // This frame's decision (Prepare) and the state the map was last rendered with.
     bool m_dirty = true;
