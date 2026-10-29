@@ -276,6 +276,7 @@ void GpuDevice::CreateInstance()
     {
         throw std::runtime_error("A Vulkan 1.1 loader is required");
     }
+    m_instanceVersion = loaderVersion;
 
     Uint32 sdlExtensionCount = 0;
     const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
@@ -323,6 +324,8 @@ void GpuDevice::CreateInstance()
         .ppEnabledExtensionNames = extensions.data(),
     };
     CheckVk(vkCreateInstance(&instanceInfo, nullptr, &m_instance), "vkCreateInstance");
+    // SDL's names and the literals stay valid for the instance's lifetime.
+    m_enabledInstanceExtensions = extensions;
 
     if (m_validationEnabled)
     {
@@ -396,11 +399,14 @@ void GpuDevice::CreateLogicalDevice()
         .pQueuePriorities = &queuePriority,
     };
 
-    const std::array<const char*, 1> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    const std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-    // vkGetPhysicalDeviceFeatures2 is Vulkan 1.1 and not exported on Android API 24; the 1.0 query is enough here.
-    VkPhysicalDeviceFeatures supported{};
-    vkGetPhysicalDeviceFeatures(m_physicalDevice, &supported);
+    m_capabilities =
+        QueryDeviceCapabilities(m_instance, m_physicalDevice, m_instanceVersion, m_queueFamily, m_swapchain.Surface());
+    MarkEnabledExtensions(m_capabilities.deviceExtensions, deviceExtensions);
+    MarkEnabledExtensions(m_capabilities.instanceExtensions, m_enabledInstanceExtensions);
+
+    const VkPhysicalDeviceFeatures& supported = m_capabilities.features;
     VkPhysicalDeviceFeatures enabled{};
     m_samplerAnisotropy = supported.samplerAnisotropy == VK_TRUE;
     enabled.samplerAnisotropy = supported.samplerAnisotropy;
@@ -411,14 +417,18 @@ void GpuDevice::CreateLogicalDevice()
     enabled.multiDrawIndirect = supported.multiDrawIndirect;
     m_drawIndirectFirstInstance = supported.drawIndirectFirstInstance == VK_TRUE;
     enabled.drawIndirectFirstInstance = supported.drawIndirectFirstInstance;
+    m_enabledFeatures = enabled;
 
-    uint32_t familyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, nullptr);
-    std::vector<VkQueueFamilyProperties> families(familyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, families.data());
-    m_computeSupported = (families[m_queueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
+    m_computeSupported = m_capabilities.graphicsQueueCompute;
     MENGINE_LOG_INFO("Queue family %u: compute %s, multiDrawIndirect %s, drawIndirectFirstInstance %s", m_queueFamily,
         m_computeSupported ? "yes" : "no", m_multiDrawIndirect ? "yes" : "no", m_drawIndirectFirstInstance ? "yes" : "no");
+    MENGINE_LOG_INFO("Device tier %s (%s): %zu device extensions, bindless %s, drawIndirectCount %s, timeline %s, "
+                     "async compute %s, mesh %s, ray tracing %s",
+        DeviceTierName(m_capabilities.tier), DeviceTierDescription(m_capabilities.tier),
+        m_capabilities.deviceExtensions.size(), m_capabilities.descriptorIndexing.Bindless() ? "yes" : "no",
+        m_capabilities.drawIndirectCount ? "yes" : "no", m_capabilities.timelineSemaphore ? "yes" : "no",
+        m_capabilities.dedicatedComputeQueue ? "yes" : "no", m_capabilities.meshShading.Available() ? "yes" : "no",
+        m_capabilities.rayTracingPipeline && m_capabilities.accelerationStructure ? "yes" : "no");
 
     const VkDeviceCreateInfo deviceInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -430,6 +440,54 @@ void GpuDevice::CreateLogicalDevice()
     };
     CheckVk(vkCreateDevice(m_physicalDevice, &deviceInfo, nullptr, &m_device), "vkCreateDevice");
     vkGetDeviceQueue(m_device, m_queueFamily, 0, &m_queue);
+}
+
+std::vector<HeapUsage> GpuDevice::QueryHeapUsage() const
+{
+    std::vector<HeapUsage> heaps;
+    if (m_physicalDevice == VK_NULL_HANDLE)
+    {
+        return heaps;
+    }
+    const VkPhysicalDeviceMemoryProperties& memory = m_capabilities.memory;
+    heaps.resize(memory.memoryHeapCount);
+    for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
+    {
+        heaps[heap].size = memory.memoryHeaps[heap].size;
+        heaps[heap].flags = memory.memoryHeaps[heap].flags;
+    }
+
+    if (m_allocator != VK_NULL_HANDLE)
+    {
+        std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
+        vmaGetHeapBudgets(m_allocator, budgets.data());
+        for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
+        {
+            heaps[heap].blockBytes = budgets[heap].statistics.blockBytes;
+            heaps[heap].allocationBytes = budgets[heap].statistics.allocationBytes;
+            heaps[heap].allocationCount = budgets[heap].statistics.allocationCount;
+        }
+    }
+
+    // Physical-device-level functionality of a supported device extension; usable without enabling it (API 1.1).
+    if (m_capabilities.memoryBudget)
+    {
+        auto getMemoryProperties2 = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties2>(
+            vkGetInstanceProcAddr(m_instance, "vkGetPhysicalDeviceMemoryProperties2"));
+        if (getMemoryProperties2 != nullptr)
+        {
+            VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+            VkPhysicalDeviceMemoryProperties2 properties2{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
+                .pNext = &budget};
+            getMemoryProperties2(m_physicalDevice, &properties2);
+            for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
+            {
+                heaps[heap].budget = budget.heapBudget[heap];
+                heaps[heap].usage = budget.heapUsage[heap];
+            }
+        }
+    }
+    return heaps;
 }
 
 void GpuDevice::LoadDebugUtilsFunctions()

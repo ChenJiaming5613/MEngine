@@ -2,6 +2,7 @@
 
 #include "core/ResourcePool.hpp"
 #include "rhi/CommandBuffer.hpp"
+#include "rhi/DeviceCapabilities.hpp"
 #include "rhi/GpuProfiler.hpp"
 #include "rhi/GpuResources.hpp"
 #include "rhi/Swapchain.hpp"
@@ -153,6 +154,13 @@ public:
     uint64_t GetAbsoluteFrame() const { return m_absoluteFrame; }
     uint32_t GetFrameSlot() const { return m_frameSlot; }
     const VkPhysicalDeviceProperties& GetProperties() const { return m_properties; }
+    // What the physical device supports (queried once at Init) and its tier; render paths check this instead of
+    // extension names. Supported is not enabled: GetEnabledFeatures and the `enabled` flags of the extension lists say
+    // what the device was created with.
+    const DeviceCapabilities& GetCapabilities() const { return m_capabilities; }
+    const VkPhysicalDeviceFeatures& GetEnabledFeatures() const { return m_enabledFeatures; }
+    // Per memory heap: the driver's budget and usage (VK_EXT_memory_budget, else 0) and MEngine's VMA statistics.
+    std::vector<HeapUsage> QueryHeapUsage() const;
 
     // One cache shared by every pipeline, including ImGui's.
     VkPipelineCache GetPipelineCache() const { return m_pipelineCache; }
@@ -245,6 +253,10 @@ private:
     VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
     VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties m_properties{};
+    uint32_t m_instanceVersion = 0;
+    std::vector<const char*> m_enabledInstanceExtensions;
+    DeviceCapabilities m_capabilities;
+    VkPhysicalDeviceFeatures m_enabledFeatures{};
     VkDevice m_device = VK_NULL_HANDLE;
     uint32_t m_queueFamily = 0;
     VkQueue m_queue = VK_NULL_HANDLE;

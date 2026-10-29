@@ -1,0 +1,48 @@
+#pragma once
+
+#include "rhi/DeviceCapabilities.hpp"
+
+#include <vector>
+
+namespace mengine {
+
+namespace rhi {
+class GpuDevice;
+} // namespace rhi
+
+// A window listing what the GPU supports (rhi::DeviceCapabilities): identity and tier with the requirements of each
+// tier, core and extension features (supported / enabled), extensions, limits, memory heaps with live budgets, queue
+// families and format support. Read only.
+class DeviceCapabilitiesPanel
+{
+public:
+    void Draw(const rhi::GpuDevice& device);
+
+    bool IsOpen() const { return m_open; }
+    void SetOpen(bool open) { m_open = open; }
+    // Whether a point (in window pixels) lies on the window drawn this frame.
+    bool Contains(float x, float y) const;
+
+private:
+    void DrawHeader(const rhi::GpuDevice& device);
+    void DrawOverview(const rhi::DeviceCapabilities& caps);
+    void DrawFeatures(const rhi::GpuDevice& device);
+    void DrawExtensions(const rhi::DeviceCapabilities& caps);
+    void DrawLimits(const rhi::DeviceCapabilities& caps);
+    void DrawMemory(const rhi::GpuDevice& device);
+    void DrawQueues(const rhi::DeviceCapabilities& caps);
+    void DrawFormats(const rhi::DeviceCapabilities& caps);
+
+    bool m_open = false;
+    char m_filter[64] = {};
+    bool m_onlySupported = false;
+    int m_extensionList = 0; // 0: device, 1: instance
+
+    std::vector<rhi::HeapUsage> m_heaps;
+    double m_heapsTime = -1.0;
+
+    float m_windowMin[2] = {0.0f, 0.0f};
+    float m_windowMax[2] = {-1.0f, -1.0f};
+};
+
+} // namespace mengine

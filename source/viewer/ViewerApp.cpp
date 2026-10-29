@@ -1,6 +1,7 @@
 #include "ViewerApp.hpp"
 
 #include "CameraController.hpp"
+#include "DeviceCapabilitiesPanel.hpp"
 #include "FlyCameraController.hpp"
 #include "FrameGraphViewer.hpp"
 #include "OrbitCameraController.hpp"
@@ -271,7 +272,7 @@ private:
         {
             return true;
         }
-        if (m_frameGraphViewer.Contains(x, y))
+        if (m_frameGraphViewer.Contains(x, y) || m_capabilitiesPanel.Contains(x, y))
         {
             return true;
         }
@@ -325,6 +326,19 @@ private:
         ImGui::Text("Scene: %s", scene.path.empty() ? "<none>" : scene.path.c_str());
         ImGui::Text("Draws: %zu  Materials: %zu  Textures: %zu", scene.draws.size(), scene.materials.size(), scene.textures.size());
         ImGui::Text("Environment: %s", environment.isFallback ? "<uniform fallback>" : environment.directory.c_str());
+
+        if (ImGui::CollapsingHeader("Device"))
+        {
+            const rhi::DeviceCapabilities& caps = m_device.GetCapabilities();
+            ImGui::Text("%s", caps.properties.deviceName);
+            ImGui::Text("Tier %s (%s)  Vulkan %s", rhi::DeviceTierName(caps.tier), rhi::DeviceTierDescription(caps.tier),
+                rhi::ApiVersionString(caps.properties.apiVersion).c_str());
+            bool showCapabilities = m_capabilitiesPanel.IsOpen();
+            if (ImGui::Checkbox("Show Device Capabilities", &showCapabilities))
+            {
+                m_capabilitiesPanel.SetOpen(showCapabilities);
+            }
+        }
 
         if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen))
         {
@@ -439,6 +453,7 @@ private:
         ImGui::End();
 
         m_frameGraphViewer.Draw(m_renderer.GetFrameGraph(), m_settings, kImGuiPassName, GetInput());
+        m_capabilitiesPanel.Draw(m_device);
         // After every window, so popups of the graph viewer count too.
         m_anyPopupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
@@ -583,6 +598,7 @@ private:
     rhi::GpuDevice m_device;
     render::ImGuiLayer m_imGui;
     FrameGraphViewer m_frameGraphViewer;
+    DeviceCapabilitiesPanel m_capabilitiesPanel;
     render::Renderer m_renderer;
     render::Camera m_camera;
     render::RenderSettings m_settings;
