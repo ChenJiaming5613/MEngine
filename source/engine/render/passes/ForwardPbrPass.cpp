@@ -1,5 +1,7 @@
 #include "render/passes/ForwardPbrPass.hpp"
 
+#include "core/Assert.hpp"
+#include "render/RenderView.hpp"
 #include "render/Scene.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/GpuDevice.hpp"
@@ -9,11 +11,10 @@
 
 namespace mengine::render {
 
-void ForwardPbrPass::Init(rhi::GpuDevice& device, const rhi::RenderPassOutput& output,
-    rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout)
+void ForwardPbrPass::Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout,
+    rhi::DescriptorSetLayoutHandle materialLayout)
 {
     m_device = &device;
-    m_output = output;
     m_frameLayout = frameLayout;
     m_materialLayout = materialLayout;
     m_vertexCode = rhi::LoadSpirvAsset("shaders/Pbr.VertexMain.spv");
@@ -27,12 +28,36 @@ void ForwardPbrPass::Shutdown()
     {
         return;
     }
+    DestroyPipelines();
+    m_device = nullptr;
+}
+
+void ForwardPbrPass::DestroyPipelines()
+{
     for (rhi::PipelineHandle& pipeline : m_pipelines)
     {
         m_device->DestroyPipeline(pipeline);
         pipeline = {};
     }
-    m_device = nullptr;
+}
+
+void ForwardPbrPass::Setup(FrameGraphBuilder& builder)
+{
+    builder.CreateTexture(kResourceHdrColor, {.format = kHdrFormat});
+    builder.CreateTexture(kResourceSceneDepth, {.format = m_device->GetDepthFormat()});
+    builder.ColorAttachment(kResourceHdrColor, rhi::RenderPassOperation::Clear, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    builder.DepthAttachment(kResourceSceneDepth, rhi::RenderPassOperation::Clear, 1.0f);
+    builder.Read(kResourceShadowMap, rhi::kResourceStatePixelShaderResource);
+}
+
+void ForwardPbrPass::OnCompiled(const FrameGraphResources& resources)
+{
+    const rhi::RenderPassOutput& output = resources.GetRenderPassOutput();
+    if (!IsRenderPassCompatible(output, m_output))
+    {
+        DestroyPipelines();
+    }
+    m_output = output;
 }
 
 rhi::PipelineHandle ForwardPbrPass::Pipeline(uint32_t key)
@@ -42,6 +67,7 @@ rhi::PipelineHandle ForwardPbrPass::Pipeline(uint32_t key)
     {
         return pipeline;
     }
+    MENGINE_ASSERT(m_output.colorCount != 0); // the frame graph has been compiled
 
     const bool tangents = (key & kPipelineKeyTangents) != 0;
     const std::vector<uint32_t>& vertexCode = tangents ? m_vertexTangentCode : m_vertexCode;
@@ -87,9 +113,12 @@ void ForwardPbrPass::WarmPipelines(const Scene& scene)
     }
 }
 
-void ForwardPbrPass::Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, rhi::DescriptorSetHandle frameSet,
-    uint32_t frameOffset)
+void ForwardPbrPass::Execute(FrameGraphContext& context)
 {
+    rhi::CommandBuffer& commandBuffer = context.commandBuffer;
+    const Scene& scene = *context.view.scene;
+    const rhi::DescriptorSetHandle frameSet = context.view.frameSet;
+    const uint32_t frameOffset = context.view.frameOffset;
     uint32_t boundKey = ~0u;
     uint32_t boundMaterial = ~0u;
     for (const SceneDraw& draw : scene.draws)

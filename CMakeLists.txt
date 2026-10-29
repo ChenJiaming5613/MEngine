@@ -99,7 +99,8 @@ MEngineGenerateShaderLayoutChecks(
     PROBES
         "${MENGINE_SHADER_SOURCE_DIR}/Pbr.slang@FragmentMain"
         "${MENGINE_SHADER_SOURCE_DIR}/Tonemap.slang@FragmentMain"
-    STRUCTS FrameConstants MaterialData DrawConstants TonemapConstants
+        "${MENGINE_SHADER_SOURCE_DIR}/DebugLine.slang@FragmentMain"
+    STRUCTS FrameConstants MaterialData DrawConstants TonemapConstants DebugLineConstants
 )
 target_sources(MEngineCore PRIVATE "${MENGINE_SHADER_LAYOUT_CHECKS}")
 target_include_directories(MEngineCore PRIVATE "${CMAKE_BINARY_DIR}/generated")
@@ -139,6 +140,8 @@ MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Tonemap.slang" FragmentMain)
 MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Shadow.slang" VertexMain)
 MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Shadow.slang" VertexMainMask)
 MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/Shadow.slang" FragmentMask)
+MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/DebugLine.slang" VertexMain)
+MEngineCompileShader("${MENGINE_SHADER_SOURCE_DIR}/DebugLine.slang" FragmentMain)
 MEngineAddShaderTarget(MEngineShaders)
 
 # Gradle only builds the shared library targets, so staging and shaders hang off the application target.

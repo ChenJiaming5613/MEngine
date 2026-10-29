@@ -948,6 +948,21 @@ void GpuDevice::DestroyBuffer(BufferHandle handle)
     m_buffers.Release(handle);
 }
 
+void GpuDevice::FlushBuffer(BufferHandle handle, VkDeviceSize offset, VkDeviceSize size)
+{
+    const Buffer* buffer = m_buffers.Access(handle);
+    if (buffer == nullptr || buffer->mappedData == nullptr)
+    {
+        MENGINE_LOG_ERROR("FlushBuffer: needs a valid dynamic buffer");
+        return;
+    }
+    if (size > 0)
+    {
+        // A no-op for host coherent memory; VMA aligns the range to nonCoherentAtomSize.
+        vmaFlushAllocation(m_allocator, buffer->allocation, offset, size);
+    }
+}
+
 // =====================================================================================================================
 // Textures
 

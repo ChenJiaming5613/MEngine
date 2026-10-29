@@ -81,6 +81,9 @@ public:
     void DestroyRenderPass(RenderPassHandle handle);
 
     Buffer* AccessBuffer(BufferHandle handle) { return m_buffers.Access(handle); }
+    // Makes host writes through a dynamic buffer's mapping visible to the device (no-op on coherent memory). The
+    // uniform ring is flushed by EndFrame; other dynamic buffers flush what they wrote before the submit.
+    void FlushBuffer(BufferHandle handle, VkDeviceSize offset, VkDeviceSize size);
     Texture* AccessTexture(TextureHandle handle) { return m_textures.Access(handle); }
     Sampler* AccessSampler(SamplerHandle handle) { return m_samplers.Access(handle); }
     DescriptorSetLayout* AccessDescriptorSetLayout(DescriptorSetLayoutHandle handle) { return m_descriptorSetLayouts.Access(handle); }

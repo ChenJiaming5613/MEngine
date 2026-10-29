@@ -54,6 +54,29 @@ enum CameraMode : size_t
     kCameraModeCount = 2,
 };
 
+// The pass drawing the panel itself cannot be switched off from it.
+constexpr const char* kImGuiPassName = "ImGui";
+
+const char* FormatName(VkFormat format)
+{
+    switch (format)
+    {
+    case VK_FORMAT_UNDEFINED: return "-";
+    case VK_FORMAT_R16G16B16A16_SFLOAT: return "RGBA16F";
+    case VK_FORMAT_R8G8B8A8_UNORM: return "RGBA8";
+    case VK_FORMAT_R8G8B8A8_SRGB: return "RGBA8 sRGB";
+    case VK_FORMAT_B8G8R8A8_UNORM: return "BGRA8";
+    case VK_FORMAT_B8G8R8A8_SRGB: return "BGRA8 sRGB";
+    case VK_FORMAT_A2B10G10R10_UNORM_PACK32: return "A2BGR10";
+    case VK_FORMAT_D16_UNORM: return "D16";
+    case VK_FORMAT_D32_SFLOAT: return "D32F";
+    case VK_FORMAT_D24_UNORM_S8_UINT: return "D24S8";
+    case VK_FORMAT_D32_SFLOAT_S8_UINT: return "D32FS8";
+    case VK_FORMAT_X8_D24_UNORM_PACK32: return "X8D24";
+    default: return "other";
+    }
+}
+
 class ViewerApp final : public Application
 {
 public:
@@ -381,6 +404,17 @@ private:
             ImGui::TextDisabled("%s", ActiveCameraController().Help());
         }
 
+        if (ImGui::CollapsingHeader("Debug"))
+        {
+            ImGui::Checkbox("Scene Bounds", &m_settings.debugSceneBounds);
+            ImGui::Checkbox("Shadow Frustum", &m_settings.debugShadowFrustum);
+        }
+
+        if (ImGui::CollapsingHeader("Frame Graph"))
+        {
+            BuildFrameGraphPanel();
+        }
+
         const ImVec2 position = ImGui::GetWindowPos();
         const ImVec2 size = ImGui::GetWindowSize();
         m_panelMin = glm::vec2(position.x, position.y);
@@ -390,6 +424,125 @@ private:
 
         ActiveCameraController().DrawOverlay();
         m_imGui.EndFrame();
+    }
+
+    // Passes in execution order with their enabled flags, render pass groups and resource lifetimes of the last compile.
+    // Toggles take effect at the next Render, which recompiles the graph.
+    void BuildFrameGraphPanel()
+    {
+        render::FrameGraph& graph = m_renderer.GetFrameGraph();
+        const render::FrameGraphDebugInfo& info = graph.GetDebugInfo();
+        ImGui::Text("Compiles: %u  Render passes: %zu  Textures: %u", info.compileCount, info.renderPasses.size(),
+            info.physicalTextures);
+        bool aliasing = graph.IsAliasingEnabled();
+        if (ImGui::Checkbox("Texture Aliasing", &aliasing))
+        {
+            graph.SetAliasingEnabled(aliasing);
+        }
+
+        constexpr ImGuiTableFlags kTableFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit;
+        ImGui::SeparatorText("Passes");
+        if (ImGui::BeginTable("Passes", 4, kTableFlags))
+        {
+            ImGui::TableSetupColumn("Pass");
+            ImGui::TableSetupColumn("Type");
+            ImGui::TableSetupColumn("Render Pass");
+            ImGui::TableSetupColumn("Status");
+            ImGui::TableHeadersRow();
+            for (const render::FrameGraphDebugInfo::Node& node : info.nodes)
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::PushID(node.name.c_str());
+                bool enabled = graph.IsEnabled(node.name);
+                const bool locked = node.name == kImGuiPassName;
+                ImGui::BeginDisabled(locked);
+                if (ImGui::Checkbox(node.name.c_str(), &enabled))
+                {
+                    graph.SetEnabled(node.name, enabled);
+                }
+                ImGui::EndDisabled();
+                ImGui::PopID();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(node.type == render::FrameGraphNodeType::Compute ? "compute" : "graphics");
+                ImGui::TableNextColumn();
+                if (node.renderPass >= 0 && static_cast<size_t>(node.renderPass) < info.renderPasses.size())
+                {
+                    const render::FrameGraphDebugInfo::RenderPass& renderPass = info.renderPasses[node.renderPass];
+                    // Group names join the merged passes with '+'.
+                    const bool merged = renderPass.name.find('+') != std::string::npos;
+                    ImGui::Text("#%d%s", node.renderPass, merged ? " (merged)" : "");
+                }
+                else
+                {
+                    ImGui::TextDisabled("-");
+                }
+                ImGui::TableNextColumn();
+                if (node.scheduled)
+                {
+                    ImGui::TextUnformatted(node.status.c_str());
+                }
+                else
+                {
+                    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", node.status.c_str());
+                }
+            }
+            ImGui::EndTable();
+        }
+
+        ImGui::SeparatorText("Render Passes");
+        for (size_t index = 0; index < info.renderPasses.size(); ++index)
+        {
+            const render::FrameGraphDebugInfo::RenderPass& renderPass = info.renderPasses[index];
+            ImGui::BulletText("#%zu %s: %s", index, renderPass.name.c_str(), renderPass.operations.c_str());
+        }
+
+        ImGui::SeparatorText("Resources");
+        if (ImGui::BeginTable("Resources", 5, kTableFlags))
+        {
+            ImGui::TableSetupColumn("Name");
+            ImGui::TableSetupColumn("Kind");
+            ImGui::TableSetupColumn("Format");
+            ImGui::TableSetupColumn("Lifetime");
+            ImGui::TableSetupColumn("Texture");
+            ImGui::TableHeadersRow();
+            for (const render::FrameGraphDebugInfo::Resource& resource : info.resources)
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(resource.name.c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(resource.kind);
+                ImGui::TableNextColumn();
+                if (resource.width > 0)
+                {
+                    ImGui::Text("%s %ux%u", FormatName(resource.format), resource.width, resource.height);
+                }
+                else
+                {
+                    ImGui::TextUnformatted(FormatName(resource.format));
+                }
+                ImGui::TableNextColumn();
+                if (resource.firstUse >= 0)
+                {
+                    ImGui::Text("%d..%d", resource.firstUse, resource.lastUse);
+                }
+                else
+                {
+                    ImGui::TextDisabled("unused");
+                }
+                ImGui::TableNextColumn();
+                if (resource.physical >= 0)
+                {
+                    ImGui::Text("#%d", resource.physical);
+                }
+                else
+                {
+                    ImGui::TextDisabled("-");
+                }
+            }
+            ImGui::EndTable();
+        }
     }
 
     CameraController& ActiveCameraController() { return *m_cameraControllers[m_cameraMode]; }

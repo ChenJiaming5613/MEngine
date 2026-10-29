@@ -61,6 +61,12 @@ struct TonemapConstants
     uint32_t encodeSrgb = 0;
 };
 
+// Push constants of DebugLine.slang.
+struct DebugLineConstants
+{
+    float exposure = 1.0f;
+};
+
 // Material set (set 1) bindings, in Bindings.slang order.
 enum MaterialBinding : uint32_t
 {
@@ -117,6 +123,9 @@ struct RenderSettings
     float skyboxBlur = 1.5f / 9.0f;
     PointLight light;
     DirectionalLight directional;
+    // Debug lines the renderer adds itself (render/DebugDraw.hpp).
+    bool debugSceneBounds = false;
+    bool debugShadowFrustum = false;
 };
 
 } // namespace mengine::render

@@ -1,7 +1,10 @@
 #pragma once
 
 #include "render/RenderTypes.hpp"
+#include "render/graph/FrameGraph.hpp"
 #include "rhi/GpuResources.hpp"
+
+#include <glm/vec3.hpp>
 
 #include <array>
 #include <cstdint>
@@ -17,9 +20,11 @@ namespace mengine::render {
 struct Scene;
 
 // Depth only shadow map of the directional light (MEngine's addition to the UE4 2013 notes). One D16 map rendered
-// with FrameConstants::lightViewProjection; it ends in SHADER_READ_ONLY and is sampled through a compare sampler.
-// Alpha MASK materials are cut out, double sided and mirrored draws keep the forward pass's culling.
-class ShadowPass
+// with FrameConstants::lightViewProjection, imported into the frame graph as kResourceShadowMap; the forward pass
+// samples it through a compare sampler, so it ends in SHADER_READ_ONLY. Alpha MASK materials are cut out, double sided
+// and mirrored draws keep the forward pass's culling. The map keeps its content across frames and is only re-rendered
+// when the light, the scene or the shadow toggle changes.
+class ShadowPass final : public FrameGraphPass
 {
 public:
     static constexpr uint32_t kSize = 2048;
@@ -30,9 +35,14 @@ public:
 
     // Creates the variants the scene's draws use, so the first frame does not stall on pipeline creation.
     void WarmPipelines(const Scene& scene);
-    // Records the whole render pass (clear, then every draw unless drawScene is false).
-    void Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, bool drawScene, rhi::DescriptorSetHandle frameSet,
-        uint32_t frameOffset);
+    // Called every frame before the graph runs; decides whether the map is re-rendered. Without casters the map is
+    // only cleared (once), so it is always sampleable.
+    void Prepare(bool castShadows, const glm::vec3& direction, uint64_t sceneVersion);
+
+    void Setup(FrameGraphBuilder& builder) override;
+    void Execute(FrameGraphContext& context) override;
+    bool IsActive() const override { return m_dirty; }
+    void OnCompiled(const FrameGraphResources& resources) override;
 
     rhi::TextureHandle Texture() const { return m_texture; }
     rhi::SamplerHandle Sampler() const { return m_sampler; }
@@ -41,11 +51,11 @@ private:
     static constexpr uint32_t kKeyMask = kPipelineKeyAlphaMask | kPipelineKeyDoubleSided | kPipelineKeyMirrored;
 
     rhi::PipelineHandle Pipeline(uint32_t key);
+    void DestroyPipelines();
 
     rhi::GpuDevice* m_device = nullptr;
     rhi::TextureHandle m_texture;
     rhi::SamplerHandle m_sampler;
-    rhi::RenderPassHandle m_renderPass;
     rhi::RenderPassOutput m_output;
     rhi::DescriptorSetLayoutHandle m_frameLayout;
     rhi::DescriptorSetLayoutHandle m_materialLayout;
@@ -53,6 +63,16 @@ private:
     std::vector<uint32_t> m_vertexMaskCode;
     std::vector<uint32_t> m_fragmentMaskCode;
     std::array<rhi::PipelineHandle, kKeyMask + 1> m_pipelines{};
+
+    // This frame's decision (Prepare) and the state the map was last rendered with.
+    bool m_dirty = true;
+    bool m_drawScene = false;
+    bool m_rendered = false;
+    bool m_castersDrawn = false;
+    glm::vec3 m_direction{0.0f};
+    uint64_t m_sceneVersion = ~0ull;
+    uint64_t m_pendingSceneVersion = 0;
+    glm::vec3 m_pendingDirection{0.0f};
 };
 
 } // namespace mengine::render

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "render/graph/FrameGraph.hpp"
+
 #include <SDL3/SDL_events.h>
 
 namespace mengine {
@@ -37,6 +39,21 @@ private:
     bool m_initialized = false;
     bool m_platformInitialized = false;
     bool m_rendererInitialized = false;
+};
+
+// Frame graph node drawing an ImGuiLayer over the backbuffer (loaded, so it shares the tone mapping render pass).
+class ImGuiPass final : public FrameGraphPass
+{
+public:
+    // Null skips the pass, e.g. for applications without UI.
+    void SetLayer(ImGuiLayer* layer) { m_layer = layer; }
+
+    void Setup(FrameGraphBuilder& builder) override;
+    void Execute(FrameGraphContext& context) override;
+    bool IsActive() const override { return m_layer != nullptr && m_layer->IsReady(); }
+
+private:
+    ImGuiLayer* m_layer = nullptr;
 };
 
 } // namespace mengine::render

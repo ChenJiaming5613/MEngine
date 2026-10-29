@@ -1,5 +1,7 @@
 #include "render/passes/ShadowPass.hpp"
 
+#include "core/Assert.hpp"
+#include "render/RenderView.hpp"
 #include "render/Scene.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/GpuDevice.hpp"
@@ -28,12 +30,6 @@ void ShadowPass::Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle fra
         .name = "ShadowMap",
     });
 
-    rhi::RenderPassCreation passCreation{.name = "Shadow"};
-    passCreation.SetDepthStencilTexture(m_texture).SetOperations(rhi::RenderPassOperation::DontCare, rhi::RenderPassOperation::Clear);
-    passCreation.sampleDepth = true;
-    m_renderPass = device.CreateRenderPass(passCreation);
-    m_output = device.AccessRenderPass(m_renderPass)->output;
-
     // With linear filtering every compare tap is a hardware 2x2 PCF; otherwise the 3x3 taps alone soften the edge.
     const VkFilter filter = device.SupportsLinearFilter(kFormat) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
     m_sampler = device.CreateSampler({
@@ -56,15 +52,19 @@ void ShadowPass::Shutdown()
     {
         return;
     }
+    DestroyPipelines();
+    m_device->DestroySampler(m_sampler);
+    m_device->DestroyTexture(m_texture);
+    *this = ShadowPass{};
+}
+
+void ShadowPass::DestroyPipelines()
+{
     for (rhi::PipelineHandle& pipeline : m_pipelines)
     {
         m_device->DestroyPipeline(pipeline);
         pipeline = {};
     }
-    m_device->DestroyRenderPass(m_renderPass);
-    m_device->DestroySampler(m_sampler);
-    m_device->DestroyTexture(m_texture);
-    *this = ShadowPass{};
 }
 
 rhi::PipelineHandle ShadowPass::Pipeline(uint32_t key)
@@ -74,6 +74,7 @@ rhi::PipelineHandle ShadowPass::Pipeline(uint32_t key)
     {
         return pipeline;
     }
+    MENGINE_ASSERT(m_output.depthFormat != VK_FORMAT_UNDEFINED); // the frame graph has been compiled
 
     const bool alphaMask = (key & kPipelineKeyAlphaMask) != 0;
     const std::string name = "Shadow#" + std::to_string(key);
@@ -120,13 +121,38 @@ void ShadowPass::WarmPipelines(const Scene& scene)
     }
 }
 
-void ShadowPass::Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, bool drawScene,
-    rhi::DescriptorSetHandle frameSet, uint32_t frameOffset)
+void ShadowPass::Prepare(bool castShadows, const glm::vec3& direction, uint64_t sceneVersion)
 {
-    commandBuffer.SetClearDepth(1.0f);
-    commandBuffer.BindPass(m_renderPass);
-    if (drawScene)
+    m_drawScene = castShadows;
+    m_pendingDirection = direction;
+    m_pendingSceneVersion = sceneVersion;
+    m_dirty = !m_rendered || (castShadows && (!m_castersDrawn || direction != m_direction || sceneVersion != m_sceneVersion));
+}
+
+void ShadowPass::Setup(FrameGraphBuilder& builder)
+{
+    builder.ImportTexture(kResourceShadowMap, m_texture);
+    builder.DepthAttachment(kResourceShadowMap, rhi::RenderPassOperation::Clear, 1.0f);
+}
+
+void ShadowPass::OnCompiled(const FrameGraphResources& resources)
+{
+    const rhi::RenderPassOutput& output = resources.GetRenderPassOutput();
+    if (!IsRenderPassCompatible(output, m_output))
     {
+        DestroyPipelines();
+    }
+    m_output = output;
+}
+
+void ShadowPass::Execute(FrameGraphContext& context)
+{
+    rhi::CommandBuffer& commandBuffer = context.commandBuffer;
+    const RenderView& view = context.view;
+    if (m_drawScene)
+    {
+        const Scene& scene = *view.scene;
+        const uint32_t frameOffset = view.frameOffset;
         uint32_t boundKey = ~0u;
         uint32_t boundMaterial = ~0u;
         for (const SceneDraw& draw : scene.draws)
@@ -136,7 +162,7 @@ void ShadowPass::Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, b
             if (key != boundKey)
             {
                 commandBuffer.BindPipeline(Pipeline(key));
-                commandBuffer.BindDescriptorSet(frameSet, 0, {&frameOffset, 1});
+                commandBuffer.BindDescriptorSet(view.frameSet, 0, {&frameOffset, 1});
                 boundKey = key;
                 boundMaterial = ~0u;
             }
@@ -159,7 +185,11 @@ void ShadowPass::Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, b
             commandBuffer.DrawIndexed(primitive.indexCount);
         }
     }
-    commandBuffer.EndPass();
+    m_dirty = false;
+    m_rendered = true;
+    m_castersDrawn = m_drawScene;
+    m_direction = m_pendingDirection;
+    m_sceneVersion = m_pendingSceneVersion;
 }
 
 } // namespace mengine::render

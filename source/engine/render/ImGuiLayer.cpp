@@ -2,6 +2,7 @@
 
 #include "core/Log.hpp"
 #include "platform/Window.hpp"
+#include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/GpuDevice.hpp"
 
@@ -139,6 +140,17 @@ bool ImGuiLayer::WantsMouse() const
 bool ImGuiLayer::WantsKeyboard() const
 {
     return m_initialized && ImGui::GetIO().WantCaptureKeyboard;
+}
+
+void ImGuiPass::Setup(FrameGraphBuilder& builder)
+{
+    builder.ImportBackbuffer(kResourceBackbuffer);
+    builder.ColorAttachment(kResourceBackbuffer, rhi::RenderPassOperation::Load);
+}
+
+void ImGuiPass::Execute(FrameGraphContext& context)
+{
+    m_layer->Render(context.commandBuffer);
 }
 
 } // namespace mengine::render

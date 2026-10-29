@@ -91,13 +91,30 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
   - 场景层重构：`gltf_scene`、`obj_scene`（assimp）、`scene_graph`、`render_scene`、`render_resources_loader`（加载 graph 和 technique JSON）。
   - 新 pass：depth pre-pass、G-buffer、延迟 PBR 光照（`pbr_lighting`）、透明、景深（`dof.glsl`）、全屏三角形。
 - **能力**：T0。
-- **MEngine 现状**：`Renderer::Render` 手写 pass 顺序；pass 间依赖靠 render pass dependency 和 `BindPass` 自动 barrier。
-- **集成**：
-  - Frame Graph（T0）：C++ builder 声明 pass 和资源（JSON 可选，用于调试开关），构建在现有 `RenderPassOutput` 缓存和 `ResourceState` 跟踪之上；拓扑排序、未使用 pass 剔除、按 `enabled` 开关；compute 节点（第 5 章加入的 `type: compute`）一并实现，barrier 由 graph 根据读写声明生成，复用 `ExecutionBarrier`。
-  - 支持跨帧资源（history，供 TAA、体积雾时间滤波使用）和随 swapchain 尺寸重建。
-  - 资源别名：第一步只在描述兼容的纹理之间复用；内存级别名（VMA aliasing image）作为后续优化。
-  - 把现有 Shadow、Forward、Skybox、Tonemap、ImGui 全部迁进 graph，画面和 GPU 耗时与迁移前一致。
-  - 延迟渲染：**不采用**。移动端 tile GPU 带宽敏感，MEngine 坚持前向；深度 pre-pass 作为可选节点保留（之后的 Hi-Z、TAA、体积雾都需要可采样的深度，forward pass 的深度改为 `sampleDepth`）。景深作为可选后处理，优先级低。
+- **MEngine 现状**：已完成（阶段 2）。Shadow、Forward、Skybox、DebugDraw、Tonemap、ImGui 都是图节点，`Renderer::Render` 不再手写 pass 顺序、resize 和阴影重绘判断。
+- **集成**（已实现，细节见 `Architecture.md` 5.1、5.8）：
+  - Frame Graph（T0）：C++ `FrameGraphPass` 子类声明资源（不用 JSON，开关在查看器面板里），构建在现有 `RenderPassOutput` 缓存、`Texture::state` 跟踪和 `ExecutionBarrier` 之上。图负责剔除、`enabled` 开关、compute 节点（第 5 章的 `type: compute`）、纹理和 buffer barrier、load/store 推导、render pass 合并，swapchain 尺寸变化时自动重新编译。
+  - 跨帧资源（history）：**推迟到阶段 4**，与 TAA 一起做，到时有真实的使用者来验证设计。
+  - 资源别名：只在描述完全相同、生命周期不重叠的纹理之间复用，可以关闭；内存级别名（VMA aliasing image）作为后续优化。图内瞬时 buffer（由图创建的 storage / indirect buffer）推迟到阶段 8，GPU 驱动渲染才是它的第一个使用者；在此之前 buffer 只能导入。
+  - 迁移：现有的 5 个 pass 全部迁进图中，画面与迁移前一致；DamagedHelmet 1280×720 下，Forward（含 Skybox）约 2.3 ms，Tonemap + ImGui 约 0.4 ms，与迁移前相同；一帧最多 3 个 render pass。
+  - 延迟渲染：**不采用**。移动端 tile GPU 对带宽敏感，MEngine 坚持前向渲染。深度 pre-pass 推迟到 TAA 或 Hi-Z 真正需要可采样深度时，再作为节点加入：届时由读者声明 `Read(ShaderResource)`，图会自动推导出 `sampleDepth`。景深作为可选后处理，优先级低。
+- **阶段 2 的设计决定**：
+
+  | 编号 | 决定 |
+  | --- | --- |
+  | G1 | 节点用 C++ 虚接口 `Setup / Execute / IsActive / OnCompiled` 声明，图不拥有 pass；不解析 JSON |
+  | G2 | 注册顺序就是执行顺序，依赖只能指向更早的写入者，结构上不会有环；在本帧首个写入者之前读取瞬时纹理属于声明错误 |
+  | G3 | 访问用 `ResourceState` 声明；纹理用途由访问推导（附件 → RenderTarget，`UnorderedAccess` → Storage 并检查格式） |
+  | G4 | 非附件访问由图合批成 `ExecutionBarrier`（每批最多 8 项），附件之间的同步交给 subpass dependency 和 `BindPass`；导入 buffer 的状态由图跨帧跟踪 |
+  | G5 | 本帧还没有写入者时，`Load` 自动改为 `Clear`；深度只在后面有读者或它是导入纹理时 store，被着色器读取时加 `sampleDepth`，因此场景深度不写回 |
+  | G6 | 两种开关：`enabled` 改变图的结构，需要重新编译；`IsActive()` 每帧判断（如阴影按需重绘），跳过的节点保留旧内容。导入资源不随写入节点的禁用而失效，需要避免读到旧内容的读者用 `IsScheduled` 判断（如关闭 Shadow 节点时不采样阴影） |
+  | G7 | 从写 backbuffer 的节点和 side effect 节点出发反向剔除；声明错误按 D3 处理；被禁用节点创建的资源不可用，依赖它的节点跳过，`ReadOptional` 除外 |
+  | G8 | Backbuffer 映射到 `GetSwapchainPass()`，framebuffer 仍由 `Swapchain` 按图像提供 |
+  | G9 | 描述相同、生命周期不重叠的瞬时纹理共用一个 `TextureHandle`，合并组按整组的范围计算生命周期，可以关闭 |
+  | G10 | 相邻图形节点在附件集合相同、全部 `Load`、不采样组内附件、中间没有 compute 节点时，合并为一个 `VkRenderPass` |
+  | G11 | `NeedsCompile()` 比较脏标记、swapchain 尺寸和格式；重新编译时旧纹理和 RenderPass 走延迟销毁，然后回调 `OnCompiled`，不调用 `vkDeviceWaitIdle` |
+  | G12 | 每个节点自动包一层同名 GPU 计时（合并组外层用组名计时）；`GetDebugInfo()` 提供快照，供查看器面板使用 |
+  | G13 | 调试绘制只在 CPU 端生成线（每帧 64K 条，超出丢弃并 WARN 一次），按帧槽写入动态顶点缓冲；画进 HDR 目标，放在 Skybox 之后，开深度测试、不写深度；颜色按曝光和 tonemap 曲线反解补偿 |
 
 ### 第 5 章 异步计算
 
@@ -109,9 +126,9 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
   - 调试绘制：线和网格（`debug_line.glsl`、`debug_mesh.glsl`）。
   - Profiler 增加 pipeline statistics query。
 - **能力**：异步计算为 T2（T0 单一队列）；timeline 为 T1；动画、蒙皮、布料、调试绘制为 T0；pipeline statistics 需检查 `pipelineStatisticsQuery`。
-- **MEngine 现状**：compute 已能在图形队列上运行；无动画、无调试绘制。
+- **MEngine 现状**：compute 已能在图形队列上运行，并作为 Frame Graph 的 compute 节点自动插 barrier（阶段 2）；调试绘制已完成（阶段 2）；无动画。
 - **集成**：
-  - 调试绘制（T0）：**提前到阶段 2**，与 Frame Graph 一起做，后面的剔除、光源、阴影调试都依赖它。
+  - 调试绘制（T0）：**已在阶段 2 完成**（G13）。实现了 CPU 端的线、AABB、球、视锥，查看器可以开关场景包围盒和阴影视锥。GPU 端画线和调试网格推迟到阶段 8，与 GPU 剔除的可视化一起做。
   - 动画与蒙皮（T0）：节点动画 + compute 蒙皮写回顶点流，在图形队列上执行；同时为 TAA 提供每物体运动向量。
   - 异步计算（T2）：桌面有独立 compute 队列时，把与图形无依赖的 compute 节点（蒙皮、布料、体积雾注入）放到 compute 队列，用 timeline 同步；T0 退化为同队列顺序执行，graph 结构不变。
   - 布料：演示性质，最低优先级。
@@ -179,7 +196,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 
   光照 pass 按深度采样累积结果。代码目录中本章还加入了光追基础设施，见第 12 章。
 - **能力**：T0（3D storage image；需用 `SupportsStorageImage` 检查 RGBA16F）。移动端降低 froxel 分辨率。
-- **依赖**：分簇光源（第 7 章）、点光源阴影（第 8 章）、方向光阴影（已有）、Frame Graph 的跨帧资源（阶段 2）、抖动与蓝噪声（第 11 章）。
+- **依赖**：分簇光源（第 7 章）、点光源阴影（第 8 章）、方向光阴影（已有）、Frame Graph 的跨帧资源（阶段 4）、抖动与蓝噪声（第 11 章）。
 - **集成**：作为 graph 中的一组 compute 节点，结果在前向 pass 中按深度采样，或在 tonemap 之前单独合成。
 
 ### 第 11 章 时间抗锯齿
@@ -192,7 +209,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
   - 延迟光照的 compute 版本。代码目录中本章还提前加入了光追阴影，见第 13 章。
 - **能力**：T0（带宽需评估，移动端可降低历史精度）。
 - **MEngine 现状**：无抗锯齿。
-- **集成**：投影矩阵加抖动（阴影、天空盒不抖动）；先做只有相机运动的运动向量（MEngine 场景是静态的），阶段 9 有动画后再加物体运动向量；历史缓冲走 Frame Graph 跨帧资源；锐化放在 tonemap pass。tonemap 曲线保持 Uncharted 2（与 Vulkan-glTF-PBR 一致），其他曲线作为可选项。
+- **集成**：投影矩阵加抖动（阴影、天空盒不抖动）；先做只有相机运动的运动向量（MEngine 场景是静态的），阶段 9 有动画后再加物体运动向量；历史缓冲走 Frame Graph 跨帧资源（本阶段加入图中）；锐化放在 tonemap pass。tonemap 曲线保持 Uncharted 2（与 Vulkan-glTF-PBR 一致），其他曲线作为可选项。
 
 ### 第 12 章 光线追踪入门
 
@@ -226,9 +243,9 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 | --- | --- | --- | --- | --- |
 | 0 | RHI（已完成）；收尾：设备能力分级、CPU 视锥剔除 | 1 | T0 | 无视锥剔除 |
 | 1 | Pipeline cache、着色器反射（含特化常量）、构建期结构体布局校验（**已完成**） | 2、9 | T0 | 无 pipeline cache、首帧卡顿 |
-| 2 | Frame Graph（含 compute 节点、跨帧资源）、调试绘制 | 4、5 | T0 | — |
+| 2 | Frame Graph（含 compute 节点）、调试绘制（**已完成**） | 4、5 | T0 | 手写 pass 顺序与 resize |
 | 3 | 线程池、异步场景加载、并行录制 | 3 | T0 | 场景加载同步阻塞 |
-| 4 | TAA（抖动、相机运动向量、历史、锐化） | 11 | T0 | 无抗锯齿 |
+| 4 | TAA（抖动、相机运动向量、历史、锐化）、Frame Graph 跨帧资源 | 11 | T0 | 无抗锯齿 |
 | 5 | 分簇前向光照、`KHR_lights_punctual`、透明 pass | 7 | T0 | BLEND 当 MASK |
 | 6 | 点光源阴影（图集 + 四面体 / 立方体数组） | 8 | T0 / T1 | 点光源无阴影 |
 | 7 | 体积雾 | 10 | T0 | — |

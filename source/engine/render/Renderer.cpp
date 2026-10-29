@@ -2,7 +2,7 @@
 
 #include "render/Camera.hpp"
 #include "render/GltfLoader.hpp"
-#include "render/ImGuiLayer.hpp"
+#include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/GpuDevice.hpp"
 
@@ -18,10 +18,15 @@
 
 namespace mengine::render {
 
+namespace {
+
+constexpr std::string_view kShadowPassName = "Shadow";
+
+} // namespace
+
 void Renderer::Init(rhi::GpuDevice& device)
 {
     m_device = &device;
-    const VkExtent2D extent = device.GetSwapchainExtent();
 
     rhi::DescriptorSetLayoutCreation frameLayout;
     frameLayout.name = "FrameLayout";
@@ -47,31 +52,22 @@ void Renderer::Init(rhi::GpuDevice& device)
     }
     m_materialLayout = device.CreateDescriptorSetLayout(materialLayout);
 
-    m_hdrColor = device.CreateTexture({
-        .width = extent.width,
-        .height = extent.height,
-        .format = kHdrFormat,
-        .flags = rhi::kTextureFlagRenderTarget,
-        .name = "HdrColor",
-    });
-    m_depth = device.CreateTexture({
-        .width = extent.width,
-        .height = extent.height,
-        .format = device.GetDepthFormat(),
-        .flags = rhi::kTextureFlagRenderTarget,
-        .name = "SceneDepth",
-    });
-    rhi::RenderPassCreation passCreation{.name = "Forward"};
-    passCreation.AddRenderTexture(m_hdrColor).SetDepthStencilTexture(m_depth).SetOperations(
-        rhi::RenderPassOperation::Clear, rhi::RenderPassOperation::Clear);
-    m_forwardPass = device.CreateRenderPass(passCreation);
-
-    const rhi::RenderPassOutput forwardOutput = device.AccessRenderPass(m_forwardPass)->output;
     m_shadow.Init(device, m_frameLayout, m_materialLayout);
-    m_forwardPbr.Init(device, forwardOutput, m_frameLayout, m_materialLayout);
-    m_skybox.Init(device, forwardOutput, m_frameLayout);
-    m_tonemap.Init(device, device.GetSwapchainOutput());
-    m_tonemap.SetInput(m_hdrColor);
+    m_forwardPbr.Init(device, m_frameLayout, m_materialLayout);
+    m_skybox.Init(device, m_frameLayout);
+    m_debugDraw.Init(device);
+    m_debugDrawPass.Init(device, m_frameLayout, m_debugDraw);
+    m_tonemap.Init(device);
+
+    // Execution order; the graph culls, merges render passes and derives load / store operations and barriers.
+    m_graph.Init(device);
+    m_graph.AddPass(kShadowPassName, FrameGraphNodeType::Graphics, m_shadow);
+    m_graph.AddPass("Forward", FrameGraphNodeType::Graphics, m_forwardPbr);
+    m_graph.AddPass("Skybox", FrameGraphNodeType::Graphics, m_skybox);
+    m_graph.AddPass("DebugDraw", FrameGraphNodeType::Graphics, m_debugDrawPass);
+    m_graph.AddPass("Tonemap", FrameGraphNodeType::Graphics, m_tonemap);
+    m_graph.AddPass("ImGui", FrameGraphNodeType::Graphics, m_imGuiPass);
+    m_graph.Compile();
 
     LoadEnvironment(std::nullopt);
 }
@@ -85,13 +81,13 @@ void Renderer::Shutdown()
     rhi::GpuDevice& device = *m_device;
     m_scene.Destroy(device);
     m_environment.Destroy(device);
+    m_graph.Shutdown();
     m_tonemap.Shutdown();
+    m_debugDrawPass.Shutdown();
+    m_debugDraw.Shutdown();
     m_skybox.Shutdown();
     m_forwardPbr.Shutdown();
     m_shadow.Shutdown();
-    device.DestroyRenderPass(m_forwardPass);
-    device.DestroyTexture(m_depth);
-    device.DestroyTexture(m_hdrColor);
     device.DestroyDescriptorSet(m_frameSet);
     device.DestroyDescriptorSetLayout(m_materialLayout);
     device.DestroyDescriptorSetLayout(m_frameLayout);
@@ -173,12 +169,13 @@ void Renderer::UpdateFrameSet()
 void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui)
 {
     rhi::GpuDevice& device = *m_device;
-    const VkExtent2D extent = device.GetSwapchainExtent();
-    if (device.ConsumeSwapchainResized())
+    // A new swapchain size or format, or a toggled pass, rebuilds the graph's textures and render passes.
+    device.ConsumeSwapchainResized();
+    if (m_graph.NeedsCompile())
     {
-        device.ResizeOutputTextures(m_forwardPass, extent.width, extent.height);
-        m_tonemap.SetInput(m_hdrColor);
+        m_graph.Compile();
     }
+    const VkExtent2D extent = device.GetSwapchainExtent();
 
     const float aspectRatio = static_cast<float>(extent.width) / static_cast<float>(std::max(extent.height, 1u));
     FrameConstants constants;
@@ -197,53 +194,40 @@ void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGu
     const glm::vec3 direction =
         directionLength > 1e-6f ? directional.direction / directionLength : glm::vec3(0.0f, -1.0f, 0.0f);
     const bool castShadows = directional.castShadows && !m_scene.IsEmpty() && m_scene.HasBounds();
+    // A disabled Shadow node leaves the imported shadow map with whatever it last drew; sampling it would show stale
+    // shadows that no longer follow the light or the scene.
+    const bool shadowsAvailable = castShadows && m_graph.IsScheduled(kShadowPassName);
     const ShadowView shadowView = castShadows ? FitShadowView(direction) : ShadowView{};
     constants.lightViewProjection = shadowView.viewProjection;
     constants.directionalDirection = glm::vec4(direction, 0.0f);
     constants.directionalColorIntensity = glm::vec4(directional.color, std::max(directional.intensity, 0.0f));
-    constants.shadowParams = glm::vec4(castShadows ? 1.0f : 0.0f, 1.0f / static_cast<float>(ShadowPass::kSize),
+    constants.shadowParams = glm::vec4(shadowsAvailable ? 1.0f : 0.0f, 1.0f / static_cast<float>(ShadowPass::kSize),
         shadowView.texelWorldSize * std::max(directional.normalOffsetTexels, 0.0f), 0.0f);
 
     const rhi::DynamicAllocation allocation = device.DynamicAllocate(sizeof(FrameConstants));
     std::memcpy(allocation.data, &constants, sizeof(constants));
 
-    rhi::CommandBuffer& commandBuffer = device.GetCommandBuffer();
-    // The map keeps its content across frames; queue order plus the render pass dependencies protect frames in flight.
-    const bool shadowDirty = !m_shadowRendered
-        || (castShadows && (!m_shadowCastersDrawn || direction != m_shadowDirection || m_sceneVersion != m_shadowSceneVersion));
-    if (shadowDirty)
+    if (settings.debugSceneBounds && m_scene.HasBounds())
     {
-        commandBuffer.PushTimestamp("Shadow");
-        m_shadow.Record(commandBuffer, m_scene, castShadows, m_frameSet, allocation.offset);
-        commandBuffer.PopTimestamp();
-        m_shadowRendered = true;
-        m_shadowCastersDrawn = castShadows;
-        m_shadowDirection = direction;
-        m_shadowSceneVersion = m_sceneVersion;
+        m_debugDraw.Aabb(m_scene.boundsMin, m_scene.boundsMax, glm::vec4(1.0f, 0.85f, 0.1f, 1.0f));
     }
-
-    commandBuffer.PushTimestamp("Forward");
-    commandBuffer.SetClearColor(0, glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-    commandBuffer.SetClearDepth(1.0f);
-    commandBuffer.BindPass(m_forwardPass);
-    m_forwardPbr.Record(commandBuffer, m_scene, m_frameSet, allocation.offset);
-    commandBuffer.PushTimestamp("Skybox");
-    m_skybox.Record(commandBuffer, m_frameSet, allocation.offset);
-    commandBuffer.PopTimestamp();
-    commandBuffer.EndPass();
-    commandBuffer.PopTimestamp();
-
-    commandBuffer.PushTimestamp("Tonemap");
-    commandBuffer.BindPass(device.GetSwapchainPass());
-    m_tonemap.Record(commandBuffer, settings.exposure, !device.IsSwapchainSrgb());
-    commandBuffer.PopTimestamp();
-    if (imGui != nullptr)
+    if (settings.debugShadowFrustum && castShadows)
     {
-        commandBuffer.PushTimestamp("ImGui");
-        imGui->Render(commandBuffer);
-        commandBuffer.PopTimestamp();
+        m_debugDraw.Frustum(shadowView.viewProjection, glm::vec4(1.0f, 0.4f, 0.1f, 1.0f));
     }
-    commandBuffer.EndPass();
+    m_debugDraw.Upload();
+
+    m_shadow.Prepare(castShadows, direction, m_sceneVersion);
+    m_imGuiPass.SetLayer(imGui);
+    const RenderView view{
+        .scene = &m_scene,
+        .settings = &settings,
+        .frameSet = m_frameSet,
+        .frameOffset = allocation.offset,
+        .encodeSrgb = !device.IsSwapchainSrgb(),
+    };
+    m_graph.Execute(device.GetCommandBuffer(), view);
+    m_debugDraw.Clear();
 }
 
 } // namespace mengine::render

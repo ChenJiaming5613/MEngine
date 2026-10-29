@@ -1,8 +1,12 @@
 #pragma once
 
+#include "render/DebugDraw.hpp"
 #include "render/Environment.hpp"
+#include "render/ImGuiLayer.hpp"
 #include "render/RenderTypes.hpp"
 #include "render/Scene.hpp"
+#include "render/graph/FrameGraph.hpp"
+#include "render/passes/DebugDrawPass.hpp"
 #include "render/passes/ForwardPbrPass.hpp"
 #include "render/passes/ShadowPass.hpp"
 #include "render/passes/SkyboxPass.hpp"
@@ -23,15 +27,14 @@ class GpuDevice;
 namespace mengine::render {
 
 class Camera;
-class ImGuiLayer;
 
-// Directional shadow map (only re-rendered when the light, the scene or the shadow toggle changes), then forward PBR
-// into an RGBA16F target (opaque, then alpha mask, then skybox), then tone mapping and ImGui into the swapchain.
+// Builds the frame graph once and runs it every frame:
+//   Shadow (only when the light, the scene or the shadow toggle changes) -> Forward (opaque, then alpha mask) -> Skybox
+//   -> DebugDraw (lines, when any) into an RGBA16F target -> Tonemap -> ImGui into the backbuffer.
+// The graph merges Forward + Skybox + DebugDraw and Tonemap + ImGui into one render pass each.
 class Renderer
 {
 public:
-    static constexpr VkFormat kHdrFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-
     // Throws on Vulkan or shader loading errors.
     void Init(rhi::GpuDevice& device);
     void Shutdown();
@@ -44,6 +47,10 @@ public:
 
     const Scene& GetScene() const { return m_scene; }
     const Environment& GetEnvironment() const { return m_environment; }
+    // Pass toggles and the compile snapshot for debug UI; changes are compiled at the next Render.
+    FrameGraph& GetFrameGraph() { return m_graph; }
+    // Lines added before Render (after GpuDevice::BeginFrame or earlier) are drawn this frame, then cleared.
+    DebugDraw& GetDebugDraw() { return m_debugDraw; }
 
     // Records the frame between GpuDevice::BeginFrame and EndFrame. ImGui (if any) must have finished its frame.
     void Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui);
@@ -63,24 +70,18 @@ private:
     rhi::DescriptorSetLayoutHandle m_materialLayout;
     rhi::DescriptorSetHandle m_frameSet;
 
-    rhi::TextureHandle m_hdrColor;
-    rhi::TextureHandle m_depth;
-    rhi::RenderPassHandle m_forwardPass;
-
+    FrameGraph m_graph;
     ShadowPass m_shadow;
     ForwardPbrPass m_forwardPbr;
     SkyboxPass m_skybox;
+    DebugDraw m_debugDraw;
+    DebugDrawPass m_debugDrawPass;
     TonemapPass m_tonemap;
+    ImGuiPass m_imGuiPass;
 
     Scene m_scene;
     Environment m_environment;
-
-    // State the shadow map was last rendered with; it is rendered at least once so that it is always sampleable.
-    bool m_shadowRendered = false;
-    bool m_shadowCastersDrawn = false;
-    glm::vec3 m_shadowDirection{0.0f};
     uint64_t m_sceneVersion = 0;
-    uint64_t m_shadowSceneVersion = ~0ull;
 };
 
 } // namespace mengine::render

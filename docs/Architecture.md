@@ -25,7 +25,7 @@ source/engine/core            日志、断言、文件系统、JSON、计时、H
 source/engine/platform        SDL 窗口与输入
 source/engine/asset           纯 CPU 资源解码：PNG/JPEG/HDR、KTX2 读写、BC7 软解（与 IblBaker 共用）
 source/engine/rhi             GpuDevice、CommandBuffer、资源描述与池、Swapchain、GpuProfiler、ShaderReflection、PipelineCacheFile
-source/engine/render          Renderer、Scene、GltfLoader、Environment、Camera、ImGuiLayer、passes/
+source/engine/render          Renderer、Scene、GltfLoader、Environment、Camera、ImGuiLayer、DebugDraw、graph/（FrameGraph）、passes/
 source/engine/Application.*   SDL main callbacks 之上的应用基类
 source/viewer                 查看器：SDL 入口、ViewerApp、ViewerConfig、相机控制器（Fly / Orbit）
 source/shaders                Slang 着色器，common/ 为共享头
@@ -64,8 +64,9 @@ graph TB
     subgraph engine["引擎层 source/engine"]
         Application
         subgraph render["render"]
-            Renderer --> Passes["ShadowPass / ForwardPbrPass / SkyboxPass / TonemapPass"]
-            Renderer --> Scene & Environment
+            Renderer --> Graph["FrameGraph"]
+            Graph --> Passes["ShadowPass / ForwardPbrPass / SkyboxPass / DebugDrawPass / TonemapPass / ImGuiPass"]
+            Renderer --> Scene & Environment & DebugDraw
             GltfLoader --> Scene
             ImGuiLayer
             Camera
@@ -114,6 +115,7 @@ graph TB
 - **场景切换**：ImGui 下拉框只记下 `m_pendingScene`；真正的 `LoadSceneAt` 在下一帧 `BeginFrame` 之前执行，因为加载需要等 GPU 空闲并释放旧场景。
 - **相机与灯光复位**：每次换场景先把场景包围盒和 config 里的相机位姿交给所有相机控制器（`SetScene`），再让当前控制器回到它的默认视角（`ResetView`）；然后按相机位置重置点光源（让场景中心照度 E = 1）和方向光。
 - **每帧**：当前 `CameraController::Update` → `GpuDevice::BeginFrame`（失败则跳过本帧）→ 构建 ImGui 面板 → `Renderer::Render` → `GpuDevice::EndFrame`。
+- **面板**：场景切换、性能（FPS、管线统计、各节点 GPU 计时）、灯光、相机；Debug 面板开关场景包围盒和阴影视锥调试线；Frame Graph 面板显示节点、render pass、资源生命周期，并切换节点开关和纹理复用（5.8）。
 - **事件**：窗口尺寸变化时 `MarkSwapchainDirty`；Esc / Android 返回键退出；前后台切换转成 `GpuDevice::SetSuspended`。
 
 ### 3.3 输入与相机控制
@@ -231,7 +233,7 @@ classDiagram
 
 | 资源 | Creation 要点 | 实现要点 |
 | --- | --- | --- |
-| Buffer | `usage`、`ResourceUsage::Immutable / Dynamic`、`initialData` | Immutable：设备本地，有初始数据时经 staging 上传。Dynamic：主机可见、常驻映射，直接写入 |
+| Buffer | `usage`、`ResourceUsage::Immutable / Dynamic`、`initialData` | Immutable：设备本地，有初始数据时经 staging 上传。Dynamic：主机可见、常驻映射，直接写入；动态 uniform 环由 `EndFrame` flush，其他动态缓冲写完后调用 `FlushBuffer`（内存 coherent 时为空操作） |
 | Texture | 尺寸、`mipLevels`（0 = 完整 mip 链）、`TextureType::Texture2D / TextureCube`、格式、`flags` | `kTextureFlagRenderTarget`（附件用途，独占内存）、`kTextureFlagGenerateMips`（只给第 0 级，其余用线性 blit 生成）、`kTextureFlagStorage`（storage image）。初始数据按“mip 优先、面紧挨”的 KTX2 布局 |
 | Sampler | 过滤、寻址、`maxLod`、各向异性、深度比较 | 各向异性受设备上限裁剪；`compareEnable` 用于阴影 |
 | DescriptorSetLayout | 绑定列表（类型、序号、数量、阶段）、`setIndex` | 绑定默认阶段为 `ALL_GRAPHICS`，compute 必须显式写 `COMPUTE_BIT`。私有 layout 可由 `BuildDescriptorSetLayout` 从着色器反射生成，`FindBinding` 用于改写个别绑定（如改成 `UNIFORM_BUFFER_DYNAMIC`） |
@@ -394,27 +396,41 @@ indirect 命令会检查 buffer 的 `INDIRECT_BUFFER` 用途、偏移对齐、`d
 
 ### 5.1 一帧的渲染流程
 
-`Renderer::Render(camera, settings, imGui)` 在 `BeginFrame` 和 `EndFrame` 之间录制整帧：
+`Renderer::Render(camera, settings, imGui)` 在 `BeginFrame` 和 `EndFrame` 之间录制整帧。pass 的顺序、render pass、barrier 和 resize 都交给 Frame Graph（5.8），`Renderer` 只准备每帧数据：
 
 ```mermaid
 graph LR
-    A["swapchain 尺寸变化?<br/>ResizeOutputTextures<br/>TonemapPass::SetInput"] --> B["填 FrameConstants<br/>DynamicAllocate"]
-    B --> C{"阴影需要重绘?"}
-    C -- 是 --> D["Shadow pass<br/>2048² D16"]
-    C -- 否 --> E
-    D --> E["Forward pass<br/>RGBA16F + 深度<br/>不透明 → MASK → 天空盒"]
-    E --> F["Swapchain pass<br/>Tonemap → ImGui"]
+    A["NeedsCompile?<br/>（尺寸、格式、开关变化）<br/>FrameGraph::Compile"] --> B["填 FrameConstants<br/>DynamicAllocate"]
+    B --> C["调试线<br/>DebugDraw::Upload"]
+    C --> D["ShadowPass::Prepare<br/>填 RenderView"]
+    D --> E["FrameGraph::Execute"]
+```
+
+图在 `Renderer::Init` 中按执行顺序注册 6 个节点，编译后一帧最多 3 个 render pass：
+
+```mermaid
+graph LR
+    S["Shadow<br/>2048² D16，按需"] -- ShadowMap（采样） --> F
+    subgraph RP1["render pass：Forward+Skybox+DebugDraw"]
+        F["Forward<br/>不透明 → MASK"] --> K["Skybox"] --> L["DebugDraw<br/>有线时"]
+    end
+    L -- HdrColor（采样） --> T
+    subgraph RP2["swapchain pass：Tonemap+ImGui"]
+        T["Tonemap"] --> G["ImGui"]
+    end
 ```
 
 - **FrameConstants**：视图、投影、天空盒逆矩阵、阴影矩阵、相机位置、点光源、方向光、阴影参数、IBL 参数，每帧写进动态 uniform 环，通过 set 0 的动态偏移绑定。
-- **阴影按需重绘**：阴影图只在首次、方向光方向变化、场景版本变化、阴影开关变化时重绘。阴影图跨帧保留内容，靠队列顺序和 render pass dependency 保护在途帧。
+- **RenderView**（`RenderView.hpp`）：节点 `Execute` 的每帧输入，包括场景、设置、frame set 及其动态偏移、是否在着色器里编码 sRGB。同一个头文件定义图资源名（`ShadowMap`、`HdrColor`、`SceneDepth`、`Backbuffer`）。
+- **阴影按需重绘**：`ShadowPass::Prepare` 比较阴影开关、方向光方向和场景版本，只在首次和这些条件变化时让 `IsActive()` 返回 true。阴影图由 `ShadowPass` 持有并导入图，跳过的帧保留旧内容；图因此把它的深度推导为 store + `sampleDepth`。
+- **关闭 Shadow 节点**：导入的阴影图不会因为节点被禁用而失效，Forward 仍然可以读到它最后一次的内容。所以 `Renderer` 用 `FrameGraph::IsScheduled("Shadow")` 决定 `shadowParams.x`：节点没有被调度时不采样阴影，否则会显示不再跟随光源和场景的旧阴影。重新启用后，如果期间光源或场景变了，`Prepare` 会触发重绘。
 - **阴影视锥**：`FitShadowView` 用正交投影贴合场景包围盒（四周外扩 2 个 texel，供 3×3 PCF 使用），与相机投影一样翻转 Y，所以沿用前向 pass 的绕序和剔除规则。
-- **Forward pass**：一个 render pass 里先画所有 draw（已排好序：不透明在前，MASK 在后），再画天空盒（深度测试 `LESS_OR_EQUAL`、不写深度，只填仍在远平面的像素）。
+- **Forward render pass**：Forward 先画所有 draw（已排好序：不透明在前，MASK 在后），然后天空盒（深度测试 `LESS_OR_EQUAL`、不写深度，只填仍在远平面的像素），最后画调试线。场景深度之后没有读者，所以 store 为 `DONT_CARE`。
 - **Swapchain pass**：Tonemap 用全屏三角形采样 HDR 目标，做曝光和 Uncharted 2 曲线；表面不是 sRGB 格式时在着色器里编码 sRGB。ImGui 画在同一个 pass 里。
 
 ### 5.2 描述符与常量约定
 
-C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang`（以及 `Tonemap.slang` 的 `TonemapConstants`）一一对应，结构名和成员名两边相同。构建时 `cmake/GenerateShaderLayouts.cmake` 用 `slangc -reflection-json` 编译探针着色器（`Pbr.slang@FragmentMain`、`Tonemap.slang@FragmentMain`），由 `ShaderLayoutsScript.cmake` 生成 `ShaderLayoutChecks.generated.hpp`：对每个结构的 `sizeof`，以及每个成员的 `offsetof` 和 `sizeof` 生成 `static_assert`，在 `render/ShaderLayoutChecks.cpp` 中编译。任何一边改了布局而另一边没跟上，都会编译失败。
+C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang`（以及 `Tonemap.slang` 的 `TonemapConstants`、`DebugLine.slang` 的 `DebugLineConstants`）一一对应，结构名和成员名两边相同。构建时 `cmake/GenerateShaderLayouts.cmake` 用 `slangc -reflection-json` 编译探针着色器（`Pbr.slang@FragmentMain`、`Tonemap.slang@FragmentMain`、`DebugLine.slang@FragmentMain`），由 `ShaderLayoutsScript.cmake` 生成 `ShaderLayoutChecks.generated.hpp`：对每个结构的 `sizeof`，以及每个成员的 `offsetof` 和 `sizeof` 生成 `static_assert`，在 `render/ShaderLayoutChecks.cpp` 中编译。任何一边改了布局而另一边没跟上，都会编译失败。
 
 | 位置 | 内容 | 更新频率 |
 | --- | --- | --- |
@@ -430,12 +446,16 @@ C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang`（以及
 
 ### 5.3 Pass 一览
 
-| Pass | 输出 | 管线变体 | 说明 |
+| Pass | 图中的访问 | 管线变体 | 说明 |
 | --- | --- | --- | --- |
-| `ShadowPass` | D16 2048²，`sampleDepth` | `{MASK, 双面, 镜像}` 共 8 种，场景加载后按需预热 | 静态深度偏移（常量 1.25、斜率 1.75）；MASK 材质只额外绑定 UV 流和材质 set 做裁剪 |
-| `ForwardPbrPass` | HDR RGBA16F + 场景深度 | `PipelineKeyBits` 的 16 种组合（MASK、双面、镜像、有切线），场景加载后按需预热 | 点光源、带阴影的方向光、split sum IBL；按管线和材质切换时才重新绑定 |
-| `SkyboxPass` | 同 Forward（同一个 pass 内） | 1 个 | 采样镜面立方体 mip 0 |
-| `TonemapPass` | swapchain | 1 个 | 自带 set（layout 由着色器反射生成）和采样器；HDR 目标重建后必须重新 `SetInput` |
+| `ShadowPass` | 导入自己持有的 D16 2048² 阴影图，深度附件 Clear | `{MASK, 双面, 镜像}` 共 8 种，场景加载后按需预热 | 按需重绘（5.1）；静态深度偏移（常量 1.25、斜率 1.75）；MASK 材质只额外绑定 UV 流和材质 set 做裁剪 |
+| `ForwardPbrPass` | 创建 `HdrColor`（RGBA16F）和 `SceneDepth`，都 Clear；以 `PixelShaderResource` 读 `ShadowMap` | `PipelineKeyBits` 的 16 种组合（MASK、双面、镜像、有切线），场景加载后按需预热 | 点光源、带阴影的方向光、split sum IBL；按管线和材质切换时才重新绑定 |
+| `SkyboxPass` | Load `HdrColor`、`SceneDepth` | 1 个 | 采样镜面立方体，与 Forward 合并 |
+| `DebugDrawPass` | Load `HdrColor`、`SceneDepth` | 1 个（`LINE_LIST`） | 画 `DebugDraw` 的线（5.9）；没有线时 `IsActive()` 为 false |
+| `TonemapPass` | 以 `PixelShaderResource` 读 `HdrColor`；backbuffer 颜色附件 DontCare | 1 个 | 自带 set（layout 由着色器反射生成）和采样器；`OnCompiled` 里把 set 指向新的 HDR 纹理 |
+| `ImGuiPass`（`ImGuiLayer.hpp`） | Load backbuffer | imgui 后端自带 | 包装 `ImGuiLayer::Render`；没有 layer 或 layer 未就绪时不活跃 |
+
+各 pass 的管线在 `OnCompiled` 中按图给出的 `RenderPassOutput` 创建；Vulkan 的 render pass 兼容性只看附件格式，不看 load/store，所以只有格式变化（`IsRenderPassCompatible` 为 false）时才重建。
 
 管线变体的含义：`kPipelineKeyMirrored` 表示节点变换行列式为负，glTF 要求此时翻转绕序；`kPipelineKeyTangents` 选择带第 4 个顶点流的顶点着色器，没有切线时着色器用导数构建切线空间。
 
@@ -479,7 +499,86 @@ graph LR
 ### 5.7 其他
 
 - **Camera**：右手坐标系，Y 朝上，yaw 0 / pitch 0 看向 -Z。视图矩阵是 `Rx(-pitch) · Ry(-yaw) · T(-position)`：|pitch| < 90° 时与 +Y 朝上的 lookAt 相同，超过时继续翻过顶（轨道模式需要）。投影输出 Vulkan 裁剪空间（深度 [0, 1]，Y 向下），Y 翻转后 glTF 的逆时针正面在屏幕上仍是逆时针。
-- **ImGuiLayer**：使用 imgui 官方的 SDL3 和 Vulkan 后端，画进 swapchain pass。字体按显示缩放设置；后端自己创建描述符池；`EndFrame` 在录制之前调用，这样丢弃一帧时可以安全跳过 `Render`。
+- **ImGuiLayer**：使用 imgui 官方的 SDL3 和 Vulkan 后端，由图节点 `ImGuiPass` 画进 swapchain pass（后端按 `GetSwapchainOutput()` 初始化）。字体按显示缩放设置；后端自己创建描述符池；`EndFrame` 在录制之前调用，这样丢弃一帧时可以安全跳过 `Render`。
+
+### 5.8 Frame Graph
+
+`render/graph/FrameGraph.*` 参照 Raptor 第 4、5 章：节点声明资源，由图负责排序、剔除、复用纹理、生成 render pass 和 barrier。实现建立在 RHI 现有机制之上：`RenderPassOutput` 缓存、`Texture::state` 跟踪、`ExecutionBarrier`、`BindPass` 的附件 barrier、延迟销毁。
+
+**数据模型**
+
+- **节点**：`FrameGraphPass` 子类，图不拥有它。`AddPass(name, Graphics | Compute, pass, enabled)` 注册节点，注册顺序就是执行顺序。
+  - `Setup(builder)`：只做声明，每次 `Compile()` 都会调用，被禁用的节点也一样。
+  - `Execute(context)`：录制命令。`context` 携带 `CommandBuffer`、本节点的 `FrameGraphResources` 和 `RenderView`。
+  - `IsActive()`：每帧检查。不活跃的节点连同它的 barrier 一起跳过，它写的纹理保留旧内容。
+  - `OnCompiled(resources)`：每次编译后回调，纹理和 render pass 可能已经重建，节点在这里重建管线或描述符集。
+- **资源**：按名字引用，`FrameGraphResourceId` 在下次编译前有效。
+  - `CreateTexture(name, desc)`：瞬时纹理，图负责创建。尺寸可以固定，也可以是 swapchain 尺寸乘 `scale`。只有创建它的节点被调度时才可用。
+  - `ImportTexture` / `ImportBuffer(name, handle, initialState)`：外部资源，内容跨帧保留。
+  - `ImportBackbuffer`：当前 swapchain 图像，映射到 `GetSwapchainPass()`。
+- **访问**：
+  - `ColorAttachment(name, op, clearColor)` / `DepthAttachment(name, op, clearDepth)`：颜色附件按声明顺序占用槽位。
+  - `Read` / `Write` / `ReadWrite(name, ResourceState)`：非附件访问。`Write` 表示丢弃旧内容，不依赖前面的写入者。
+  - `ReadOptional`：生产者被禁用时节点照常执行，此时 `GetTexture` / `GetBuffer` 返回无效句柄。
+  - `SetSideEffect()`：没有读者时也保留该节点。
+  - 纹理用途由访问推导：附件 → `kTextureFlagRenderTarget`，`UnorderedAccess` → `kTextureFlagStorage`，后者同时检查 `SupportsStorageImage`。
+
+**编译**（`Compile()`，在启动、resize、`SetEnabled`、`SetAliasingEnabled` 之后执行；`NeedsCompile()` 比较脏标记、swapchain 尺寸和格式）：
+
+```mermaid
+graph LR
+    A["延迟销毁旧纹理和 RenderPass<br/>调用所有 Setup"] --> B["校验声明"]
+    B --> C["可用性：禁用节点的瞬时纹理不可用<br/>依赖它的节点跳过"]
+    C --> D["读前未写检查<br/>首个写者的 Load 改为 Clear"]
+    D --> E["反向剔除<br/>合并 render pass"]
+    E --> F["生命周期<br/>纹理复用、创建"]
+    F --> G["推导 store / sampleDepth<br/>创建 RenderPass"]
+    G --> H["调试快照、INFO 摘要<br/>OnCompiled"]
+```
+
+- **顺序与环**：依赖总是指向更早注册的写入者，结构上不会有环，所以不需要拓扑排序。本帧第一个写入者之前读取瞬时纹理属于声明错误。
+- **剔除**：从写 backbuffer 的节点和声明了 side effect 的节点出发，沿“读 → 最近一个写入者”的关系反向标记，没被标记到的活跃节点剔除。
+- **声明错误**（资源不存在、附件格式与槽位不符、附件尺寸不一致、compute 节点挂附件、`Read` 带写状态、读前未写等）：定义 `MENGINE_ENABLE_VALIDATION_LAYERS` 时抛异常，否则记 ERROR 并跳过出错的节点（与阶段 1 的 D3 一致）。用户关掉某个节点不算错误，依赖它的节点显示为 `skipped`。
+- **load/store**：
+  - 附件 load 用节点声明的操作；本帧还没有写入者时，`Load` 自动改成 `Clear`。导入的纹理跨帧保留内容，不做这项改写。
+  - 深度只在后面还有节点访问它，或它是导入纹理时才 store。后面有节点以着色器资源读它时，再加上 `sampleDepth`，结束布局设为 `SHADER_READ_ONLY`。
+  - 结果：`ShadowMap` 为 store + sampled，`SceneDepth` 为 `DONT_CARE`。
+- **合并 render pass**：相邻、都已调度的图形节点同时满足以下条件时，共用一个 `RenderPass`：
+  - 附件集合（含槽位顺序）完全相同；
+  - 后加入的节点所有附件都是 `Load`；
+  - 后加入的节点不以非附件方式访问组内的附件，也不与组内节点对同一资源构成写依赖；
+  - 中间没有 compute 节点。
+
+  组名用 `+` 连接成员名，例如 `Forward+Skybox+DebugDraw`。
+- **纹理复用**：按执行顺序计算每个瞬时纹理的首次和末次使用位置，合并组内的所有节点按整组的范围计算。格式、尺寸、用途标志都相同且生命周期不重叠的纹理共用同一个 `TextureHandle`，复用时不保留旧内容：首个写入者是 Clear/DontCare，RHI 的状态跟踪会插入 WAR barrier。当前两个瞬时纹理格式不同，所以实际没有复用；`SetAliasingEnabled(false)` 可以关闭复用。
+- **Backbuffer**：图不为它创建 `RenderPass`，直接使用 swapchain pass 和 `Swapchain` 按图像提供的 framebuffer。
+
+**执行**（`Execute(commandBuffer, view)`，每帧只遍历编译好的调度表）：
+
+- **compute 节点**：不活跃就跳过；否则先插 barrier，再执行 `PushTimestamp(name)` → `Execute` → `PopTimestamp`，全程在 render pass 之外。
+- **render pass 组**：
+  1. 先算出本帧哪些成员活跃，全部不活跃时整组跳过。
+  2. 把活跃成员的非附件 barrier 录在 `BindPass` 之前。
+  3. 按槽位设置清除值（`SetClearColor(slot)` / `SetClearDepth`），然后 `PushTimestamp(组名)`、`BindPass`。
+  4. 组内有多个节点时，每个活跃节点再嵌套一层同名计时；不活跃的成员只跳过它的 `Execute`。
+  5. 最后 `EndPass`。
+- **纹理 barrier**：一个节点的所有非附件访问合成一个 `ExecutionBarrier`，旧状态取 RHI 跟踪的状态，只读到只读子集的项由 RHI 丢弃。超过 `kMaxBarriersPerBatch`（8）项时分批提交。附件之间的同步仍由 subpass dependency 和 `BindPass` 负责，图不重复插 barrier。
+- **buffer barrier**：RHI 不跟踪 buffer 状态，由图为每个导入 buffer 记录最后一次的 `ResourceState`，生成带新旧两端的 `BufferBarrier`。这份状态跨帧、跨编译保留。
+- **开销**：每帧不分配内存，也不做哈希查找。
+
+**调试**：`GetDebugInfo()` 返回最近一次编译的快照，包括节点（状态、所属 render pass）、资源（种类、格式、尺寸、生命周期、物理纹理）、render pass（load/store 摘要）和编译次数。查看器的 Frame Graph 面板显示这些信息，可以切换节点的 `enabled`（`ImGui` 节点除外）和纹理复用。
+
+### 5.9 调试绘制
+
+`DebugDraw` 在 CPU 上收集线段：`Line`、`Aabb`、`Sphere`（XY、XZ、YZ 三个大圆，每个 32 段）、`Frustum`（对 view-projection 求逆得到 8 个角点，深度范围 0..1）。
+
+- **顶点格式**：`DebugVertex{vec3 position; uint32 RGBA8}`，16 字节。颜色是 sRGB 编码的 8 位值，与 UI 颜色一致。
+- **容量**：每帧最多 `kMaxLines` = 64K 条。超出的线丢弃，只 WARN 一次。CPU 端数组一次性预留，每帧不分配内存。
+- **上传**：`Renderer::Render` 调用 `Upload()`，把线复制进动态顶点缓冲中当前帧槽的那一段（每段 2 MB，共两段），再调用 `FlushBuffer`。录制完成后 `Clear()`。所以在 `Render` 之前任何时候都可以加线，包括 `BeginFrame` 之前。
+- **绘制**：`DebugDrawPass` 用 `LINE_LIST` 管线，开深度测试（`LESS_OR_EQUAL`），不写深度。set 0 复用 frame set 读取 `viewProjection`。
+- **颜色补偿**：push constant `DebugLineConstants{exposure}`。片元着色器先把颜色转到线性，再解析求逆 Tonemap 的 Uncharted 2 曲线，最后除以曝光，所以 tonemap 之后线条显示的就是给定颜色（白点附近的饱和区除外）。
+- **为什么放在 Skybox 之后**：线不写深度。如果先画线，远平面上的天空会把线覆盖掉。
+- **内置开关**：`RenderSettings::debugSceneBounds`（场景包围盒，黄色）和 `debugShadowFrustum`（阴影正交视锥，橙色），由查看器 Debug 面板控制，默认关闭。外部代码可以通过 `Renderer::GetDebugDraw()` 自己加线。
 
 ## 6. 资源与着色器管线
 
@@ -504,7 +603,7 @@ graph LR
 - 新增入口需要在 `CMakeLists.txt` 里加一行 `MEngineCompileShader(<源文件> <入口>)`。`common/*.slang` 的变化会触发所有着色器重编。
 - 运行时用 `rhi::LoadSpirvAsset` 读取，交给 `ShaderStateCreation::AddStage`。`CreatePipeline` 会用 SPIRV-Reflect 反射这些 SPIR-V 并校验接口（4.12）。
 - C++ 常量结构的布局在构建时与 Slang 比对（5.2）；新增需要镜像的结构时，把它加进 `CMakeLists.txt` 里 `MEngineGenerateShaderLayoutChecks` 的 `STRUCTS`，必要时补一个探针。
-- 当前着色器：`Pbr`（`VertexMain`、`VertexMainTangent`、`FragmentMain`）、`Shadow`（`VertexMain`、`VertexMainMask`、`FragmentMask`）、`Skybox`、`Tonemap`；公共头 `Bindings`、`Brdf`、`ShadowSampling`。
+- 当前着色器：`Pbr`（`VertexMain`、`VertexMainTangent`、`FragmentMain`）、`Shadow`（`VertexMain`、`VertexMainMask`、`FragmentMask`）、`Skybox`、`Tonemap`、`DebugLine`；公共头 `Bindings`、`Brdf`、`ShadowSampling`。
 
 ### 6.3 IblBaker
 
@@ -544,17 +643,23 @@ graph LR
 **新增一个图形 pass**：
 
 1. 在 `source/shaders/` 写 Slang 文件，在 `CMakeLists.txt` 注册每个入口。
-2. 在 `render/passes/` 新建类，实现 `Init`（加载 SPIR-V、创建 layout/管线/需要的纹理和 `RenderPass`）、`Record`、`Shutdown`。管线的 `renderPass` 字段用目标 pass 的 `RenderPassOutput`。私有 set 的 layout 可以用 `ReflectShaderState` + `BuildDescriptorSetLayout` 从着色器生成；有多个变体的 pass 提供 `WarmPipelines`，在场景加载后预热。
-3. 在 `Renderer` 里持有它，在 `Init / Shutdown / Render` 中调用；如果用到窗口尺寸的目标，记得在 swapchain 尺寸变化时调用 `ResizeOutputTextures` 并更新引用它的描述符集。
+2. 在 `render/passes/` 新建一个继承 `FrameGraphPass` 的类：
+   - `Init`：加载 SPIR-V，创建 layout 和采样器。私有 set 的 layout 可以用 `ReflectShaderState` + `BuildDescriptorSetLayout` 从着色器生成。
+   - `Setup`：声明附件和读取，资源名放在 `RenderView.hpp`。窗口尺寸的目标用 `CreateTexture`，`width = 0` 表示跟随 swapchain。
+   - `OnCompiled`：用 `resources.GetRenderPassOutput()` 创建管线（输出不兼容时才重建），用 `GetTexture` 更新描述符集。
+   - `Execute`：录制绘制，每帧数据从 `context.view` 取。
+   - 每帧决定是否执行的 pass 覆写 `IsActive`；有多个变体的 pass 提供 `WarmPipelines`，在场景加载后预热。
+3. 在 `Renderer` 里持有它，在 `Init` 中按执行顺序 `AddPass`，在 `Shutdown` 中调用它的 `Shutdown`（在 `m_graph.Shutdown()` 之后）。不需要处理 resize：图会重建纹理并回调 `OnCompiled`。相邻且附件相同、全部 `Load` 的 pass 会自动合并成同一个 render pass。
 4. 如果需要新的每帧数据，同时修改 `RenderTypes.hpp` 和 `Bindings.slang`，成员同名；构建时的布局校验会发现不一致。
 
 **新增一个 compute pass**：
 
-1. Slang 入口标注 `[shader("compute")]`，storage image 声明 `[format(...)]`（避免依赖 `shaderStorageImageWriteWithoutFormat`）。
-2. layout 的绑定阶段写 `VK_SHADER_STAGE_COMPUTE_BIT`；storage image 的纹理用 `kTextureFlagStorage` 创建，先用 `SupportsStorageImage` 检查格式。
-3. 在 render pass 之外录制：`TextureBarrier(..., kResourceStateUnorderedAccess)` → `BindPipeline` → `BindDescriptorSet` → `Dispatch` → 按下一个使用者写 barrier（例如 `BufferBarrier(..., UnorderedAccess, IndirectArgument)`）。被后续 render pass 当作附件的纹理不需要手动 barrier，`BindPass` 会处理。
+1. Slang 入口标注 `[shader("compute")]`，storage image 声明 `[[vk::image_format(...)]]`（避免依赖 `shaderStorageImageRead/WriteWithoutFormat`）。
+2. layout 的绑定阶段写 `VK_SHADER_STAGE_COMPUTE_BIT`。
+3. 以 `FrameGraphNodeType::Compute` 注册。在 `Setup` 里用 `Read` / `Write` / `ReadWrite` 声明访问，例如 `ReadWrite(name, kResourceStateUnorderedAccess)`；外部 buffer 先 `ImportBuffer`。图会给瞬时纹理加上 `kTextureFlagStorage`（并检查格式），在节点执行前插入纹理和 buffer barrier，后续使用者的 barrier 也由图生成。
+4. `Execute` 里只需 `BindPipeline` → `BindDescriptorSet` → `Dispatch`。不在图里的 compute 工作仍可以像以前一样手写 barrier（4.8）。
 
-**后续路线**（第 2–15 章的集成顺序与进度见 [`Roadmap.md`](Roadmap.md)）：阶段 0 剩余（设备能力分级、CPU 视锥剔除）→ ~~第 2 章 pipeline cache 与着色器反射~~（已完成）→ 第 4 章 Frame Graph（基于 `VkRenderPass`）→ 第 3 章多线程 → 第 11 章 TAA → 第 7 章 clustered forward → 第 8 章点光源阴影 → 第 10 章体积雾 → 第 6 章 GPU 剔除与 indirect → 第 5 章异步计算 → 桌面专属的第 9、12–15 章。
+**后续路线**（第 2–15 章的集成顺序与进度见 [`Roadmap.md`](Roadmap.md)）：阶段 0 剩余（设备能力分级、CPU 视锥剔除）→ ~~第 2 章 pipeline cache 与着色器反射~~（已完成）→ ~~第 4、5 章 Frame Graph 与调试绘制~~（已完成）→ 第 3 章多线程 → 第 11 章 TAA（含 Frame Graph 历史资源）→ 第 7 章 clustered forward → 第 8 章点光源阴影 → 第 10 章体积雾 → 第 6 章 GPU 剔除与 indirect → 第 5 章异步计算 → 桌面专属的第 9、12–15 章。
 
 ## 11. 当前限制
 
@@ -563,4 +668,6 @@ graph LR
 - 场景加载同步阻塞；所有工作在单一图形队列上。
 - 描述符没有数组和 bindless；每个 `DescriptorSetCreation` 最多 16 个资源，每个管线最多 4 个 set layout、3 个着色器阶段，最多 4 个颜色附件。
 - 管线变体仍在主线程同步创建（场景加载时预热，命中 pipeline cache 时很快），没有后台编译。
+- Frame Graph 没有跨帧历史资源（阶段 4 随 TAA 加入）、没有图内瞬时 buffer（阶段 8）；纹理复用只在描述完全相同的纹理之间进行，没有内存级别名；所有节点在单一图形队列上顺序执行。
+- 调试线只在 CPU 端生成（每帧最多 64K 条），没有 GPU 端画线和调试网格。
 - 只能运行在支持 Vulkan 1.1 的设备上，尚未针对更高版本启用任何可选能力。
