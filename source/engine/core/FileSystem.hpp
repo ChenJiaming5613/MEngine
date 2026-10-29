@@ -12,7 +12,8 @@ namespace mengine {
 // Asset paths are relative to the staged asset root: APK assets on Android, <exe dir>/assets on desktop.
 std::string ResolveAssetPath(std::string_view relativePath);
 
-// Reads a file through SDL so APK assets work too. Logs and returns nullopt on failure.
+// Reads a file through SDL so APK assets work too. Logs and returns nullopt on failure. Thread safe once the first file
+// has been read on the main thread: on Android SDL creates its asset manager lazily, without a lock.
 std::optional<std::vector<uint8_t>> ReadFileBytes(const std::string& resolvedPath);
 std::optional<std::vector<uint8_t>> ReadAssetFile(std::string_view relativePath);
 

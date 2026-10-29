@@ -34,6 +34,7 @@ include(ImGui)
 include(ImGuiNodeEditor)
 include(TinyGltf)
 include(SpirvReflect)
+include(EnkiTS)
 include(GenerateShaderLayouts)
 
 set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -88,7 +89,7 @@ target_link_libraries(MEngineCore PUBLIC
     glm::glm
     tinygltf3
 )
-target_link_libraries(MEngineCore PRIVATE spirv_reflect)
+target_link_libraries(MEngineCore PUBLIC enkiTS PRIVATE spirv_reflect)
 
 # render/ShaderLayoutChecks.cpp includes the generated static_asserts, so layout drift between RenderTypes.hpp and Slang
 # fails the build.

@@ -25,6 +25,9 @@ bool Application::Initialize(const WindowCreation& windowCreation)
     {
         return false;
     }
+    // One thread is the main thread, which also runs tasks while it waits for them.
+    m_tasks.Initialize();
+    m_tasksRunning = true;
 
     try
     {
@@ -53,6 +56,12 @@ void Application::Shutdown()
     catch (const std::exception& error)
     {
         MENGINE_LOG_ERROR("Shutdown failed: %s", error.what());
+    }
+    // OnShutdown has waited for (or cancelled) its own tasks; this only joins the worker threads.
+    if (m_tasksRunning)
+    {
+        m_tasks.WaitforAllAndShutdown();
+        m_tasksRunning = false;
     }
     m_initialized = false;
     m_window.Destroy();

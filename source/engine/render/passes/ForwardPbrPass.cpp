@@ -154,9 +154,10 @@ void ForwardPbrPass::Execute(FrameGraphContext& context)
         const uint32_t streamCount = primitive.hasTangents ? kVertexStreamCount : kVertexStreamTangent;
         for (uint32_t stream = 0; stream < streamCount; ++stream)
         {
-            commandBuffer.BindVertexBuffer(primitive.vertexBuffers[stream], stream, primitive.vertexOffsets[stream]);
+            commandBuffer.BindVertexBuffer(
+                scene.buffers[primitive.vertexBuffers[stream]], stream, primitive.vertexOffsets[stream]);
         }
-        commandBuffer.BindIndexBuffer(primitive.indexBuffer, primitive.indexOffset, primitive.indexType);
+        commandBuffer.BindIndexBuffer(scene.buffers[primitive.indexBuffer], primitive.indexOffset, primitive.indexType);
         commandBuffer.PushConstants(&draw.constants, sizeof(DrawConstants));
         commandBuffer.DrawIndexed(primitive.indexCount);
     }

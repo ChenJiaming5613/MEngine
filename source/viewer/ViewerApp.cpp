@@ -95,7 +95,7 @@ protected:
         m_device.Init(deviceCreation);
         m_imGui.Init(m_device, GetWindow());
         m_frameGraphViewer.Init();
-        m_renderer.Init(m_device);
+        m_renderer.Init(m_device, GetTaskScheduler());
         GetInput().SetUiHitTest([this](float x, float y) { return HitsUi(x, y); });
         LoadConfiguredScene();
         return true;
@@ -123,6 +123,20 @@ protected:
             const size_t index = *m_pendingScene;
             m_pendingScene.reset();
             LoadSceneAt(index);
+        }
+        switch (m_renderer.UpdateSceneLoad())
+        {
+        case render::SceneLoadStatus::Finished:
+            // The scene's pipelines were just created (warm-up); persist them.
+            m_device.SavePipelineCache();
+            ResetCameraAndLights();
+            break;
+        case render::SceneLoadStatus::Failed:
+            m_sceneLoadFailed = true;
+            ResetCameraAndLights();
+            break;
+        default:
+            break;
         }
 
         const float cameraStep = static_cast<float>(std::min(deltaSeconds, kMaxCameraStepSeconds));
@@ -205,26 +219,25 @@ private:
         LoadSceneAt(0);
     }
 
-    // Also resets the camera and both lights; without a config only the reset runs.
+    // The camera and both lights are reset when the load finishes; without a config only the reset runs.
     void LoadSceneAt(size_t index)
     {
         const SceneConfig* sceneConfig = m_config && index < m_config->scenes.size() ? &m_config->scenes[index] : nullptr;
-        if (sceneConfig != nullptr)
+        if (sceneConfig == nullptr)
         {
-            m_currentScene = index;
-            MENGINE_LOG_INFO("Loading scene %s (%s)", sceneConfig->name.c_str(), sceneConfig->path.c_str());
-            m_sceneLoadFailed = !m_renderer.LoadScene(sceneConfig->path);
-            if (m_sceneLoadFailed)
-            {
-                MENGINE_LOG_ERROR("Failed to load scene %s; showing an empty scene", sceneConfig->name.c_str());
-            }
-            else
-            {
-                // The scene's pipelines were just created (warm-up); persist them.
-                m_device.SavePipelineCache();
-            }
+            ResetCameraAndLights();
+            return;
         }
+        m_currentScene = index;
+        m_sceneLoadFailed = false;
+        MENGINE_LOG_INFO("Loading scene %s (%s)", sceneConfig->name.c_str(), sceneConfig->path.c_str());
+        m_renderer.RequestScene(sceneConfig->path);
+    }
 
+    void ResetCameraAndLights()
+    {
+        const SceneConfig* sceneConfig =
+            m_config && m_currentScene < m_config->scenes.size() ? &m_config->scenes[m_currentScene] : nullptr;
         const render::Scene& scene = m_renderer.GetScene();
         CameraScene cameraScene;
         cameraScene.hasBounds = scene.HasBounds();
@@ -332,6 +345,18 @@ private:
         if (m_sceneLoadFailed)
         {
             ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "Scene: failed to load (see log)");
+        }
+        else if (m_renderer.IsSceneLoading())
+        {
+            const render::SceneLoadProgress progress = m_renderer.GetSceneLoadProgress();
+            if (progress.parsing)
+            {
+                ImGui::Text("Scene: parsing...");
+            }
+            else
+            {
+                ImGui::Text("Scene: loading textures %zu / %zu", progress.texturesUploaded, progress.textureCount);
+            }
         }
         else
         {

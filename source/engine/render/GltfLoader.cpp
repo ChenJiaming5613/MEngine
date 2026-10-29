@@ -3,9 +3,11 @@
 #include "asset/Bc7Decoder.hpp"
 #include "asset/ImageLoader.hpp"
 #include "asset/Ktx2.hpp"
+#include "core/Assert.hpp"
 #include "core/FileSystem.hpp"
 #include "core/Log.hpp"
 #include "render/DdsFile.hpp"
+#include "render/GltfSceneData.hpp"
 #include "rhi/GpuDevice.hpp"
 
 #include <tiny_gltf_v3.h>
@@ -22,19 +24,35 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
-#include <future>
 #include <limits>
 #include <map>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
 namespace mengine::render {
+
+struct GltfParsedModel
+{
+    tg3_model model{};
+    tg3_error_stack errors{};
+
+    GltfParsedModel() { tg3_error_stack_init(&errors); }
+    ~GltfParsedModel()
+    {
+        tg3_model_free(&model);
+        tg3_error_stack_free(&errors);
+    }
+    GltfParsedModel(const GltfParsedModel&) = delete;
+    GltfParsedModel& operator=(const GltfParsedModel&) = delete;
+};
+
+GltfSceneData::GltfSceneData() = default;
+GltfSceneData::~GltfSceneData() = default;
+
 namespace {
 
 constexpr float kMaxAnisotropy = 8.0f;
@@ -275,21 +293,6 @@ void FreeFileCallback(uint8_t* data, uint64_t /*size*/, void* /*userData*/)
     std::free(data);
 }
 
-struct ParsedModel
-{
-    tg3_model model{};
-    tg3_error_stack errors{};
-
-    ParsedModel() { tg3_error_stack_init(&errors); }
-    ~ParsedModel()
-    {
-        tg3_model_free(&model);
-        tg3_error_stack_free(&errors);
-    }
-    ParsedModel(const ParsedModel&) = delete;
-    ParsedModel& operator=(const ParsedModel&) = delete;
-};
-
 float ReadComponent(const uint8_t* data, int32_t componentType, bool normalized)
 {
     switch (componentType)
@@ -353,34 +356,89 @@ uint32_t ReadIndexComponent(const uint8_t* data, int32_t componentType)
     }
 }
 
+// Buffers are indices into GltfSceneData::buffers.
 struct StreamBinding
 {
-    rhi::BufferHandle buffer;
+    uint32_t buffer = 0;
     VkDeviceSize offset = 0;
 };
 
 struct IndexBinding
 {
-    rhi::BufferHandle buffer;
+    uint32_t buffer = 0;
     VkDeviceSize offset = 0;
     VkIndexType type = VK_INDEX_TYPE_UINT32;
     uint32_t count = 0;
 };
 
-// A texture ready for GpuDevice::CreateTexture, produced on a worker thread.
-struct PreparedTexture
+const uint8_t* BufferViewBytes(const tg3_model& model, int32_t bufferViewIndex, uint64_t* length)
 {
-    std::vector<uint8_t> bytes; // owns the pixel data, which starts at dataOffset
-    size_t dataOffset = 0;
-    size_t dataSize = 0;
-    VkFormat format = VK_FORMAT_UNDEFINED;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t mipLevels = 1; // levels present in the data, or 0 with generateMips
-    bool generateMips = false;
-    bool decodedBc = false; // BC7 decoded on the CPU
-    std::string error;      // non-empty: use a fallback texture
-};
+    if (bufferViewIndex < 0 || static_cast<uint32_t>(bufferViewIndex) >= model.buffer_views_count)
+    {
+        throw GltfError("invalid buffer view " + std::to_string(bufferViewIndex));
+    }
+    const tg3_buffer_view& view = model.buffer_views[bufferViewIndex];
+    if (view.buffer < 0 || static_cast<uint32_t>(view.buffer) >= model.buffers_count)
+    {
+        throw GltfError("buffer view " + std::to_string(bufferViewIndex) + " references invalid buffer");
+    }
+    const tg3_buffer& buffer = model.buffers[view.buffer];
+    if (buffer.data.data == nullptr || view.byte_offset > buffer.data.count ||
+        view.byte_length > buffer.data.count - view.byte_offset)
+    {
+        throw GltfError("buffer view " + std::to_string(bufferViewIndex) + " exceeds buffer " +
+                        std::to_string(view.buffer) + " (" + std::to_string(buffer.data.count) + " bytes loaded)");
+    }
+    *length = view.byte_length;
+    return buffer.data.data + view.byte_offset;
+}
+
+std::optional<std::vector<uint8_t>> ReadImageBytes(const GltfSceneData& data, uint32_t imageIndex, std::string* error)
+{
+    const tg3_model& model = data.model->model;
+    const tg3_image& image = model.images[imageIndex];
+    if (image.buffer_view >= 0)
+    {
+        uint64_t length = 0;
+        const uint8_t* bytes = BufferViewBytes(model, image.buffer_view, &length);
+        return std::vector<uint8_t>(bytes, bytes + length);
+    }
+
+    const std::string_view uri = ToView(image.uri);
+    if (uri.empty())
+    {
+        *error = "image has neither uri nor bufferView";
+        return std::nullopt;
+    }
+    if (uri.substr(0, 5) == "data:")
+    {
+        const size_t comma = uri.find(',');
+        if (comma == std::string_view::npos || uri.substr(0, comma).find(";base64") == std::string_view::npos)
+        {
+            *error = "unsupported data URI (only base64 is supported)";
+            return std::nullopt;
+        }
+        std::optional<std::vector<uint8_t>> bytes = DecodeBase64(uri.substr(comma + 1));
+        if (!bytes)
+        {
+            *error = "invalid base64 data URI";
+        }
+        return bytes;
+    }
+
+    const std::string relative = PercentDecode(uri);
+    if (!IsSafeRelativePath(relative))
+    {
+        *error = "image uri '" + relative + "' leaves the asset directory";
+        return std::nullopt;
+    }
+    std::optional<std::vector<uint8_t>> bytes = ReadAssetFile(JoinPath(data.baseDirectory, relative));
+    if (!bytes)
+    {
+        *error = "cannot read '" + JoinPath(data.baseDirectory, relative) + "'";
+    }
+    return bytes;
+}
 
 bool IsDds(std::span<const uint8_t> bytes)
 {
@@ -493,33 +551,24 @@ void PrepareEncodedImage(PreparedTexture& prepared, bool srgb)
     prepared.generateMips = true;
 }
 
-struct TextureBinding
-{
-    rhi::TextureHandle texture;
-    rhi::SamplerHandle sampler;
-};
-
-class GltfSceneBuilder
+// Turns the tinygltf model into GltfSceneData. CPU only: must never touch the GPU, it may run on a worker thread.
+class GltfSceneParser
 {
 public:
-    GltfSceneBuilder(rhi::GpuDevice& device, const tg3_model& model, std::string assetPath,
-        rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene)
-        : m_device(device)
-        , m_model(model)
-        , m_path(std::move(assetPath))
-        , m_baseDirectory(ParentPath(m_path))
-        , m_materialLayout(materialLayout)
-        , m_scene(scene)
+    explicit GltfSceneParser(GltfSceneData& data)
+        : m_model(data.model->model)
+        , m_data(data)
+        , m_path(data.path)
     {
     }
 
-    void Build()
+    void Parse()
     {
         WarnAboutExtensions();
-        LoadTextures();
-        CreateMaterials();
-        CreatePrimitives();
-        CreateDraws();
+        CollectTextureRequests();
+        ParseMaterials();
+        ParsePrimitives();
+        ParseDraws();
     }
 
 private:
@@ -534,24 +583,7 @@ private:
 
     const uint8_t* BufferViewData(int32_t bufferViewIndex, uint64_t* length) const
     {
-        if (bufferViewIndex < 0 || static_cast<uint32_t>(bufferViewIndex) >= m_model.buffer_views_count)
-        {
-            throw GltfError("invalid buffer view " + std::to_string(bufferViewIndex));
-        }
-        const tg3_buffer_view& view = m_model.buffer_views[bufferViewIndex];
-        if (view.buffer < 0 || static_cast<uint32_t>(view.buffer) >= m_model.buffers_count)
-        {
-            throw GltfError("buffer view " + std::to_string(bufferViewIndex) + " references invalid buffer");
-        }
-        const tg3_buffer& buffer = m_model.buffers[view.buffer];
-        if (buffer.data.data == nullptr || view.byte_offset > buffer.data.count ||
-            view.byte_length > buffer.data.count - view.byte_offset)
-        {
-            throw GltfError("buffer view " + std::to_string(bufferViewIndex) + " exceeds buffer " +
-                            std::to_string(view.buffer) + " (" + std::to_string(buffer.data.count) + " bytes loaded)");
-        }
-        *length = view.byte_length;
-        return buffer.data.data + view.byte_offset;
+        return BufferViewBytes(m_model, bufferViewIndex, length);
     }
 
     const tg3_accessor& Accessor(int32_t index) const
@@ -683,20 +715,28 @@ private:
         return indices;
     }
 
-    rhi::BufferHandle CreateBuffer(VkBufferUsageFlags usage, const void* data, VkDeviceSize size, const std::string& name)
+    uint32_t AddBuffer(GltfBufferData buffer)
     {
-        rhi::BufferCreation creation;
-        creation.usage = usage;
-        creation.size = size;
-        creation.initialData = data;
-        creation.name = name.c_str();
-        const rhi::BufferHandle buffer = m_device.CreateBuffer(creation);
-        m_scene.buffers.push_back(buffer);
-        return buffer;
+        m_data.buffers.push_back(std::move(buffer));
+        return static_cast<uint32_t>(m_data.buffers.size() - 1);
+    }
+
+    template <typename T>
+    uint32_t AddConvertedBuffer(VkBufferUsageFlags usage, const std::vector<T>& values, std::string name)
+    {
+        GltfBufferData buffer;
+        buffer.usage = usage;
+        buffer.name = std::move(name);
+        buffer.convertedBytes.resize(values.size() * sizeof(T));
+        if (!values.empty())
+        {
+            std::memcpy(buffer.convertedBytes.data(), values.data(), buffer.convertedBytes.size());
+        }
+        return AddBuffer(std::move(buffer));
     }
 
     // A glTF buffer view becomes one GPU buffer, shared by every tightly packed accessor inside it.
-    rhi::BufferHandle BufferViewBuffer(int32_t bufferViewIndex)
+    uint32_t BufferViewBuffer(int32_t bufferViewIndex)
     {
         const auto it = m_bufferViewBuffers.find(bufferViewIndex);
         if (it != m_bufferViewBuffers.end())
@@ -705,10 +745,13 @@ private:
         }
         uint64_t length = 0;
         const uint8_t* data = BufferViewData(bufferViewIndex, &length);
-        const rhi::BufferHandle buffer = CreateBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            data, length, "glTF bufferView " + std::to_string(bufferViewIndex));
-        m_bufferViewBuffers.emplace(bufferViewIndex, buffer);
-        return buffer;
+        GltfBufferData buffer;
+        buffer.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        buffer.name = "glTF bufferView " + std::to_string(bufferViewIndex);
+        buffer.modelBytes = std::span<const uint8_t>(data, static_cast<size_t>(length));
+        const uint32_t index = AddBuffer(std::move(buffer));
+        m_bufferViewBuffers.emplace(bufferViewIndex, index);
+        return index;
     }
 
     StreamBinding AcquireFloatStream(int32_t accessorIndex, uint32_t components, uint64_t vertexCount, const char* name)
@@ -730,22 +773,18 @@ private:
             return {BufferViewBuffer(accessor.buffer_view), accessor.byte_offset};
         }
         const std::vector<float> values = ReadFloats(accessorIndex, components);
-        return {CreateBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, values.data(), values.size() * sizeof(float),
-                    std::string("glTF ") + name),
-            0};
+        return {AddConvertedBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, values, std::string("glTF ") + name), 0};
     }
 
     StreamBinding CreateFloatStream(const std::vector<float>& values, const char* name)
     {
-        return {CreateBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, values.data(), values.size() * sizeof(float),
-                    std::string("glTF ") + name),
-            0};
+        return {AddConvertedBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, values, std::string("glTF ") + name), 0};
     }
 
     IndexBinding CreateIndexStream(const std::vector<uint32_t>& indices)
     {
-        return {CreateBuffer(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indices.data(), indices.size() * sizeof(uint32_t), "glTF indices"),
-            0, VK_INDEX_TYPE_UINT32, static_cast<uint32_t>(indices.size())};
+        return {AddConvertedBuffer(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indices, "glTF indices"), 0, VK_INDEX_TYPE_UINT32,
+            static_cast<uint32_t>(indices.size())};
     }
 
     IndexBinding AcquireIndexStream(int32_t accessorIndex, uint64_t vertexCount)
@@ -775,62 +814,14 @@ private:
         {
             // Vulkan 1.1 has no 8 bit indices without an extension.
             const std::vector<uint16_t> converted(indices.begin(), indices.end());
-            return {CreateBuffer(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, converted.data(), converted.size() * sizeof(uint16_t),
-                        "glTF indices"),
-                0, VK_INDEX_TYPE_UINT16, static_cast<uint32_t>(converted.size())};
+            return {AddConvertedBuffer(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, converted, "glTF indices"), 0, VK_INDEX_TYPE_UINT16,
+                static_cast<uint32_t>(converted.size())};
         }
         return CreateIndexStream(indices);
     }
 
-    std::optional<std::vector<uint8_t>> ReadImageBytes(uint32_t imageIndex, std::string* error) const
-    {
-        const tg3_image& image = m_model.images[imageIndex];
-        if (image.buffer_view >= 0)
-        {
-            uint64_t length = 0;
-            const uint8_t* data = BufferViewData(image.buffer_view, &length);
-            return std::vector<uint8_t>(data, data + length);
-        }
-
-        const std::string_view uri = ToView(image.uri);
-        if (uri.empty())
-        {
-            *error = "image has neither uri nor bufferView";
-            return std::nullopt;
-        }
-        if (uri.substr(0, 5) == "data:")
-        {
-            const size_t comma = uri.find(',');
-            if (comma == std::string_view::npos || uri.substr(0, comma).find(";base64") == std::string_view::npos)
-            {
-                *error = "unsupported data URI (only base64 is supported)";
-                return std::nullopt;
-            }
-            std::optional<std::vector<uint8_t>> bytes = DecodeBase64(uri.substr(comma + 1));
-            if (!bytes)
-            {
-                *error = "invalid base64 data URI";
-            }
-            return bytes;
-        }
-
-        const std::string relative = PercentDecode(uri);
-        if (!IsSafeRelativePath(relative))
-        {
-            *error = "image uri '" + relative + "' leaves the asset directory";
-            return std::nullopt;
-        }
-        std::optional<std::vector<uint8_t>> bytes = ReadAssetFile(JoinPath(m_baseDirectory, relative));
-        if (!bytes)
-        {
-            *error = "cannot read '" + JoinPath(m_baseDirectory, relative) + "'";
-        }
-        return bytes;
-    }
-
-    // Collects every (image, color space) pair referenced by a material, prepares them on worker threads (a bounded
-    // window keeps memory in check) and records the uploads into the device's upload batch.
-    void LoadTextures()
+    // Collects every (image, color space) pair a material references, in material order.
+    void CollectTextureRequests()
     {
         auto request = [&](const tg3_texture_info& info, bool srgb) { RequestTexture(info.index, srgb); };
         for (uint32_t i = 0; i < m_model.materials_count; ++i)
@@ -847,104 +838,6 @@ private:
                 RequestTexture(ReadTextureReference(FindMember(specularGlossiness, "diffuseTexture")).index, true);
                 RequestTexture(ReadTextureReference(FindMember(specularGlossiness, "specularGlossinessTexture")).index, true);
             }
-        }
-        if (m_imageRequests.empty())
-        {
-            return;
-        }
-
-        const bool bcSupported = m_device.SupportsTextureCompressionBc();
-        const size_t window = std::max<size_t>(2, std::thread::hardware_concurrency());
-        std::deque<std::future<PreparedTexture>> pending;
-        size_t launched = 0;
-        auto launch = [&]() {
-            const auto [imageIndex, srgb] = m_imageRequests[launched++];
-            PreparedTexture prepared;
-            std::optional<std::vector<uint8_t>> bytes;
-            try
-            {
-                bytes = ReadImageBytes(imageIndex, &prepared.error);
-            }
-            catch (const std::exception& exception)
-            {
-                prepared.error = exception.what();
-            }
-            if (bytes)
-            {
-                prepared.bytes = std::move(*bytes);
-            }
-            const bool hasBytes = bytes.has_value();
-            pending.push_back(std::async(std::launch::async,
-                [prepared = std::move(prepared), hasBytes, srgb, bcSupported]() mutable {
-                    try
-                    {
-                        if (hasBytes)
-                        {
-                            if (IsDds(prepared.bytes))
-                            {
-                                PrepareDds(prepared, srgb, bcSupported);
-                            }
-                            else
-                            {
-                                PrepareEncodedImage(prepared, srgb);
-                            }
-                        }
-                    }
-                    catch (const std::exception& exception)
-                    {
-                        // A bad image (or bad_alloc from its declared size) only costs this texture.
-                        prepared.format = VK_FORMAT_UNDEFINED;
-                        prepared.error = exception.what();
-                    }
-                    return std::move(prepared);
-                }));
-        };
-
-        size_t decodedBcCount = 0;
-        m_imageTextures.resize(m_imageRequests.size());
-        for (size_t i = 0; i < m_imageRequests.size(); ++i)
-        {
-            while (launched < m_imageRequests.size() && launched < i + window)
-            {
-                launch();
-            }
-            PreparedTexture prepared = pending.front().get();
-            pending.pop_front();
-
-            const uint32_t imageIndex = m_imageRequests[i].first;
-            const std::string label = Describe(m_model.images[imageIndex].name, "image", imageIndex);
-            if (prepared.format == VK_FORMAT_UNDEFINED)
-            {
-                MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_path.c_str(), label.c_str(),
-                    prepared.error.empty() ? "no image data" : prepared.error.c_str());
-                continue;
-            }
-            decodedBcCount += prepared.decodedBc ? 1 : 0;
-
-            rhi::TextureCreation creation;
-            creation.width = prepared.width;
-            creation.height = prepared.height;
-            creation.mipLevels = prepared.mipLevels;
-            creation.format = prepared.format;
-            creation.flags = prepared.generateMips ? rhi::kTextureFlagGenerateMips : 0;
-            creation.initialData = prepared.bytes.data() + prepared.dataOffset;
-            creation.initialDataSize = prepared.dataSize;
-            creation.name = label.c_str();
-            try
-            {
-                m_imageTextures[i] = m_device.CreateTexture(creation);
-                m_scene.textures.push_back(m_imageTextures[i]);
-            }
-            catch (const std::exception& exception)
-            {
-                rhi::RethrowIfDeviceUnusable(exception);
-                MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_path.c_str(), label.c_str(), exception.what());
-            }
-        }
-        if (decodedBcCount > 0)
-        {
-            MENGINE_LOG_INFO("%s: the device lacks textureCompressionBC, decoded %zu BC7 textures to RGBA8 (at most %ux%u)",
-                m_path.c_str(), decodedBcCount, kMaxDecodedBcExtent, kMaxDecodedBcExtent);
         }
     }
 
@@ -976,28 +869,30 @@ private:
             return;
         }
         const std::pair<uint32_t, bool> key{static_cast<uint32_t>(image), srgb};
-        if (m_imageRequestIndex.emplace(key, m_imageRequests.size()).second)
+        if (m_requestIndices.emplace(key, m_data.textureRequests.size()).second)
         {
-            m_imageRequests.push_back(key);
+            m_data.textureRequests.push_back(
+                {key.first, srgb, Describe(m_model.images[image].name, "image", static_cast<uint32_t>(image))});
         }
     }
 
-    rhi::SamplerHandle Sampler(int32_t samplerIndex)
+    // Index into GltfSceneData::samplers; an invalid glTF sampler index means glTF's default sampler.
+    int32_t Sampler(int32_t samplerIndex)
     {
         if (samplerIndex < 0 || static_cast<uint32_t>(samplerIndex) >= m_model.samplers_count)
         {
             samplerIndex = -1;
         }
-        const auto it = m_samplers.find(samplerIndex);
-        if (it != m_samplers.end())
+        const auto it = m_samplerIndices.find(samplerIndex);
+        if (it != m_samplerIndices.end())
         {
             return it->second;
         }
 
-        const std::string name = "glTF sampler " + std::to_string(samplerIndex);
-        rhi::SamplerCreation creation;
+        GltfSamplerData data;
+        data.name = "glTF sampler " + std::to_string(samplerIndex);
+        rhi::SamplerCreation& creation = data.creation;
         creation.maxAnisotropy = kMaxAnisotropy;
-        creation.name = name.c_str();
         if (samplerIndex >= 0)
         {
             const tg3_sampler& sampler = m_model.samplers[samplerIndex];
@@ -1046,14 +941,14 @@ private:
             }
         }
 
-        const rhi::SamplerHandle handle = m_device.CreateSampler(creation);
-        m_scene.samplers.push_back(handle);
-        m_samplers.emplace(samplerIndex, handle);
-        return handle;
+        const auto index = static_cast<int32_t>(m_data.samplers.size());
+        m_data.samplers.push_back(std::move(data));
+        m_samplerIndices.emplace(samplerIndex, index);
+        return index;
     }
 
-    // Resolves a material texture slot; an invalid result means "use the device's dummy texture".
-    TextureBinding ResolveTexture(int32_t textureIndex, int32_t texCoord, bool srgb, const std::string& materialLabel)
+    // Resolves a material texture slot; an invalid request means "use the device's dummy texture".
+    GltfTextureSlot ResolveTexture(int32_t textureIndex, int32_t texCoord, bool srgb, const std::string& materialLabel)
     {
         if (textureIndex < 0 || static_cast<uint32_t>(textureIndex) >= m_model.textures_count)
         {
@@ -1070,19 +965,19 @@ private:
         {
             return {};
         }
-        const auto it = m_imageRequestIndex.find({static_cast<uint32_t>(image), srgb});
-        if (it == m_imageRequestIndex.end() || !m_imageTextures[it->second].IsValid())
+        const auto it = m_requestIndices.find({static_cast<uint32_t>(image), srgb});
+        if (it == m_requestIndices.end())
         {
             return {};
         }
-        return {m_imageTextures[it->second], Sampler(texture.sampler)};
+        return {static_cast<int32_t>(it->second), Sampler(texture.sampler)};
     }
 
-    void CreateMaterials()
+    void ParseMaterials()
     {
         for (uint32_t i = 0; i < m_model.materials_count; ++i)
         {
-            CreateMaterial(&m_model.materials[i], i);
+            ParseMaterial(&m_model.materials[i], i);
         }
     }
 
@@ -1090,24 +985,27 @@ private:
     {
         if (!m_defaultMaterial)
         {
-            m_defaultMaterial = static_cast<uint32_t>(m_scene.materials.size());
-            CreateMaterial(nullptr, m_model.materials_count);
+            m_defaultMaterial = static_cast<uint32_t>(m_data.materials.size());
+            ParseMaterial(nullptr, m_model.materials_count);
         }
         return *m_defaultMaterial;
     }
 
     // A null material is the glTF default material (white, fully metallic and rough).
-    void CreateMaterial(const tg3_material* source, uint32_t index)
+    void ParseMaterial(const tg3_material* source, uint32_t index)
     {
-        SceneMaterial material;
+        GltfMaterialData material;
         material.name = source != nullptr ? Describe(source->name, "material", index) : std::string("default material");
 
-        MaterialData data;
-        TextureBinding baseColor;
-        TextureBinding metallicRoughness;
-        TextureBinding normal;
-        TextureBinding occlusion;
-        TextureBinding emissive;
+        MaterialData& data = material.constants;
+        auto slot = [&](MaterialBinding binding) -> GltfTextureSlot& {
+            return material.textures[binding - kMaterialBindingBaseColor];
+        };
+        GltfTextureSlot& baseColor = slot(kMaterialBindingBaseColor);
+        GltfTextureSlot& metallicRoughness = slot(kMaterialBindingMetallicRoughness);
+        GltfTextureSlot& normal = slot(kMaterialBindingNormal);
+        GltfTextureSlot& occlusion = slot(kMaterialBindingOcclusion);
+        GltfTextureSlot& emissive = slot(kMaterialBindingEmissive);
         if (source != nullptr)
         {
             const tg3_pbr_metallic_roughness& pbr = source->pbr_metallic_roughness;
@@ -1141,10 +1039,6 @@ private:
             normal = ResolveTexture(source->normal_texture.index, source->normal_texture.tex_coord, false, material.name);
             occlusion = ResolveTexture(source->occlusion_texture.index, source->occlusion_texture.tex_coord, false, material.name);
             emissive = ResolveTexture(source->emissive_texture.index, source->emissive_texture.tex_coord, true, material.name);
-            if (normal.texture.IsValid())
-            {
-                data.flags |= kMaterialFlagNormalTexture;
-            }
 
             // The extension replaces pbrMetallicRoughness: diffuse goes to the base color slot, specular-glossiness
             // to the metallic-roughness slot (see kMaterialFlagSpecularGlossiness).
@@ -1168,27 +1062,7 @@ private:
                 material.transmissive = ReadFloat(FindMember(transmission, "transmissionFactor"), 0.0f) > 0.0f;
             }
         }
-
-        rhi::BufferCreation bufferCreation;
-        bufferCreation.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        bufferCreation.size = sizeof(MaterialData);
-        bufferCreation.initialData = &data;
-        bufferCreation.name = material.name.c_str();
-        material.uniformBuffer = m_device.CreateBuffer(bufferCreation);
-
-        // Missing textures bind the device's 1x1 white texture: it leaves base color, metallic-roughness, occlusion
-        // and emissive equal to their factors; the normal map is skipped through kMaterialFlagNormalTexture.
-        rhi::DescriptorSetCreation setCreation;
-        setCreation.layout = m_materialLayout;
-        setCreation.name = material.name.c_str();
-        setCreation.AddBuffer(material.uniformBuffer, kMaterialBindingData, sizeof(MaterialData))
-            .AddTexture(baseColor.texture, kMaterialBindingBaseColor, baseColor.sampler)
-            .AddTexture(metallicRoughness.texture, kMaterialBindingMetallicRoughness, metallicRoughness.sampler)
-            .AddTexture(normal.texture, kMaterialBindingNormal, normal.sampler)
-            .AddTexture(occlusion.texture, kMaterialBindingOcclusion, occlusion.sampler)
-            .AddTexture(emissive.texture, kMaterialBindingEmissive, emissive.sampler);
-        material.descriptorSet = m_device.CreateDescriptorSet(setCreation);
-        m_scene.materials.push_back(std::move(material));
+        m_data.materials.push_back(std::move(material));
     }
 
     static int32_t FindAttribute(const tg3_primitive& primitive, std::string_view name)
@@ -1230,7 +1104,7 @@ private:
         }
     }
 
-    void CreatePrimitives()
+    void ParsePrimitives()
     {
         m_meshPrimitives.resize(m_model.meshes_count);
         for (uint32_t meshIndex = 0; meshIndex < m_model.meshes_count; ++meshIndex)
@@ -1241,11 +1115,11 @@ private:
                 const std::string label = Describe(mesh.name, "mesh", meshIndex) + " primitive " + std::to_string(primitiveIndex);
                 try
                 {
-                    std::optional<ScenePrimitive> primitive = CreatePrimitive(mesh.primitives[primitiveIndex], label);
+                    std::optional<ScenePrimitive> primitive = ParsePrimitive(mesh.primitives[primitiveIndex], label);
                     if (primitive)
                     {
-                        m_meshPrimitives[meshIndex].push_back(static_cast<uint32_t>(m_scene.primitives.size()));
-                        m_scene.primitives.push_back(*primitive);
+                        m_meshPrimitives[meshIndex].push_back(static_cast<uint32_t>(m_data.primitives.size()));
+                        m_data.primitives.push_back(*primitive);
                     }
                 }
                 catch (const GltfError& error)
@@ -1256,7 +1130,7 @@ private:
         }
     }
 
-    std::optional<ScenePrimitive> CreatePrimitive(const tg3_primitive& source, const std::string& label)
+    std::optional<ScenePrimitive> ParsePrimitive(const tg3_primitive& source, const std::string& label)
     {
         const int32_t mode = source.mode < 0 ? TG3_MODE_TRIANGLES : source.mode;
         if (mode != TG3_MODE_TRIANGLES)
@@ -1286,7 +1160,7 @@ private:
 
         if (normalAccessor < 0)
         {
-            CreateFlatPrimitive(source, positionAccessor, texCoordAccessor, primitive);
+            ParseFlatPrimitive(source, positionAccessor, texCoordAccessor, primitive);
             return primitive;
         }
 
@@ -1338,7 +1212,7 @@ private:
 
     // glTF 2.0 3.7.2.1: without normals the client must use flat normals and ignore tangents, so the triangles are
     // expanded to unshared vertices.
-    void CreateFlatPrimitive(const tg3_primitive& source, int32_t positionAccessor, int32_t texCoordAccessor,
+    void ParseFlatPrimitive(const tg3_primitive& source, int32_t positionAccessor, int32_t texCoordAccessor,
         ScenePrimitive& primitive)
     {
         const std::vector<float> positions = ReadFloats(positionAccessor, 3);
@@ -1474,8 +1348,8 @@ private:
 
     void AddDraw(uint32_t primitiveIndex, const glm::mat4& world)
     {
-        const ScenePrimitive& primitive = m_scene.primitives[primitiveIndex];
-        const SceneMaterial& material = m_scene.materials[primitive.material];
+        const ScenePrimitive& primitive = m_data.primitives[primitiveIndex];
+        const GltfMaterialData& material = m_data.materials[primitive.material];
         if (material.transmissive)
         {
             ++m_skippedTransmissiveDraws;
@@ -1516,13 +1390,13 @@ private:
                 draw.boundsMin = glm::min(draw.boundsMin, point);
                 draw.boundsMax = glm::max(draw.boundsMax, point);
             }
-            m_scene.boundsMin = glm::min(m_scene.boundsMin, draw.boundsMin);
-            m_scene.boundsMax = glm::max(m_scene.boundsMax, draw.boundsMax);
+            m_data.boundsMin = glm::min(m_data.boundsMin, draw.boundsMin);
+            m_data.boundsMax = glm::max(m_data.boundsMax, draw.boundsMax);
         }
-        m_scene.draws.push_back(draw);
+        m_data.draws.push_back(draw);
     }
 
-    void CreateDraws()
+    void ParseDraws()
     {
         std::vector<int32_t> roots;
         if (m_model.scenes_count > 0)
@@ -1567,7 +1441,7 @@ private:
                 m_path.c_str(), m_skippedTransmissiveDraws);
         }
 
-        std::stable_sort(m_scene.draws.begin(), m_scene.draws.end(), [](const SceneDraw& a, const SceneDraw& b) {
+        std::stable_sort(m_data.draws.begin(), m_data.draws.end(), [](const SceneDraw& a, const SceneDraw& b) {
             const uint32_t maskA = a.pipelineKey & kPipelineKeyAlphaMask;
             const uint32_t maskB = b.pipelineKey & kPipelineKeyAlphaMask;
             if (maskA != maskB)
@@ -1597,51 +1471,46 @@ private:
         }
     }
 
-    rhi::GpuDevice& m_device;
     const tg3_model& m_model;
-    std::string m_path;
-    std::string m_baseDirectory;
-    rhi::DescriptorSetLayoutHandle m_materialLayout;
-    Scene& m_scene;
+    GltfSceneData& m_data;
+    const std::string& m_path;
 
-    std::map<int32_t, rhi::BufferHandle> m_bufferViewBuffers;
-    std::map<int32_t, rhi::SamplerHandle> m_samplers;
-    std::vector<std::pair<uint32_t, bool>> m_imageRequests;
-    std::map<std::pair<uint32_t, bool>, size_t> m_imageRequestIndex;
-    std::vector<rhi::TextureHandle> m_imageTextures;
+    std::map<int32_t, uint32_t> m_bufferViewBuffers;
+    std::map<int32_t, int32_t> m_samplerIndices;
+    std::map<std::pair<uint32_t, bool>, size_t> m_requestIndices;
     std::optional<uint32_t> m_defaultMaterial;
     std::vector<std::vector<uint32_t>> m_meshPrimitives;
     size_t m_skippedTransmissiveDraws = 0;
 };
 
-
 } // namespace
 
-bool LoadGltfScene(rhi::GpuDevice& device, std::string_view assetPath, rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene)
+std::unique_ptr<GltfSceneData> ParseGltfScene(std::string_view assetPath, const GltfParseOptions& options)
 {
-    const std::string path(assetPath);
-    const auto start = std::chrono::steady_clock::now();
-    scene.Destroy(device);
-    scene.path = path;
+    auto data = std::make_unique<GltfSceneData>();
+    data->loadStart = std::chrono::steady_clock::now();
+    data->path = std::string(assetPath);
+    data->baseDirectory = std::string(ParentPath(data->path));
+    data->bcSupported = options.bcSupported;
+    const std::string& path = data->path;
 
     const std::optional<std::vector<uint8_t>> bytes = ReadAssetFile(path);
     if (!bytes)
     {
         MENGINE_LOG_ERROR("Failed to load scene %s: file not found", path.c_str());
-        scene.path.clear();
-        return false;
+        return nullptr;
     }
 
-    ParsedModel parsed;
-    tg3_parse_options options;
-    tg3_parse_options_init(&options);
-    options.fs.read_file = ReadFileCallback;
-    options.fs.free_file = FreeFileCallback;
-    options.images_as_is = 1;
+    data->model = std::make_unique<GltfParsedModel>();
+    GltfParsedModel& parsed = *data->model;
+    tg3_parse_options parseOptions;
+    tg3_parse_options_init(&parseOptions);
+    parseOptions.fs.read_file = ReadFileCallback;
+    parseOptions.fs.free_file = FreeFileCallback;
+    parseOptions.images_as_is = 1;
 
-    const std::string baseDirectory(ParentPath(path));
     const tg3_error_code result = tg3_parse_auto(&parsed.model, &parsed.errors, bytes->data(), bytes->size(),
-        baseDirectory.c_str(), static_cast<uint32_t>(baseDirectory.size()), &options);
+        data->baseDirectory.c_str(), static_cast<uint32_t>(data->baseDirectory.size()), &parseOptions);
     for (uint32_t i = 0; i < parsed.errors.count; ++i)
     {
         const tg3_error_entry& entry = parsed.errors.entries[i];
@@ -1659,33 +1528,225 @@ bool LoadGltfScene(rhi::GpuDevice& device, std::string_view assetPath, rhi::Desc
     if (result != TG3_OK)
     {
         MENGINE_LOG_ERROR("Failed to load scene %s: glTF parse error %d", path.c_str(), static_cast<int>(result));
-        scene.path.clear();
-        return false;
+        return nullptr;
     }
 
     try
     {
-        rhi::UploadBatchScope batch(device);
-        GltfSceneBuilder(device, parsed.model, path, materialLayout, scene).Build();
-        batch.End();
+        GltfSceneParser(*data).Parse();
     }
     catch (const std::exception& exception)
     {
-        scene.Destroy(device);
-        rhi::RethrowIfDeviceUnusable(exception);
         MENGINE_LOG_ERROR("Failed to load scene %s: %s", path.c_str(), exception.what());
-        return false;
+        return nullptr;
+    }
+    return data;
+}
+
+PreparedTexture PrepareGltfTexture(const GltfSceneData& data, size_t requestIndex)
+{
+    MENGINE_ASSERT(requestIndex < data.textureRequests.size());
+    const GltfTextureRequest& request = data.textureRequests[requestIndex];
+    PreparedTexture prepared;
+    try
+    {
+        std::optional<std::vector<uint8_t>> bytes = ReadImageBytes(data, request.image, &prepared.error);
+        if (bytes)
+        {
+            prepared.bytes = std::move(*bytes);
+            if (IsDds(prepared.bytes))
+            {
+                PrepareDds(prepared, request.srgb, data.bcSupported);
+            }
+            else
+            {
+                PrepareEncodedImage(prepared, request.srgb);
+            }
+        }
+    }
+    catch (const std::exception& exception)
+    {
+        // A bad image (or bad_alloc from its declared size) only costs this texture.
+        prepared.format = VK_FORMAT_UNDEFINED;
+        prepared.error = exception.what();
+    }
+    return prepared;
+}
+
+GltfSceneUploader::GltfSceneUploader(rhi::GpuDevice& device, const GltfSceneData& data,
+    rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene)
+    : m_device(device)
+    , m_data(data)
+    , m_materialLayout(materialLayout)
+    , m_scene(scene)
+    , m_textures(data.textureRequests.size())
+    , m_textureHandled(data.textureRequests.size(), false)
+{
+    MENGINE_ASSERT(scene.buffers.empty() && scene.textures.empty() && scene.samplers.empty() && scene.materials.empty());
+}
+
+bool GltfSceneUploader::UploadBuffers(VkDeviceSize byteBudget)
+{
+    MENGINE_ASSERT(!m_finished);
+    const std::vector<GltfBufferData>& buffers = m_data.buffers;
+    if (m_nextBuffer == buffers.size())
+    {
+        return true;
     }
 
-    if (scene.IsEmpty())
+    rhi::UploadBatchScope batch(m_device);
+    VkDeviceSize uploaded = 0;
+    do
     {
-        MENGINE_LOG_WARN("%s: the scene contains nothing renderable", path.c_str());
+        const GltfBufferData& source = buffers[m_nextBuffer];
+        const std::span<const uint8_t> bytes = source.Bytes();
+        rhi::BufferCreation creation;
+        creation.usage = source.usage;
+        creation.size = bytes.size();
+        creation.initialData = bytes.data();
+        creation.name = source.name.c_str();
+        // Appended in list order, which keeps the primitives' buffer indices valid for Scene::buffers.
+        m_scene.buffers.push_back(m_device.CreateBuffer(creation));
+        ++m_nextBuffer;
+        uploaded += bytes.size();
+    } while (m_nextBuffer < buffers.size() && uploaded < byteBudget &&
+             buffers[m_nextBuffer].Bytes().size() <= byteBudget - uploaded);
+    batch.End();
+    return m_nextBuffer == buffers.size();
+}
+
+void GltfSceneUploader::UploadTexture(size_t requestIndex, PreparedTexture&& texture)
+{
+    MENGINE_ASSERT(!m_finished && requestIndex < m_textures.size() && !m_textureHandled[requestIndex]);
+    m_textureHandled[requestIndex] = true;
+    ++m_handledTextureCount;
+
+    // Taken over so the pixels are released when this upload is done.
+    const PreparedTexture prepared = std::move(texture);
+    const std::string& label = m_data.textureRequests[requestIndex].label;
+    if (prepared.format == VK_FORMAT_UNDEFINED)
+    {
+        MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_data.path.c_str(), label.c_str(),
+            prepared.error.empty() ? "no image data" : prepared.error.c_str());
+        return;
+    }
+    m_decodedBcCount += prepared.decodedBc ? 1 : 0;
+
+    rhi::TextureCreation creation;
+    creation.width = prepared.width;
+    creation.height = prepared.height;
+    creation.mipLevels = prepared.mipLevels;
+    creation.format = prepared.format;
+    creation.flags = prepared.generateMips ? rhi::kTextureFlagGenerateMips : 0;
+    creation.initialData = prepared.bytes.data() + prepared.dataOffset;
+    creation.initialDataSize = prepared.dataSize;
+    creation.name = label.c_str();
+
+    // A failed creation only costs this texture; a failed submission (End) fails the load.
+    rhi::UploadBatchScope batch(m_device);
+    try
+    {
+        m_textures[requestIndex] = m_device.CreateTexture(creation);
+        m_scene.textures.push_back(m_textures[requestIndex]);
+    }
+    catch (const std::exception& exception)
+    {
+        rhi::RethrowIfDeviceUnusable(exception);
+        MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_data.path.c_str(), label.c_str(), exception.what());
+    }
+    batch.End();
+}
+
+void GltfSceneUploader::Finish()
+{
+    MENGINE_ASSERT(!m_finished && m_nextBuffer == m_data.buffers.size() && m_handledTextureCount == m_textures.size());
+    m_finished = true;
+    if (m_decodedBcCount > 0)
+    {
+        MENGINE_LOG_INFO("%s: the device lacks textureCompressionBC, decoded %zu BC7 textures to RGBA8 (at most %ux%u)",
+            m_data.path.c_str(), m_decodedBcCount, kMaxDecodedBcExtent, kMaxDecodedBcExtent);
+    }
+
+    rhi::UploadBatchScope batch(m_device);
+    std::vector<rhi::SamplerHandle> samplers;
+    samplers.reserve(m_data.samplers.size());
+    for (const GltfSamplerData& sampler : m_data.samplers)
+    {
+        rhi::SamplerCreation creation = sampler.creation;
+        creation.name = sampler.name.c_str();
+        samplers.push_back(m_device.CreateSampler(creation));
+        m_scene.samplers.push_back(samplers.back());
+    }
+    for (size_t i = 0; i < m_data.materials.size(); ++i)
+    {
+        CreateMaterial(i, samplers);
+    }
+    batch.End();
+
+    m_scene.path = m_data.path;
+    m_scene.primitives = m_data.primitives;
+    m_scene.draws = m_data.draws;
+    m_scene.boundsMin = m_data.boundsMin;
+    m_scene.boundsMax = m_data.boundsMax;
+
+    if (m_scene.IsEmpty())
+    {
+        MENGINE_LOG_WARN("%s: the scene contains nothing renderable", m_data.path.c_str());
     }
     const double milliseconds =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-    MENGINE_LOG_INFO("Loaded %s in %.0f ms: %zu primitives, %zu materials, %zu textures, %zu draws", path.c_str(),
-        milliseconds, scene.primitives.size(), scene.materials.size(), scene.textures.size(), scene.draws.size());
-    return true;
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_data.loadStart).count();
+    MENGINE_LOG_INFO("Loaded %s in %.0f ms: %zu primitives, %zu materials, %zu textures, %zu draws", m_data.path.c_str(),
+        milliseconds, m_scene.primitives.size(), m_scene.materials.size(), m_scene.textures.size(), m_scene.draws.size());
+}
+
+void GltfSceneUploader::CreateMaterial(size_t materialIndex, const std::vector<rhi::SamplerHandle>& samplers)
+{
+    const GltfMaterialData& source = m_data.materials[materialIndex];
+    SceneMaterial material;
+    material.name = source.name;
+    material.alphaMode = source.alphaMode;
+    material.doubleSided = source.doubleSided;
+    material.transmissive = source.transmissive;
+
+    struct TextureBinding
+    {
+        rhi::TextureHandle texture;
+        rhi::SamplerHandle sampler;
+    };
+    std::array<TextureBinding, kGltfMaterialTextureCount> textures{};
+    for (uint32_t slot = 0; slot < kGltfMaterialTextureCount; ++slot)
+    {
+        const GltfTextureSlot& reference = source.textures[slot];
+        if (reference.request >= 0 && m_textures[reference.request].IsValid())
+        {
+            textures[slot] = {m_textures[reference.request], samplers[reference.sampler]};
+        }
+    }
+
+    MaterialData data = source.constants;
+    if (textures[kMaterialBindingNormal - kMaterialBindingBaseColor].texture.IsValid())
+    {
+        data.flags |= kMaterialFlagNormalTexture;
+    }
+    rhi::BufferCreation bufferCreation;
+    bufferCreation.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferCreation.size = sizeof(MaterialData);
+    bufferCreation.initialData = &data;
+    bufferCreation.name = material.name.c_str();
+    material.uniformBuffer = m_device.CreateBuffer(bufferCreation);
+
+    // Missing textures bind the device's 1x1 white texture: it leaves base color, metallic-roughness, occlusion
+    // and emissive equal to their factors; the normal map is skipped through kMaterialFlagNormalTexture.
+    rhi::DescriptorSetCreation setCreation;
+    setCreation.layout = m_materialLayout;
+    setCreation.name = material.name.c_str();
+    setCreation.AddBuffer(material.uniformBuffer, kMaterialBindingData, sizeof(MaterialData));
+    for (uint32_t slot = 0; slot < kGltfMaterialTextureCount; ++slot)
+    {
+        setCreation.AddTexture(textures[slot].texture, kMaterialBindingBaseColor + slot, textures[slot].sampler);
+    }
+    material.descriptorSet = m_device.CreateDescriptorSet(setCreation);
+    m_scene.materials.push_back(std::move(material));
 }
 
 } // namespace mengine::render

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Assert.hpp"
 #include "core/ResourcePool.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/DeviceCapabilities.hpp"
@@ -12,6 +13,7 @@
 #include <functional>
 #include <span>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -187,6 +189,8 @@ public:
     void CmdEndLabel(VkCommandBuffer commandBuffer);
 
 private:
+    void AssertOwnerThread() const { MENGINE_ASSERT(std::this_thread::get_id() == m_ownerThread); }
+
     struct FrameData
     {
         VkCommandPool commandPool = VK_NULL_HANDLE;
@@ -201,11 +205,13 @@ private:
         std::function<void()> destroy;
     };
 
+    // A range of the staging ring, or a dedicated buffer for uploads larger than the ring. mappedData points at offset.
     struct StagingBuffer
     {
         VkBuffer buffer = VK_NULL_HANDLE;
         VmaAllocation allocation = VK_NULL_HANDLE;
         void* mappedData = nullptr;
+        VkDeviceSize offset = 0;
     };
 
     void CreateInstance();
@@ -224,7 +230,9 @@ private:
     void Defer(std::function<void()> destroy);
     void ProcessPendingDestructions(bool all);
 
+    // Valid until the current upload batch is submitted.
     StagingBuffer CreateStagingBuffer(VkDeviceSize size);
+    StagingBuffer AllocateStagingBuffer(VkDeviceSize size, const char* name);
     VkCommandBuffer UploadCommandBuffer() const;
     void BeginUploadCommands();
     void SubmitUploadCommands();
@@ -302,8 +310,11 @@ private:
     VkFence m_uploadFence = VK_NULL_HANDLE;
     uint32_t m_uploadDepth = 0;
     bool m_uploadHasBufferCopies = false;
-    std::vector<StagingBuffer> m_uploadStaging;
-    VkDeviceSize m_uploadStagingBytes = 0;
+    // Persistent and reused by every batch (each one waits for its fence), so uploads do not allocate memory.
+    StagingBuffer m_stagingRing;
+    VkDeviceSize m_stagingRingUsed = 0;
+    std::vector<StagingBuffer> m_dedicatedStaging;
+    VkDeviceSize m_dedicatedStagingBytes = 0;
 
     ResourcePool<Buffer, BufferHandle> m_buffers;
     ResourcePool<Texture, TextureHandle> m_textures;
@@ -315,6 +326,9 @@ private:
     std::unordered_map<RenderPassOutput, VkRenderPass, RenderPassOutputHash> m_renderPassCache;
     std::vector<PendingDestruction> m_pendingDestructions;
 
+    // Every call that creates, destroys, uploads or submits must come from the thread that called Init; recording
+    // threads only read resources while the main thread waits for them.
+    std::thread::id m_ownerThread;
     TextureHandle m_dummyTexture;
     TextureHandle m_dummyCubeTexture;
     SamplerHandle m_defaultSampler;

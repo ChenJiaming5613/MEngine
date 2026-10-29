@@ -28,13 +28,15 @@ enum VertexStreamIndex : uint32_t
     kVertexStreamCount = 4,
 };
 
+// Buffers are indices into Scene::buffers rather than handles, so the CPU side of loading (GltfSceneData) describes
+// primitives with this same struct before any buffer exists.
 struct ScenePrimitive
 {
-    std::array<rhi::BufferHandle, kVertexStreamCount> vertexBuffers{};
+    std::array<uint32_t, kVertexStreamCount> vertexBuffers{};
     std::array<VkDeviceSize, kVertexStreamCount> vertexOffsets{};
     bool hasTangents = false;
 
-    rhi::BufferHandle indexBuffer;
+    uint32_t indexBuffer = 0;
     VkDeviceSize indexOffset = 0;
     VkIndexType indexType = VK_INDEX_TYPE_UINT32;
     uint32_t indexCount = 0;

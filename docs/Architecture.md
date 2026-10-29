@@ -175,8 +175,11 @@ graph LR
 
 ### 5.4 场景与加载
 
-- `Scene` 只含 GPU 句柄与绘制数据：场景拥有的 buffer / 纹理 / 采样器；每个 primitive 4 个分离的顶点流、索引和局部包围盒；材质 uniform 与 descriptor set；draw 列表（primitive、材质、管线 key、`DrawConstants`、世界 AABB）。节点层级在加载时展开，渲染时不遍历场景图。
-- `LoadGltfScene`：tinygltf 解析（文件回调走资产文件系统，Android 可读 APK）→ 工作线程并行解码纹理、主线程创建 → 材质 → primitive → 展开节点并按（不透明在前、管线 key、材质）稳定排序。
+- `Scene` 只含 GPU 句柄与绘制数据：场景拥有的 buffer / 纹理 / 采样器；每个 primitive 4 个分离的顶点流、索引（存 `Scene::buffers` 的下标，CPU 阶段与 GPU 阶段共用同一个 primitive 结构）和局部包围盒；材质 uniform 与 descriptor set；draw 列表（primitive、材质、管线 key、`DrawConstants`、世界 AABB）。节点层级在加载时展开，渲染时不遍历场景图。
+- glTF 加载分两阶段（`GltfLoader.hpp`）：
+  - CPU 阶段，任意线程、不接触 GPU：`ParseGltfScene` 做 tinygltf 解析（文件回调走资产文件系统，Android 可读 APK）、收集纹理请求、材质 → primitive（accessor 转换、平面法线）→ 展开节点并按（不透明在前、管线 key、材质）稳定排序，产出 `GltfSceneData`（`GltfSceneData.hpp`，持有解析后的模型）；`PrepareGltfTexture` 读取并解码单个纹理请求，可对不同请求并发调用。
+  - GPU 阶段，只在主线程：`GltfSceneUploader` 按字节预算逐步 `UploadBuffers`、逐个 `UploadTexture`，最后 `Finish` 创建采样器、材质与 descriptor set 并填好 `Scene`。
+  - `SceneLoader`（`Renderer::RequestScene` / `UpdateSceneLoad`）把两个阶段跨帧组合：解析和解码是 enkiTS 任务，解码最多领先上传 `max(2, 工作线程数)` 个纹理（限制驻留的解码像素）；主线程每帧调用一次，在一个上传批次里传完已就绪的 buffer 和纹理（每次约 32 MB 预算），全部完成后 `Finish`、预热管线。加载期间场景没有 draw，画面继续刷新；查看器在完成时复位相机和灯光。
   - 色彩空间由用途决定：base color、emissive、specular-glossiness 为 sRGB，其余线性。
   - `MSFT_texture_dds` 优先：设备支持 BC 就原样上传，否则 CPU 解码 BC7，从不大于 512² 的 mip 开始。
   - 一个 glTF buffer view 对应一个 GPU buffer；能直接引用的 accessor 直接引用，其他（交错、归一化整数、sparse、8 位索引）先在 CPU 上转换。
@@ -229,7 +232,10 @@ graph LR
 
 ## 8. 线程模型
 
-所有 Vulkan 调用都在主线程。唯一的并行工作是 glTF 纹理解码：工作线程只做 CPU 解码，不接触 GPU 对象。场景加载同步阻塞当前帧。
+- **主线程独占设备**：`GpuDevice` 的创建、销毁、上传、提交只能在调用 `Init` 的线程上进行（每个入口都有断言）。
+- **任务调度**：`Application` 持有 enkiTS 调度器（硬件线程数个线程，主线程等待任务时也会执行任务），`GetTaskScheduler()` 交给需要的模块。任务只做 CPU 工作：读文件、解析、解码；之后的并行录制任务只录 secondary 命令缓冲，期间主线程等待，设备只读。
+- **文件读取**：Android 上 SDL 的 asset manager 在首次读文件时惰性创建且不加锁，所以第一次读取必须在主线程（读 `config.json` 满足这一点）。
+- **上传**：每个上传批次都在 CPU 上等自己的 fence。fence 的信号要等队列中此前提交的工作全部完成，所以加载期间每帧的上传最多多等一帧。staging 用一个常驻的 64 MB 环（Windows 上逐个分配和释放 staging 内存会让队列停顿数百毫秒），更大的上传单独分配。
 
 ## 9. 错误处理
 
@@ -253,7 +259,7 @@ graph LR
 
 - 无抗锯齿；只有 CPU 视锥剔除（无遮挡剔除、无 GPU 剔除）；alpha BLEND 当作 MASK；无透射。
 - 只有方向光有阴影。
-- 场景加载同步阻塞；所有工作在单一图形队列上，单命令缓冲录制。
+- 所有工作在单一图形队列上，单命令缓冲录制；上传在主线程按帧分批，每批同步等待。
 - 描述符没有数组和 bindless；每个 `DescriptorSetCreation` 最多 16 个资源，每个管线最多 4 个 set layout、3 个着色器阶段、4 个颜色附件。
 - Frame Graph 没有跨帧历史资源和图内瞬时 buffer；纹理复用只在描述相同的纹理之间。
 - 只查询、尚未启用 Vulkan 1.1 以上的可选能力。

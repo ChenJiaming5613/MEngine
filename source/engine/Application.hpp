@@ -6,6 +6,7 @@
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_init.h>
+#include <TaskScheduler.h>
 
 namespace mengine {
 
@@ -34,12 +35,16 @@ protected:
 
     Window& GetWindow() { return m_window; }
     Input& GetInput() { return m_input; }
+    // Worker threads for CPU work only: tasks must not touch GpuDevice (see Architecture.md, threading).
+    enki::TaskScheduler& GetTaskScheduler() { return m_tasks; }
     bool IsSuspended() const { return m_suspended; }
 
 private:
     Window m_window;
     Input m_input;
     FrameClock m_clock;
+    enki::TaskScheduler m_tasks;
+    bool m_tasksRunning = false;
     bool m_initialized = false;
     bool m_suspended = false;
 };

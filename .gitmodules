@@ -32,3 +32,6 @@
 	path = third_party/imgui-node-editor
 	url = https://github.com/thedmd/imgui-node-editor.git
 	branch = develop
+[submodule "third_party/enkiTS"]
+	path = third_party/enkiTS
+	url = https://github.com/dougbinks/enkiTS.git

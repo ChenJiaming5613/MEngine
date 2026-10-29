@@ -5,6 +5,7 @@
 #include "render/ImGuiLayer.hpp"
 #include "render/RenderTypes.hpp"
 #include "render/Scene.hpp"
+#include "render/SceneLoader.hpp"
 #include "render/graph/FrameGraph.hpp"
 #include "render/passes/DebugDrawPass.hpp"
 #include "render/passes/ForwardPbrPass.hpp"
@@ -21,6 +22,10 @@
 #include <string_view>
 #include <vector>
 
+namespace enki {
+class TaskScheduler;
+}
+
 namespace mengine::rhi {
 class GpuDevice;
 }
@@ -34,13 +39,17 @@ class Camera;
 class Renderer
 {
 public:
-    // Throws on Vulkan or shader loading errors.
-    void Init(rhi::GpuDevice& device);
+    // Throws on Vulkan or shader loading errors. Scene loading runs its CPU work on `tasks`.
+    void Init(rhi::GpuDevice& device, enki::TaskScheduler& tasks);
     void Shutdown();
 
-    // Replaces the scene; returns false (with an empty scene) when loading fails. Call outside a frame: it waits for
-    // the GPU and frees the previous scene first.
-    bool LoadScene(std::string_view assetPath);
+    // Frees the current scene (waiting for the GPU) and starts loading the next one; outside a frame. The scene stays
+    // empty until UpdateSceneLoad returns Finished, or for good when it returns Failed.
+    void RequestScene(std::string_view assetPath);
+    // Once per frame, outside BeginFrame / EndFrame: uploads part of a scene in flight.
+    SceneLoadStatus UpdateSceneLoad();
+    SceneLoadProgress GetSceneLoadProgress() const { return m_sceneLoader.GetProgress(); }
+    bool IsSceneLoading() const { return m_sceneLoader.IsLoading(); }
     // Replaces the environment; falls back to a uniform environment when loading fails.
     void LoadEnvironment(std::optional<std::string_view> directory);
 
@@ -80,7 +89,11 @@ private:
     TonemapPass m_tonemap;
     ImGuiPass m_imGuiPass;
 
+    // Bounds how long one frame waits for scene uploads.
+    static constexpr VkDeviceSize kSceneUploadBytesPerUpdate = 32ull << 20;
+
     Scene m_scene;
+    SceneLoader m_sceneLoader;
     Environment m_environment;
     uint64_t m_sceneVersion = 0;
 

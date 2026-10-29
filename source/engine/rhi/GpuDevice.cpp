@@ -14,6 +14,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <string>
 #include <string_view>
 
@@ -37,8 +38,12 @@ constexpr uint32_t kDescriptorsPerType = 4096;
 constexpr uint32_t kMaxDescriptorSets = 2048;
 constexpr uint32_t kRecreateRetryDelayMilliseconds = 16;
 constexpr VkDeviceSize kStagingLevelAlignment = 16;
-// Larger upload batches are submitted early so a multi-GB scene is never all in host visible memory at once.
-constexpr VkDeviceSize kUploadStagingBudget = VkDeviceSize{256} << 20;
+// Allocating and freeing staging memory per upload makes Windows page memory in and out, which stalls the queue for
+// hundreds of milliseconds; one persistent ring avoids it. A 2048^2 RGBA8 texture with its mips is about 22 MB.
+constexpr VkDeviceSize kStagingRingSize = VkDeviceSize{64} << 20;
+// Uploads larger than the ring get dedicated buffers; batches holding more are submitted early, so a multi-GB scene is
+// never all in host visible memory at once.
+constexpr VkDeviceSize kDedicatedStagingBudget = VkDeviceSize{256} << 20;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL OnValidationMessage(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
     VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void*)
@@ -195,6 +200,7 @@ constexpr VkPipelineStageFlags kUploadConsumerStages = VK_PIPELINE_STAGE_DRAW_IN
 
 void GpuDevice::Init(const GpuDeviceCreation& creation)
 {
+    m_ownerThread = std::this_thread::get_id();
     m_window = creation.window;
     m_vsync = creation.vsync;
     m_pipelineCachePath = creation.pipelineCachePath;
@@ -557,6 +563,7 @@ void GpuDevice::CreatePipelineCache()
 
 void GpuDevice::SavePipelineCache()
 {
+    AssertOwnerThread();
     if (m_pipelineCachePath.empty() || m_pipelineCache == VK_NULL_HANDLE)
     {
         return;
@@ -755,6 +762,11 @@ void GpuDevice::Shutdown()
         frame = {};
     }
     vkDestroyFence(m_device, m_uploadFence, nullptr);
+    if (m_stagingRing.buffer != VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(m_allocator, m_stagingRing.buffer, m_stagingRing.allocation);
+        m_stagingRing = {};
+    }
     vkDestroyCommandPool(m_device, m_uploadPool, nullptr);
     m_uploadFence = VK_NULL_HANDLE;
     m_uploadPool = VK_NULL_HANDLE;
@@ -797,6 +809,7 @@ void GpuDevice::Shutdown()
 
 void GpuDevice::WaitIdle()
 {
+    AssertOwnerThread();
     if (m_device != VK_NULL_HANDLE)
     {
         CheckVk(vkDeviceWaitIdle(m_device), "vkDeviceWaitIdle");
@@ -805,6 +818,7 @@ void GpuDevice::WaitIdle()
 
 void GpuDevice::WaitIdleAndReleaseDeferred()
 {
+    AssertOwnerThread();
     MENGINE_ASSERT(!m_frameActive);
     WaitIdle();
     ProcessPendingDestructions(true);
@@ -832,6 +846,7 @@ void GpuDevice::ProcessPendingDestructions(bool all)
 
 void GpuDevice::BeginUploadBatch()
 {
+    AssertOwnerThread();
     if (m_uploadDepth++ > 0)
     {
         return;
@@ -852,6 +867,7 @@ void GpuDevice::BeginUploadCommands()
 
 void GpuDevice::EndUploadBatch()
 {
+    AssertOwnerThread();
     if (m_uploadDepth == 0)
     {
         MENGINE_ASSERT(!"EndUploadBatch without BeginUploadBatch");
@@ -910,23 +926,49 @@ void GpuDevice::SubmitUploadCommands()
     CheckVk(vkWaitForFences(m_device, 1, &m_uploadFence, VK_TRUE, std::numeric_limits<uint64_t>::max()), "vkWaitForFences");
     CheckVk(vkResetFences(m_device, 1, &m_uploadFence), "vkResetFences");
 
-    for (const StagingBuffer& staging : m_uploadStaging)
+    m_stagingRingUsed = 0;
+    for (const StagingBuffer& staging : m_dedicatedStaging)
     {
         vmaDestroyBuffer(m_allocator, staging.buffer, staging.allocation);
     }
-    m_uploadStaging.clear();
-    m_uploadStagingBytes = 0;
+    m_dedicatedStaging.clear();
+    m_dedicatedStagingBytes = 0;
 }
 
 GpuDevice::StagingBuffer GpuDevice::CreateStagingBuffer(VkDeviceSize size)
 {
-    // Every command recorded so far is complete, so the batch can be submitted here and continued in a new one.
-    if (!m_uploadStaging.empty() && m_uploadStagingBytes + size > kUploadStagingBudget)
+    if (m_stagingRing.buffer == VK_NULL_HANDLE)
     {
+        m_stagingRing = AllocateStagingBuffer(kStagingRingSize, "StagingRing");
+    }
+    const bool fitsRing = size <= kStagingRingSize;
+    const bool ringFull = fitsRing && AlignUp(m_stagingRingUsed, kStagingLevelAlignment) + size > kStagingRingSize;
+    const bool dedicatedFull =
+        !fitsRing && !m_dedicatedStaging.empty() && m_dedicatedStagingBytes + size > kDedicatedStagingBudget;
+    if (ringFull || dedicatedFull)
+    {
+        // Every command recorded so far is complete, so the batch can be submitted here and continued in a new one.
         SubmitUploadCommands();
         BeginUploadCommands();
     }
 
+    if (fitsRing)
+    {
+        const VkDeviceSize offset = AlignUp(m_stagingRingUsed, kStagingLevelAlignment);
+        m_stagingRingUsed = offset + size;
+        StagingBuffer range = m_stagingRing;
+        range.mappedData = static_cast<uint8_t*>(m_stagingRing.mappedData) + offset;
+        range.offset = offset;
+        return range;
+    }
+    const StagingBuffer staging = AllocateStagingBuffer(size, "DedicatedStaging");
+    m_dedicatedStaging.push_back(staging);
+    m_dedicatedStagingBytes += size;
+    return staging;
+}
+
+GpuDevice::StagingBuffer GpuDevice::AllocateStagingBuffer(VkDeviceSize size, const char* name)
+{
     const VkBufferCreateInfo bufferInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = size,
@@ -941,8 +983,7 @@ GpuDevice::StagingBuffer GpuDevice::CreateStagingBuffer(VkDeviceSize size)
     VmaAllocationInfo info{};
     CheckVk(vmaCreateBuffer(m_allocator, &bufferInfo, &allocationInfo, &staging.buffer, &staging.allocation, &info), "vmaCreateBuffer (staging)");
     staging.mappedData = info.pMappedData;
-    m_uploadStaging.push_back(staging);
-    m_uploadStagingBytes += size;
+    SetResourceName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<uint64_t>(staging.buffer), name);
     return staging;
 }
 
@@ -954,6 +995,7 @@ VkCommandBuffer GpuDevice::UploadCommandBuffer() const
 
 BufferHandle GpuDevice::CreateBuffer(const BufferCreation& creation)
 {
+    AssertOwnerThread();
     if (creation.size == 0)
     {
         throw std::runtime_error(std::string("CreateBuffer: zero size for ") + (creation.name ? creation.name : "<unnamed>"));
@@ -1010,8 +1052,8 @@ BufferHandle GpuDevice::CreateBuffer(const BufferCreation& creation)
             UploadBatchScope batch(*this);
             const StagingBuffer staging = CreateStagingBuffer(creation.size);
             std::memcpy(staging.mappedData, creation.initialData, creation.size);
-            vmaFlushAllocation(m_allocator, staging.allocation, 0, creation.size);
-            const VkBufferCopy copy{.size = creation.size};
+            vmaFlushAllocation(m_allocator, staging.allocation, staging.offset, creation.size);
+            const VkBufferCopy copy{.srcOffset = staging.offset, .size = creation.size};
             vkCmdCopyBuffer(UploadCommandBuffer(), staging.buffer, slot->buffer, 1, &copy);
             m_uploadHasBufferCopies = true;
             batch.End();
@@ -1028,6 +1070,7 @@ BufferHandle GpuDevice::CreateBuffer(const BufferCreation& creation)
 
 void GpuDevice::DestroyBuffer(BufferHandle handle)
 {
+    AssertOwnerThread();
     Buffer* buffer = m_buffers.Access(handle);
     if (buffer == nullptr)
     {
@@ -1158,6 +1201,7 @@ void GpuDevice::DeferTextureObjects(Texture& texture)
 
 TextureHandle GpuDevice::CreateTexture(const TextureCreation& creation)
 {
+    AssertOwnerThread();
     const std::string name = creation.name ? creation.name : "<unnamed>";
     if (creation.width == 0 || creation.height == 0 || creation.format == VK_FORMAT_UNDEFINED)
     {
@@ -1266,7 +1310,7 @@ void GpuDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
         for (uint32_t layer = 0; layer < texture.layerCount; ++layer)
         {
             copies.push_back(VkBufferImageCopy{
-                .bufferOffset = stagingOffset + faceSize * layer,
+                .bufferOffset = staging.offset + stagingOffset + faceSize * layer,
                 .imageSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = level, .baseArrayLayer = layer, .layerCount = 1},
                 .imageExtent = {MipExtent(texture.width, level), MipExtent(texture.height, level), 1},
             });
@@ -1274,7 +1318,7 @@ void GpuDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
         sourceOffset += levelSizes[level];
         stagingOffset += levelSizes[level];
     }
-    vmaFlushAllocation(m_allocator, staging.allocation, 0, stagingSize);
+    vmaFlushAllocation(m_allocator, staging.allocation, staging.offset, stagingSize);
 
     const auto barrier = [&](uint32_t baseLevel, uint32_t levelCount, VkImageLayout oldLayout, VkImageLayout newLayout,
                              VkAccessFlags srcAccess, VkAccessFlags dstAccess, VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage) {
@@ -1364,6 +1408,7 @@ void GpuDevice::TransitionToShaderRead(Texture& texture)
 
 void GpuDevice::DestroyTexture(TextureHandle handle)
 {
+    AssertOwnerThread();
     Texture* texture = m_textures.Access(handle);
     if (texture == nullptr)
     {
@@ -1375,6 +1420,7 @@ void GpuDevice::DestroyTexture(TextureHandle handle)
 
 void GpuDevice::LinkTextureSampler(TextureHandle texture, SamplerHandle sampler)
 {
+    AssertOwnerThread();
     if (Texture* target = m_textures.Access(texture))
     {
         target->sampler = sampler;
@@ -1383,6 +1429,7 @@ void GpuDevice::LinkTextureSampler(TextureHandle texture, SamplerHandle sampler)
 
 void GpuDevice::SetTextureState(TextureHandle texture, ResourceStates state)
 {
+    AssertOwnerThread();
     if (Texture* target = m_textures.Access(texture))
     {
         target->state = state;
@@ -1391,6 +1438,7 @@ void GpuDevice::SetTextureState(TextureHandle texture, ResourceStates state)
 
 SamplerHandle GpuDevice::CreateSampler(const SamplerCreation& creation)
 {
+    AssertOwnerThread();
     const bool anisotropy = m_samplerAnisotropy && creation.maxAnisotropy > 1.0f;
     const VkSamplerCreateInfo samplerInfo{
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -1426,6 +1474,7 @@ SamplerHandle GpuDevice::CreateSampler(const SamplerCreation& creation)
 
 void GpuDevice::DestroySampler(SamplerHandle handle)
 {
+    AssertOwnerThread();
     Sampler* sampler = m_samplers.Access(handle);
     if (sampler == nullptr)
     {
@@ -1437,6 +1486,7 @@ void GpuDevice::DestroySampler(SamplerHandle handle)
 
 DescriptorSetLayoutHandle GpuDevice::CreateDescriptorSetLayout(const DescriptorSetLayoutCreation& creation)
 {
+    AssertOwnerThread();
     std::array<VkDescriptorSetLayoutBinding, kMaxDescriptorsPerSet> bindings{};
     for (uint32_t index = 0; index < creation.bindingCount; ++index)
     {
@@ -1474,6 +1524,7 @@ DescriptorSetLayoutHandle GpuDevice::CreateDescriptorSetLayout(const DescriptorS
 
 void GpuDevice::DestroyDescriptorSetLayout(DescriptorSetLayoutHandle handle)
 {
+    AssertOwnerThread();
     DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(handle);
     if (layout == nullptr)
     {
@@ -1614,6 +1665,7 @@ void GpuDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
 
 DescriptorSetHandle GpuDevice::CreateDescriptorSet(const DescriptorSetCreation& creation)
 {
+    AssertOwnerThread();
     const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(creation.layout);
     if (layout == nullptr)
     {
@@ -1647,6 +1699,7 @@ DescriptorSetHandle GpuDevice::CreateDescriptorSet(const DescriptorSetCreation& 
 
 void GpuDevice::UpdateDescriptorSet(DescriptorSetHandle handle, const DescriptorSetCreation& creation)
 {
+    AssertOwnerThread();
     DescriptorSet* set = m_descriptorSets.Access(handle);
     const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(creation.layout);
     if (set == nullptr || layout == nullptr)
@@ -1664,6 +1717,7 @@ void GpuDevice::UpdateDescriptorSet(DescriptorSetHandle handle, const Descriptor
 
 void GpuDevice::DestroyDescriptorSet(DescriptorSetHandle handle)
 {
+    AssertOwnerThread();
     DescriptorSet* set = m_descriptorSets.Access(handle);
     if (set == nullptr)
     {
@@ -1675,6 +1729,7 @@ void GpuDevice::DestroyDescriptorSet(DescriptorSetHandle handle)
 
 VkRenderPass GpuDevice::GetVulkanRenderPass(const RenderPassOutput& output)
 {
+    AssertOwnerThread();
     if (const auto found = m_renderPassCache.find(output); found != m_renderPassCache.end())
     {
         return found->second;
@@ -1814,6 +1869,7 @@ void GpuDevice::CreateFramebuffer(RenderPass& renderPass)
 
 RenderPassHandle GpuDevice::CreateRenderPass(const RenderPassCreation& creation)
 {
+    AssertOwnerThread();
     RenderPass renderPass;
     renderPass.name = creation.name ? creation.name : "<unnamed>";
     renderPass.outputTextures = creation.outputTextures;
@@ -1859,6 +1915,7 @@ RenderPassHandle GpuDevice::CreateRenderPass(const RenderPassCreation& creation)
 
 void GpuDevice::ResizeOutputTextures(RenderPassHandle handle, uint32_t width, uint32_t height)
 {
+    AssertOwnerThread();
     RenderPass* renderPass = m_renderPasses.Access(handle);
     if (renderPass == nullptr || renderPass->isSwapchain || width == 0 || height == 0)
     {
@@ -1895,6 +1952,7 @@ void GpuDevice::ResizeOutputTextures(RenderPassHandle handle, uint32_t width, ui
 
 void GpuDevice::DestroyRenderPass(RenderPassHandle handle)
 {
+    AssertOwnerThread();
     RenderPass* renderPass = m_renderPasses.Access(handle);
     if (renderPass == nullptr || renderPass->isSwapchain)
     {
@@ -1906,6 +1964,7 @@ void GpuDevice::DestroyRenderPass(RenderPassHandle handle)
 
 PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
 {
+    AssertOwnerThread();
     const std::string name = creation.name ? creation.name : "<unnamed>";
 
     // A lone compute stage makes a compute pipeline, as in Raptor.
@@ -2293,6 +2352,7 @@ void GpuDevice::CreateGraphicsPipeline(
 
 void GpuDevice::DestroyPipeline(PipelineHandle handle)
 {
+    AssertOwnerThread();
     Pipeline* pipeline = m_pipelines.Access(handle);
     if (pipeline == nullptr)
     {
@@ -2370,6 +2430,7 @@ void GpuDevice::SetVsync(bool enabled)
 
 bool GpuDevice::BeginFrame()
 {
+    AssertOwnerThread();
     MENGINE_ASSERT(!m_frameActive);
     if (m_suspended)
     {
@@ -2417,6 +2478,7 @@ bool GpuDevice::BeginFrame()
 
 DynamicAllocation GpuDevice::DynamicAllocate(uint32_t size)
 {
+    AssertOwnerThread();
     MENGINE_ASSERT(m_frameActive);
     const auto offset = static_cast<uint32_t>(AlignUp(m_dynamicUsed, m_properties.limits.minUniformBufferOffsetAlignment));
     if (offset + size > m_dynamicBytesPerFrame)
@@ -2434,6 +2496,7 @@ DynamicAllocation GpuDevice::DynamicAllocate(uint32_t size)
 
 void GpuDevice::EndFrame()
 {
+    AssertOwnerThread();
     MENGINE_ASSERT(m_frameActive);
     m_frameActive = false;
     FrameData& frame = m_frames[m_frameSlot];

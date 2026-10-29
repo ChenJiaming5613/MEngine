@@ -186,14 +186,14 @@ void ShadowPass::Execute(FrameGraphContext& context)
             }
 
             const ScenePrimitive& primitive = scene.primitives[draw.primitive];
-            commandBuffer.BindVertexBuffer(
-                primitive.vertexBuffers[kVertexStreamPosition], kVertexStreamPosition, primitive.vertexOffsets[kVertexStreamPosition]);
+            commandBuffer.BindVertexBuffer(scene.buffers[primitive.vertexBuffers[kVertexStreamPosition]], kVertexStreamPosition,
+                primitive.vertexOffsets[kVertexStreamPosition]);
             if (alphaMask)
             {
-                commandBuffer.BindVertexBuffer(
-                    primitive.vertexBuffers[kVertexStreamTexCoord], kVertexStreamTexCoord, primitive.vertexOffsets[kVertexStreamTexCoord]);
+                commandBuffer.BindVertexBuffer(scene.buffers[primitive.vertexBuffers[kVertexStreamTexCoord]],
+                    kVertexStreamTexCoord, primitive.vertexOffsets[kVertexStreamTexCoord]);
             }
-            commandBuffer.BindIndexBuffer(primitive.indexBuffer, primitive.indexOffset, primitive.indexType);
+            commandBuffer.BindIndexBuffer(scene.buffers[primitive.indexBuffer], primitive.indexOffset, primitive.indexType);
             commandBuffer.PushConstants(&draw.constants, sizeof(DrawConstants));
             commandBuffer.DrawIndexed(primitive.indexCount);
         }

@@ -25,7 +25,7 @@ constexpr std::string_view kShadowPassName = "Shadow";
 
 } // namespace
 
-void Renderer::Init(rhi::GpuDevice& device)
+void Renderer::Init(rhi::GpuDevice& device, enki::TaskScheduler& tasks)
 {
     m_device = &device;
 
@@ -54,6 +54,7 @@ void Renderer::Init(rhi::GpuDevice& device)
             {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = binding, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
     }
     m_materialLayout = device.CreateDescriptorSetLayout(materialLayout);
+    m_sceneLoader.Init(device, tasks, m_materialLayout);
 
     m_shadow.Init(device, m_frameLayout, m_materialLayout);
     m_forwardPbr.Init(device, m_frameLayout, m_materialLayout);
@@ -82,6 +83,7 @@ void Renderer::Shutdown()
         return;
     }
     rhi::GpuDevice& device = *m_device;
+    m_sceneLoader.Shutdown();
     m_scene.Destroy(device);
     m_environment.Destroy(device);
     m_graph.Shutdown();
@@ -97,19 +99,26 @@ void Renderer::Shutdown()
     *this = Renderer{};
 }
 
-bool Renderer::LoadScene(std::string_view assetPath)
+void Renderer::RequestScene(std::string_view assetPath)
 {
+    m_sceneLoader.Cancel();
     ++m_sceneVersion;
     // Free the previous scene before loading the next one, so both never occupy memory together.
     m_scene.Destroy(*m_device);
     m_device->WaitIdleAndReleaseDeferred();
-    if (!LoadGltfScene(*m_device, assetPath, m_materialLayout, m_scene))
+    m_sceneLoader.Start(assetPath, m_scene);
+}
+
+SceneLoadStatus Renderer::UpdateSceneLoad()
+{
+    const SceneLoadStatus status = m_sceneLoader.Update(kSceneUploadBytesPerUpdate);
+    if (status == SceneLoadStatus::Finished)
     {
-        return false;
+        ++m_sceneVersion;
+        m_forwardPbr.WarmPipelines(m_scene);
+        m_shadow.WarmPipelines(m_scene);
     }
-    m_forwardPbr.WarmPipelines(m_scene);
-    m_shadow.WarmPipelines(m_scene);
-    return true;
+    return status;
 }
 
 void Renderer::LoadEnvironment(std::optional<std::string_view> directory)
