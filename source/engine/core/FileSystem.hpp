@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -14,6 +15,14 @@ std::string ResolveAssetPath(std::string_view relativePath);
 // Reads a file through SDL so APK assets work too. Logs and returns nullopt on failure.
 std::optional<std::vector<uint8_t>> ReadFileBytes(const std::string& resolvedPath);
 std::optional<std::vector<uint8_t>> ReadAssetFile(std::string_view relativePath);
+
+// Writable per-user directory (SDL_GetPrefPath: %APPDATA%/MEngine/MEngine on Windows, internal storage on Android),
+// created on demand and ending with a separator. nullopt when the platform has none.
+std::optional<std::string> GetUserDataDirectory();
+// Regular files only; never logs.
+bool FileExists(const std::string& path);
+// Writes path.tmp and renames it over path, so an interrupted write never leaves a truncated file. Logs on failure.
+bool WriteFileAtomic(const std::string& path, std::span<const uint8_t> data);
 
 // "a/b/c.gltf" -> "a/b", "c.gltf" -> "".
 std::string_view ParentPath(std::string_view path);

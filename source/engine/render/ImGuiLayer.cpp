@@ -69,6 +69,7 @@ void ImGuiLayer::Init(rhi::GpuDevice& device, Window& window)
     initInfo.Device = device.GetDevice();
     initInfo.QueueFamily = device.GetQueueFamily();
     initInfo.Queue = device.GetQueue();
+    initInfo.PipelineCache = device.GetPipelineCache();
     initInfo.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE;
     initInfo.MinImageCount = rhi::kMaxFramesInFlight;
     initInfo.ImageCount = rhi::kMaxFramesInFlight;

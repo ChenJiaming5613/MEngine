@@ -28,6 +28,8 @@ public:
     void Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout);
     void Shutdown();
 
+    // Creates the variants the scene's draws use, so the first frame does not stall on pipeline creation.
+    void WarmPipelines(const Scene& scene);
     // Records the whole render pass (clear, then every draw unless drawScene is false).
     void Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, bool drawScene, rhi::DescriptorSetHandle frameSet,
         uint32_t frameOffset);

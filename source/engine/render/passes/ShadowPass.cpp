@@ -112,6 +112,14 @@ rhi::PipelineHandle ShadowPass::Pipeline(uint32_t key)
     return pipeline;
 }
 
+void ShadowPass::WarmPipelines(const Scene& scene)
+{
+    for (const SceneDraw& draw : scene.draws)
+    {
+        Pipeline(draw.pipelineKey & kKeyMask);
+    }
+}
+
 void ShadowPass::Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, bool drawScene,
     rhi::DescriptorSetHandle frameSet, uint32_t frameOffset)
 {

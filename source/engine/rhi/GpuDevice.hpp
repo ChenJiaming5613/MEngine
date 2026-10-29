@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -25,6 +26,18 @@ struct GpuDeviceCreation
     // Size of each frame's slice of the dynamic uniform ring.
     uint32_t dynamicBufferBytesPerFrame = 1u << 20;
     uint32_t timestampQueriesPerFrame = 64;
+    // File the VkPipelineCache is loaded from and saved to; empty keeps the cache in memory only.
+    std::string pipelineCachePath;
+};
+
+struct PipelineStats
+{
+    // Pipelines created through vkCreate*Pipelines (ImGui's own pipeline is not counted).
+    uint32_t created = 0;
+    double totalMilliseconds = 0.0;
+    double lastMilliseconds = 0.0;
+    // Bytes of cache data handed to the driver at startup; 0 when there was no usable file.
+    size_t loadedCacheBytes = 0;
 };
 
 struct DynamicAllocation
@@ -138,6 +151,12 @@ public:
     uint32_t GetFrameSlot() const { return m_frameSlot; }
     const VkPhysicalDeviceProperties& GetProperties() const { return m_properties; }
 
+    // One cache shared by every pipeline, including ImGui's.
+    VkPipelineCache GetPipelineCache() const { return m_pipelineCache; }
+    // Writes the cache file (atomically); a no-op without a path or when the data size did not change since the last save.
+    void SavePipelineCache();
+    const PipelineStats& GetPipelineStats() const { return m_pipelineStats; }
+
     // Cached per distinct output; owned by the device.
     VkRenderPass GetVulkanRenderPass(const RenderPassOutput& output);
     VkFramebuffer GetFramebuffer(const RenderPass& renderPass) const;
@@ -188,6 +207,7 @@ private:
     void CreateFrameData();
     void CreateDescriptorPool();
     void CreateDefaultResources();
+    void CreatePipelineCache();
     void LoadDebugUtilsFunctions();
 
     bool RecreateSwapchain();
@@ -209,6 +229,10 @@ private:
     // Fill in pipeline.pipeline; CreatePipeline has already made the layout and the shader stages.
     void CreateComputePipeline(const VkPipelineShaderStageCreateInfo& stage, Pipeline& pipeline);
     void CreateGraphicsPipeline(const PipelineCreation& creation, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline);
+    // Compares the reflected shader interface with the layouts, push constants and specialization constants of the
+    // creation. Throws in builds with validation layers, logs an error otherwise.
+    void ValidatePipelineInterface(const PipelineCreation& creation, VkShaderStageFlags pushConstantStages);
+    void RecordPipelineCreation(uint64_t startTicks);
     void WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayout& layout, const DescriptorSetCreation& creation);
     VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
 
@@ -231,6 +255,11 @@ private:
     bool m_computeSupported = false;
     bool m_multiDrawIndirect = false;
     bool m_drawIndirectFirstInstance = false;
+
+    VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
+    std::string m_pipelineCachePath;
+    size_t m_lastSavedCacheSize = 0;
+    PipelineStats m_pipelineStats;
 
     PFN_vkSetDebugUtilsObjectNameEXT m_setObjectName = nullptr;
     PFN_vkCmdBeginDebugUtilsLabelEXT m_cmdBeginLabel = nullptr;

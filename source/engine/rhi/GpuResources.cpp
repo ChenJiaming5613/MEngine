@@ -40,6 +40,18 @@ DescriptorSetLayoutCreation& DescriptorSetLayoutCreation::AddBinding(const Descr
     return *this;
 }
 
+DescriptorBinding* DescriptorSetLayoutCreation::FindBinding(uint32_t index)
+{
+    for (uint32_t slot = 0; slot < bindingCount; ++slot)
+    {
+        if (bindings[slot].index == index)
+        {
+            return &bindings[slot];
+        }
+    }
+    return nullptr;
+}
+
 DescriptorSetCreation& DescriptorSetCreation::AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range)
 {
     MENGINE_ASSERT(resourceCount < kMaxDescriptorsPerSet);

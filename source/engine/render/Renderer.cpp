@@ -104,7 +104,13 @@ bool Renderer::LoadScene(std::string_view assetPath)
     // Free the previous scene before loading the next one, so both never occupy memory together.
     m_scene.Destroy(*m_device);
     m_device->WaitIdleAndReleaseDeferred();
-    return LoadGltfScene(*m_device, assetPath, m_materialLayout, m_scene);
+    if (!LoadGltfScene(*m_device, assetPath, m_materialLayout, m_scene))
+    {
+        return false;
+    }
+    m_forwardPbr.WarmPipelines(m_scene);
+    m_shadow.WarmPipelines(m_scene);
+    return true;
 }
 
 void Renderer::LoadEnvironment(std::optional<std::string_view> directory)

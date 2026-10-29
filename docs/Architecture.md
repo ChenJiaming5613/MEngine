@@ -20,11 +20,11 @@ MEngine 是一个 glTF 2.0 PBR 查看器，同时运行在 Windows 桌面和 And
 
 ```
 CMakeLists.txt                顶层构建，桌面与 Android 共用
-cmake/                        StageAssets / CopyAssets（资源暂存）、CompileShaders（Slang）、ImGui、TinyGltf
+cmake/                        StageAssets / CopyAssets（资源暂存）、CompileShaders（Slang）、GenerateShaderLayouts（布局校验）、ImGui、TinyGltf、SpirvReflect
 source/engine/core            日志、断言、文件系统、JSON、计时、Handle、ResourcePool
 source/engine/platform        SDL 窗口与输入
 source/engine/asset           纯 CPU 资源解码：PNG/JPEG/HDR、KTX2 读写、BC7 软解（与 IblBaker 共用）
-source/engine/rhi             GpuDevice、CommandBuffer、资源描述与池、Swapchain、GpuProfiler
+source/engine/rhi             GpuDevice、CommandBuffer、资源描述与池、Swapchain、GpuProfiler、ShaderReflection、PipelineCacheFile
 source/engine/render          Renderer、Scene、GltfLoader、Environment、Camera、ImGuiLayer、passes/
 source/engine/Application.*   SDL main callbacks 之上的应用基类
 source/viewer                 查看器：SDL 入口、ViewerApp、ViewerConfig、相机控制器（Fly / Orbit）
@@ -32,7 +32,7 @@ source/shaders                Slang 着色器，common/ 为共享头
 programs/IblBaker             离线 IBL 烘焙工具（仅桌面）
 assets/                       config.json、环境贴图等，打包进程序
 android/                      Gradle 工程（SDL android-project 模板）
-third_party/                  子模块：SDL、VMA、glm、imgui、stb、tinygltf、示例资源
+third_party/                  子模块：SDL、VMA、glm、imgui、stb、tinygltf、SPIRV-Reflect、示例资源
 ```
 
 构建目标及其依赖：
@@ -42,6 +42,7 @@ graph LR
     MEngine["MEngine.exe / libmain.so<br/>(source/viewer)"] --> MEngineCore
     MEngineCore["MEngineCore<br/>(core, platform, rhi, render, Application)"] --> MEngineAsset
     MEngineCore --> SDL3 & VMA["VulkanMemoryAllocator"] & imgui & glm & tinygltf3 & Vulkan
+    MEngineCore -. PRIVATE .-> spirv_reflect["spirv_reflect<br/>(SPIRV-Reflect)"]
     MEngineAsset["MEngineAsset<br/>(asset/)"] --> stb & glm
     IblBaker["IblBaker（仅桌面）"] --> MEngineAsset
     MEngine -. 依赖 .-> MEngineShaders["MEngineShaders<br/>(*.slang → *.spv)"]
@@ -211,7 +212,7 @@ classDiagram
 1. `CreateInstance`：要求 1.1 loader；加入 SDL 需要的实例扩展；Debug 下加入校验层和 `VK_EXT_debug_utils`。
 2. 创建 surface → `PickPhysicalDevice`：要求 API ≥ 1.1、有 `VK_KHR_swapchain`、有支持图形+呈现的队列族（优先同时支持 compute 的）；独显优先于集显。
 3. `CreateLogicalDevice`：一个队列；按支持情况启用 `samplerAnisotropy`、`textureCompressionBC`、`multiDrawIndirect`、`drawIndirectFirstInstance`。
-4. 加载 debug utils 函数，创建 VMA。
+4. 加载 debug utils 函数，创建 VMA，创建 pipeline cache（见 4.12）。
 5. 选择表面格式和深度格式（依次尝试 D32 → D24S8 → D16）。
 6. 创建每帧数据、描述符池、`GpuProfiler`、swapchain render pass、动态 uniform 环形缓冲、默认资源（1×1 白色纹理、1×1 黑色立方体贴图、默认采样器），最后创建 swapchain。
 
@@ -233,9 +234,9 @@ classDiagram
 | Buffer | `usage`、`ResourceUsage::Immutable / Dynamic`、`initialData` | Immutable：设备本地，有初始数据时经 staging 上传。Dynamic：主机可见、常驻映射，直接写入 |
 | Texture | 尺寸、`mipLevels`（0 = 完整 mip 链）、`TextureType::Texture2D / TextureCube`、格式、`flags` | `kTextureFlagRenderTarget`（附件用途，独占内存）、`kTextureFlagGenerateMips`（只给第 0 级，其余用线性 blit 生成）、`kTextureFlagStorage`（storage image）。初始数据按“mip 优先、面紧挨”的 KTX2 布局 |
 | Sampler | 过滤、寻址、`maxLod`、各向异性、深度比较 | 各向异性受设备上限裁剪；`compareEnable` 用于阴影 |
-| DescriptorSetLayout | 绑定列表（类型、序号、数量、阶段）、`setIndex` | 绑定默认阶段为 `ALL_GRAPHICS`，compute 必须显式写 `COMPUTE_BIT` |
+| DescriptorSetLayout | 绑定列表（类型、序号、数量、阶段）、`setIndex` | 绑定默认阶段为 `ALL_GRAPHICS`，compute 必须显式写 `COMPUTE_BIT`。私有 layout 可由 `BuildDescriptorSetLayout` 从着色器反射生成，`FindBinding` 用于改写个别绑定（如改成 `UNIFORM_BUFFER_DYNAMIC`） |
 | DescriptorSet | layout + 资源列表（`AddBuffer` / `AddTexture`） | 纹理无效时退回 dummy 纹理；采样器优先级：显式指定 > 纹理关联（`LinkTextureSampler`）> 默认。`UpdateDescriptorSet` 分配一个新 set 替换，旧 set 延迟释放（可能还被在途帧使用） |
-| Pipeline | 着色器阶段、顶点输入、光栅化、深度、混合、`RenderPassOutput`、set layouts、push constant、特化常量 | 只有一个 compute 阶段时创建 compute 管线（push constant 阶段强制为 COMPUTE）；否则创建图形管线，视口和裁剪为动态状态。Slang 产出的入口名一律是 `main` |
+| Pipeline | 着色器阶段、顶点输入、光栅化、深度、混合、`RenderPassOutput`、set layouts、push constant、特化常量 | 只有一个 compute 阶段时创建 compute 管线（push constant 阶段强制为 COMPUTE）；否则创建图形管线，视口和裁剪为动态状态。Slang 产出的入口名一律是 `main`。创建前先做接口校验（4.12），创建时使用共享的 `VkPipelineCache` |
 | RenderPass | 颜色输出、深度输出、load 操作、`storeDepth`、`sampleDepth` | 见 4.5 |
 
 ### 4.5 Render pass 模型
@@ -364,6 +365,31 @@ indirect 命令会检查 buffer 的 `INDIRECT_BUFFER` 用途、偏移对齐、`d
 - `GpuProfiler` 的 timestamp query pool 按帧槽切分（默认每帧 64 个查询）。某个槽的结果在它的 fence 等过之后读回，不会让 CPU 等 GPU。`Timings()` 返回最近一帧解析出的嵌套计时，ImGui 面板直接显示。
 - 校验层消息通过 SDL 日志输出，前缀为 `[Validation]`。资源通过 `SetResourceName` 命名，在 RenderDoc 和校验消息里可以看到名字。
 
+### 4.12 Pipeline cache 与着色器接口校验
+
+对应 Raptor 第 2 章（以及第 9 章的特化常量反射），只取适用于 Vulkan 1.1 基线的部分；bindless 推迟到 GPU 驱动渲染阶段（见 `Roadmap.md`）。
+
+**Pipeline cache**：
+
+- `GpuDevice` 只持有一个 `VkPipelineCache`，所有 `vkCreate*Pipelines` 和 ImGui 后端（`ImGui_ImplVulkan_InitInfo::PipelineCache`）共用。
+- 文件路径由 `GpuDeviceCreation::pipelineCachePath` 传入，为空时 cache 只存在于内存。查看器用 `GetUserDataDirectory()`（`SDL_GetPrefPath("MEngine", "MEngine")`）加 `pipeline_cache.bin`：Windows 上是 `%APPDATA%/MEngine/MEngine/`，Android 上是应用内部存储。
+- 文件格式（`PipelineCacheFile`）：32 字节自定义头（魔数 `MEPC`、格式版本、vendorID、deviceID、driverVersion、数据长度、FNV-1a 64 校验和），后接驱动数据。读取时依次检查自定义头，以及驱动头 `VkPipelineCacheHeaderVersionOne` 的长度、版本、vendorID、deviceID 和 `pipelineCacheUUID`。任何一项不符，或长度超过 64 MB，都丢弃整份数据并记一条 WARN，从空 cache 开始。原因是部分移动端驱动遇到损坏或过期的数据会崩溃，而不是返回错误。驱动拒绝初始数据时，同样用空数据重建。
+- 写回时机：`GpuDevice::Shutdown`；查看器加载场景（含预热）之后；Android 退到后台（`OnSuspendChanged(true)`）时，因为后台进程可能被直接杀掉。数据长度与上次写入相同时跳过。写入经 `WriteFileAtomic`：先写 `.tmp`，再用 `SDL_RenamePath` 覆盖。
+- 预热：`Renderer::LoadScene` 成功后调用 `ForwardPbrPass::WarmPipelines` 和 `ShadowPass::WarmPipelines`，按当前场景 draw 实际用到的 key 创建变体，首帧不再创建管线。
+- `GetPipelineStats()` 返回创建次数、累计耗时和启动时加载的 cache 大小，ImGui 面板的 Performance 一栏显示这些数据。
+- 线程安全：`VkPipelineCache` 需要外部同步；目前所有管线都在主线程创建。
+
+**着色器接口校验**（`ShaderReflection`，基于 Khronos SPIRV-Reflect）：
+
+- `ReflectShader` 读取入口点 `main` 的执行模型、静态使用的 (set, binding) 及其类型和数量、push constant 大小、特化常量 id，以及 compute 的 local size。只报告实际用到的资源，与 slangc `-O2` 删除未用资源的行为一致，所以同一组共享 layout 的不同变体可能只用到其中一部分。运行时数组（bindless）直接报错。
+- `GpuDevice::CreatePipeline` 在创建 pipeline layout 之前反射每个阶段并合并，然后检查：
+  - 每个阶段声明的 stage 与入口点的执行模型一致；
+  - 着色器用到的每个绑定都在对应 set 的 layout 里，`setIndex` 相符，类型兼容（`UNIFORM_BUFFER` 与 `UNIFORM_BUFFER_DYNAMIC` 视为兼容，storage 同理），数量足够，阶段标志覆盖所有使用它的阶段（也能发现 compute layout 漏写 `COMPUTE_BIT`）；
+  - push constant 大小不超过声明值，阶段覆盖所有使用它的阶段；
+  - 每个特化常量 id 至少在一个阶段中声明，否则只记 WARN。
+- 不一致时，定义了 `MENGINE_ENABLE_VALIDATION_LAYERS` 的构建（Debug、RelWithDebInfo）抛异常，其他构建记 ERROR 后继续。报错会列出管线名和每一处差异，例如 `CreatePipeline Tonemap: shader interface mismatch / push constants: range stages VERTEX miss FRAGMENT that use them`。SPIR-V 本身无法解析时一律抛异常。
+- 共享的 set 0 / set 1 仍由 `Renderer` 手写，由上面的校验保证一致；pass 私有的 layout 用 `ReflectShaderState` + `BuildDescriptorSetLayout` 生成（当前是 `TonemapPass`）。
+
 ## 5. 渲染层（`source/engine/render`）
 
 ### 5.1 一帧的渲染流程
@@ -388,7 +414,7 @@ graph LR
 
 ### 5.2 描述符与常量约定
 
-C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang` 一一对应。C++ 结构只用 vec4 和 mat4 成员，并用 `static_assert` 锁定大小和偏移，保证与 std140 一致。
+C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang`（以及 `Tonemap.slang` 的 `TonemapConstants`）一一对应，结构名和成员名两边相同。构建时 `cmake/GenerateShaderLayouts.cmake` 用 `slangc -reflection-json` 编译探针着色器（`Pbr.slang@FragmentMain`、`Tonemap.slang@FragmentMain`），由 `ShaderLayoutsScript.cmake` 生成 `ShaderLayoutChecks.generated.hpp`：对每个结构的 `sizeof`，以及每个成员的 `offsetof` 和 `sizeof` 生成 `static_assert`，在 `render/ShaderLayoutChecks.cpp` 中编译。任何一边改了布局而另一边没跟上，都会编译失败。
 
 | 位置 | 内容 | 更新频率 |
 | --- | --- | --- |
@@ -406,10 +432,10 @@ C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang` 一一�
 
 | Pass | 输出 | 管线变体 | 说明 |
 | --- | --- | --- | --- |
-| `ShadowPass` | D16 2048²，`sampleDepth` | `{MASK, 双面, 镜像}` 共 8 种，首次使用时创建 | 静态深度偏移（常量 1.25、斜率 1.75）；MASK 材质只额外绑定 UV 流和材质 set 做裁剪 |
-| `ForwardPbrPass` | HDR RGBA16F + 场景深度 | `PipelineKeyBits` 的 16 种组合（MASK、双面、镜像、有切线），首次使用时创建 | 点光源、带阴影的方向光、split sum IBL；按管线和材质切换时才重新绑定 |
+| `ShadowPass` | D16 2048²，`sampleDepth` | `{MASK, 双面, 镜像}` 共 8 种，场景加载后按需预热 | 静态深度偏移（常量 1.25、斜率 1.75）；MASK 材质只额外绑定 UV 流和材质 set 做裁剪 |
+| `ForwardPbrPass` | HDR RGBA16F + 场景深度 | `PipelineKeyBits` 的 16 种组合（MASK、双面、镜像、有切线），场景加载后按需预热 | 点光源、带阴影的方向光、split sum IBL；按管线和材质切换时才重新绑定 |
 | `SkyboxPass` | 同 Forward（同一个 pass 内） | 1 个 | 采样镜面立方体 mip 0 |
-| `TonemapPass` | swapchain | 1 个 | 自带 set 和采样器；HDR 目标重建后必须重新 `SetInput` |
+| `TonemapPass` | swapchain | 1 个 | 自带 set（layout 由着色器反射生成）和采样器；HDR 目标重建后必须重新 `SetInput` |
 
 管线变体的含义：`kPipelineKeyMirrored` 表示节点变换行列式为负，glTF 要求此时翻转绕序；`kPipelineKeyTangents` 选择带第 4 个顶点流的顶点着色器，没有切线时着色器用导数构建切线空间。
 
@@ -476,7 +502,8 @@ graph LR
 
 - 着色器用 Slang 编写，构建时由 `slangc` 编译：`-target spirv -profile spirv_1_3 -O2`，每个入口点一个文件，输出到 `shaders/<文件名>.<入口>.spv`。
 - 新增入口需要在 `CMakeLists.txt` 里加一行 `MEngineCompileShader(<源文件> <入口>)`。`common/*.slang` 的变化会触发所有着色器重编。
-- 运行时用 `rhi::LoadSpirvAsset` 读取，交给 `ShaderStateCreation::AddStage`。
+- 运行时用 `rhi::LoadSpirvAsset` 读取，交给 `ShaderStateCreation::AddStage`。`CreatePipeline` 会用 SPIRV-Reflect 反射这些 SPIR-V 并校验接口（4.12）。
+- C++ 常量结构的布局在构建时与 Slang 比对（5.2）；新增需要镜像的结构时，把它加进 `CMakeLists.txt` 里 `MEngineGenerateShaderLayoutChecks` 的 `STRUCTS`，必要时补一个探针。
 - 当前着色器：`Pbr`（`VertexMain`、`VertexMainTangent`、`FragmentMain`）、`Shadow`（`VertexMain`、`VertexMainMask`、`FragmentMask`）、`Skybox`、`Tonemap`；公共头 `Bindings`、`Brdf`、`ShadowSampling`。
 
 ### 6.3 IblBaker
@@ -490,6 +517,7 @@ graph LR
 | 应用目标 | `MEngine.exe` | `libmain.so`（SDLActivity），arm64-v8a，minSdk 24，targetSdk 35，`c++_static` |
 | Vulkan 库 | `Vulkan::Vulkan`（SDK） | NDK 的 `libvulkan`，只用 1.0 符号 |
 | 资产 | `<exe 目录>/assets/` | APK assets |
+| 用户数据（pipeline cache） | `%APPDATA%/MEngine/MEngine/` | 应用内部存储（`SDL_GetPrefPath`）；退到后台时写回 |
 | 输入 | 鼠标 + 键盘，可选触摸屏 | 触摸（虚拟摇杆），返回键退出 |
 | 前后台 | 最小化时跳过帧 | 退到后台时销毁 surface，回到前台后重建 |
 | Swapchain | `SUBOPTIMAL` 时重建 | identity pre-transform，`SUBOPTIMAL` 不重建 |
@@ -516,9 +544,9 @@ graph LR
 **新增一个图形 pass**：
 
 1. 在 `source/shaders/` 写 Slang 文件，在 `CMakeLists.txt` 注册每个入口。
-2. 在 `render/passes/` 新建类，实现 `Init`（加载 SPIR-V、创建 layout/管线/需要的纹理和 `RenderPass`）、`Record`、`Shutdown`。管线的 `renderPass` 字段用目标 pass 的 `RenderPassOutput`。
+2. 在 `render/passes/` 新建类，实现 `Init`（加载 SPIR-V、创建 layout/管线/需要的纹理和 `RenderPass`）、`Record`、`Shutdown`。管线的 `renderPass` 字段用目标 pass 的 `RenderPassOutput`。私有 set 的 layout 可以用 `ReflectShaderState` + `BuildDescriptorSetLayout` 从着色器生成；有多个变体的 pass 提供 `WarmPipelines`，在场景加载后预热。
 3. 在 `Renderer` 里持有它，在 `Init / Shutdown / Render` 中调用；如果用到窗口尺寸的目标，记得在 swapchain 尺寸变化时调用 `ResizeOutputTextures` 并更新引用它的描述符集。
-4. 如果需要新的每帧数据，同时修改 `RenderTypes.hpp` 和 `Bindings.slang`，并更新 `static_assert`。
+4. 如果需要新的每帧数据，同时修改 `RenderTypes.hpp` 和 `Bindings.slang`，成员同名；构建时的布局校验会发现不一致。
 
 **新增一个 compute pass**：
 
@@ -526,7 +554,7 @@ graph LR
 2. layout 的绑定阶段写 `VK_SHADER_STAGE_COMPUTE_BIT`；storage image 的纹理用 `kTextureFlagStorage` 创建，先用 `SupportsStorageImage` 检查格式。
 3. 在 render pass 之外录制：`TextureBarrier(..., kResourceStateUnorderedAccess)` → `BindPipeline` → `BindDescriptorSet` → `Dispatch` → 按下一个使用者写 barrier（例如 `BufferBarrier(..., UnorderedAccess, IndirectArgument)`）。被后续 render pass 当作附件的纹理不需要手动 barrier，`BindPass` 会处理。
 
-**后续路线**（第 2–15 章的集成顺序）：阶段 0 剩余（设备能力分级、CPU 视锥剔除）→ 第 2 章 pipeline cache 与 Slang 反射 → 第 4 章 Frame Graph（基于 `VkRenderPass`）→ 第 3 章多线程 → 第 11 章 TAA → 第 7 章 clustered forward → 第 8 章点光源阴影 → 第 10 章体积雾 → 第 6 章 GPU 剔除与 indirect → 第 5 章异步计算 → 桌面专属的第 9、12–15 章。
+**后续路线**（第 2–15 章的集成顺序与进度见 [`Roadmap.md`](Roadmap.md)）：阶段 0 剩余（设备能力分级、CPU 视锥剔除）→ ~~第 2 章 pipeline cache 与着色器反射~~（已完成）→ 第 4 章 Frame Graph（基于 `VkRenderPass`）→ 第 3 章多线程 → 第 11 章 TAA → 第 7 章 clustered forward → 第 8 章点光源阴影 → 第 10 章体积雾 → 第 6 章 GPU 剔除与 indirect → 第 5 章异步计算 → 桌面专属的第 9、12–15 章。
 
 ## 11. 当前限制
 
@@ -534,5 +562,5 @@ graph LR
 - 只有方向光有阴影，点光源没有。
 - 场景加载同步阻塞；所有工作在单一图形队列上。
 - 描述符没有数组和 bindless；每个 `DescriptorSetCreation` 最多 16 个资源，每个管线最多 4 个 set layout、3 个着色器阶段，最多 4 个颜色附件。
-- 没有 `VkPipelineCache`，管线变体在首次绘制时同步创建（可能导致首帧卡顿）。
+- 管线变体仍在主线程同步创建（场景加载时预热，命中 pipeline cache 时很快），没有后台编译。
 - 只能运行在支持 Vulkan 1.1 的设备上，尚未针对更高版本启用任何可选能力。

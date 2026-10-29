@@ -123,6 +123,8 @@ struct DescriptorSetLayoutCreation
     const char* name = nullptr;
 
     DescriptorSetLayoutCreation& AddBinding(const DescriptorBinding& binding);
+    // nullptr when no binding has this index. Used to adjust layouts built from shader reflection.
+    DescriptorBinding* FindBinding(uint32_t index);
 };
 
 struct DescriptorResource

@@ -39,6 +39,51 @@ std::optional<std::vector<uint8_t>> ReadAssetFile(std::string_view relativePath)
     return ReadFileBytes(ResolveAssetPath(relativePath));
 }
 
+std::optional<std::string> GetUserDataDirectory()
+{
+    std::unique_ptr<char, decltype(&SDL_free)> path(SDL_GetPrefPath("MEngine", "MEngine"), &SDL_free);
+    if (path == nullptr)
+    {
+        MENGINE_LOG_WARN("No user data directory: %s", SDL_GetError());
+        return std::nullopt;
+    }
+    return std::string(path.get());
+}
+
+bool FileExists(const std::string& path)
+{
+    SDL_PathInfo info{};
+    return SDL_GetPathInfo(path.c_str(), &info) && info.type == SDL_PATHTYPE_FILE;
+}
+
+bool WriteFileAtomic(const std::string& path, std::span<const uint8_t> data)
+{
+    const std::string temporaryPath = path + ".tmp";
+    SDL_IOStream* stream = SDL_IOFromFile(temporaryPath.c_str(), "wb");
+    if (stream == nullptr)
+    {
+        MENGINE_LOG_WARN("Failed to open %s for writing: %s", temporaryPath.c_str(), SDL_GetError());
+        return false;
+    }
+    const size_t written = data.empty() ? 0 : SDL_WriteIO(stream, data.data(), data.size());
+    // Closing flushes; a failed flush means the file is incomplete.
+    const bool closed = SDL_CloseIO(stream);
+    if (written != data.size() || !closed)
+    {
+        MENGINE_LOG_WARN("Failed to write %s: %s", temporaryPath.c_str(), SDL_GetError());
+        SDL_RemovePath(temporaryPath.c_str());
+        return false;
+    }
+    // SDL renames with MoveFileEx(REPLACE_EXISTING) on Windows and rename() on POSIX: both replace the target.
+    if (!SDL_RenamePath(temporaryPath.c_str(), path.c_str()))
+    {
+        MENGINE_LOG_WARN("Failed to rename %s to %s: %s", temporaryPath.c_str(), path.c_str(), SDL_GetError());
+        SDL_RemovePath(temporaryPath.c_str());
+        return false;
+    }
+    return true;
+}
+
 std::string_view ParentPath(std::string_view path)
 {
     const size_t separator = path.find_last_of("/\\");

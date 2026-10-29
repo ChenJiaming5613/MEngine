@@ -1,30 +1,29 @@
 #include "render/passes/TonemapPass.hpp"
 
+#include "render/RenderTypes.hpp"
 #include "rhi/CommandBuffer.hpp"
 #include "rhi/GpuDevice.hpp"
+#include "rhi/ShaderReflection.hpp"
 #include "rhi/VulkanUtils.hpp"
 
 #include <vector>
 
 namespace mengine::render {
-namespace {
-
-struct TonemapConstants
-{
-    float exposure = 1.0f;
-    uint32_t encodeSrgb = 0;
-};
-
-} // namespace
 
 void TonemapPass::Init(rhi::GpuDevice& device, const rhi::RenderPassOutput& output)
 {
     m_device = &device;
 
-    rhi::DescriptorSetLayoutCreation layoutCreation;
-    layoutCreation.name = "TonemapLayout";
-    layoutCreation.AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 0, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
-    m_layout = device.CreateDescriptorSetLayout(layoutCreation);
+    const std::vector<uint32_t> vertexCode = rhi::LoadSpirvAsset("shaders/Tonemap.VertexMain.spv");
+    const std::vector<uint32_t> fragmentCode = rhi::LoadSpirvAsset("shaders/Tonemap.FragmentMain.spv");
+    rhi::PipelineCreation creation;
+    creation.name = "Tonemap";
+    creation.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, vertexCode.data(), vertexCode.size() * sizeof(uint32_t))
+        .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentCode.data(), fragmentCode.size() * sizeof(uint32_t));
+
+    // The private set 0 (the HDR input) comes straight from the shaders.
+    const rhi::ShaderReflection reflection = rhi::ReflectShaderState(creation.shaders, creation.name);
+    m_layout = device.CreateDescriptorSetLayout(rhi::BuildDescriptorSetLayout(reflection, 0, "TonemapLayout"));
 
     // Same resolution as the swapchain: nearest sampling reads every texel exactly once.
     m_sampler = device.CreateSampler({
@@ -38,12 +37,6 @@ void TonemapPass::Init(rhi::GpuDevice& device, const rhi::RenderPassOutput& outp
         .name = "TonemapSampler",
     });
 
-    const std::vector<uint32_t> vertexCode = rhi::LoadSpirvAsset("shaders/Tonemap.VertexMain.spv");
-    const std::vector<uint32_t> fragmentCode = rhi::LoadSpirvAsset("shaders/Tonemap.FragmentMain.spv");
-    rhi::PipelineCreation creation;
-    creation.name = "Tonemap";
-    creation.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, vertexCode.data(), vertexCode.size() * sizeof(uint32_t))
-        .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentCode.data(), fragmentCode.size() * sizeof(uint32_t));
     creation.rasterization.cullMode = VK_CULL_MODE_NONE;
     creation.renderPass = output;
     creation.AddDescriptorSetLayout(m_layout);

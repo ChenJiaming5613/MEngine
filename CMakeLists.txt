@@ -32,6 +32,8 @@ add_subdirectory(third_party/VulkanMemoryAllocator)
 
 include(ImGui)
 include(TinyGltf)
+include(SpirvReflect)
+include(GenerateShaderLayouts)
 
 set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)
 set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -86,6 +88,21 @@ target_link_libraries(MEngineCore PUBLIC
     glm::glm
     tinygltf3
 )
+target_link_libraries(MEngineCore PRIVATE spirv_reflect)
+
+# render/ShaderLayoutChecks.cpp includes the generated static_asserts, so a layout drift between RenderTypes.hpp and the
+# Slang structs fails the build.
+set(MENGINE_SHADER_LAYOUT_CHECKS "${CMAKE_BINARY_DIR}/generated/ShaderLayoutChecks.generated.hpp")
+MEngineGenerateShaderLayoutChecks(
+    OUTPUT "${MENGINE_SHADER_LAYOUT_CHECKS}"
+    NAMESPACE mengine::render
+    PROBES
+        "${MENGINE_SHADER_SOURCE_DIR}/Pbr.slang@FragmentMain"
+        "${MENGINE_SHADER_SOURCE_DIR}/Tonemap.slang@FragmentMain"
+    STRUCTS FrameConstants MaterialData DrawConstants TonemapConstants
+)
+target_sources(MEngineCore PRIVATE "${MENGINE_SHADER_LAYOUT_CHECKS}")
+target_include_directories(MEngineCore PRIVATE "${CMAKE_BINARY_DIR}/generated")
 # The Android API 24 loader only exports Vulkan 1.0 symbols, so VMA must fetch 1.1 entry points at runtime.
 target_compile_definitions(MEngineCore PUBLIC
     VMA_VULKAN_VERSION=1001000

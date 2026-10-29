@@ -4,6 +4,7 @@
 #include "FlyCameraController.hpp"
 #include "OrbitCameraController.hpp"
 #include "ViewerConfig.hpp"
+#include "core/FileSystem.hpp"
 #include "core/Log.hpp"
 #include "render/Camera.hpp"
 #include "render/ImGuiLayer.hpp"
@@ -61,7 +62,12 @@ public:
 protected:
     bool OnInitialize() override
     {
-        m_device.Init(rhi::GpuDeviceCreation{.window = GetWindow().NativeHandle(), .vsync = m_vsyncEnabled});
+        rhi::GpuDeviceCreation deviceCreation{.window = GetWindow().NativeHandle(), .vsync = m_vsyncEnabled};
+        if (const std::optional<std::string> userDirectory = GetUserDataDirectory())
+        {
+            deviceCreation.pipelineCachePath = *userDirectory + "pipeline_cache.bin";
+        }
+        m_device.Init(deviceCreation);
         m_imGui.Init(m_device, GetWindow());
         m_renderer.Init(m_device);
         GetInput().SetUiHitTest([this](float x, float y) { return HitsUi(x, y); });
@@ -111,7 +117,15 @@ protected:
         m_device.EndFrame();
     }
 
-    void OnSuspendChanged(bool suspended) override { m_device.SetSuspended(suspended); }
+    void OnSuspendChanged(bool suspended) override
+    {
+        // Android may kill a backgrounded app without a shutdown, so the cache is saved on the way out.
+        if (suspended)
+        {
+            m_device.SavePipelineCache();
+        }
+        m_device.SetSuspended(suspended);
+    }
 
     SDL_AppResult OnEvent(const SDL_Event& event) override
     {
@@ -169,6 +183,8 @@ private:
             m_currentScene = index;
             MENGINE_LOG_INFO("Loading scene %s (%s)", sceneConfig->name.c_str(), sceneConfig->path.c_str());
             m_renderer.LoadScene(sceneConfig->path);
+            // The scene's pipelines were just created (warm-up); persist them.
+            m_device.SavePipelineCache();
         }
 
         const render::Scene& scene = m_renderer.GetScene();
@@ -283,6 +299,9 @@ private:
             }
             ImGui::Text("Present Mode: %s", rhi::PresentModeName(m_device.GetPresentMode()));
             ImGui::Text("FPS: %.1f (%.2f ms)", m_displayedFramesPerSecond, m_displayedFrameMilliseconds);
+            const rhi::PipelineStats& pipelineStats = m_device.GetPipelineStats();
+            ImGui::Text("Pipelines: %u created, %.1f ms (cache loaded %zu KB)", pipelineStats.created,
+                pipelineStats.totalMilliseconds, pipelineStats.loadedCacheBytes / 1024);
             for (const rhi::GpuTiming& timing : m_device.GetProfiler().Timings())
             {
                 ImGui::Text("%*sGPU %s: %.3f ms", static_cast<int>(timing.depth * 2), "", timing.name.c_str(), timing.milliseconds);

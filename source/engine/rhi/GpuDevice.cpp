@@ -1,6 +1,8 @@
 #include "rhi/GpuDevice.hpp"
 
 #include "core/Log.hpp"
+#include "rhi/PipelineCacheFile.hpp"
+#include "rhi/ShaderReflection.hpp"
 
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>
@@ -124,6 +126,31 @@ std::optional<uint32_t> FindGraphicsPresentQueueFamily(VkPhysicalDevice physical
     return graphicsOnly;
 }
 
+std::string StageNames(VkShaderStageFlags stages)
+{
+    std::string names;
+    const auto append = [&](VkShaderStageFlags bit, const char* name) {
+        if ((stages & bit) != 0)
+        {
+            names += names.empty() ? "" : "|";
+            names += name;
+            stages &= ~bit;
+        }
+    };
+    append(VK_SHADER_STAGE_VERTEX_BIT, "VERTEX");
+    append(VK_SHADER_STAGE_FRAGMENT_BIT, "FRAGMENT");
+    append(VK_SHADER_STAGE_COMPUTE_BIT, "COMPUTE");
+    append(VK_SHADER_STAGE_GEOMETRY_BIT, "GEOMETRY");
+    append(VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, "TESS_CONTROL");
+    append(VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, "TESS_EVALUATION");
+    if (stages != 0)
+    {
+        names += names.empty() ? "" : "|";
+        names += "0x" + std::to_string(stages);
+    }
+    return names.empty() ? "NONE" : names;
+}
+
 VkDeviceSize AlignUp(VkDeviceSize value, VkDeviceSize alignment)
 {
     return alignment == 0 ? value : (value + alignment - 1) / alignment * alignment;
@@ -163,6 +190,7 @@ void GpuDevice::Init(const GpuDeviceCreation& creation)
 {
     m_window = creation.window;
     m_vsync = creation.vsync;
+    m_pipelineCachePath = creation.pipelineCachePath;
 
     m_buffers.Init(kBufferPoolSize);
     m_textures.Init(kTexturePoolSize);
@@ -179,6 +207,7 @@ void GpuDevice::Init(const GpuDeviceCreation& creation)
     CreateLogicalDevice();
     LoadDebugUtilsFunctions();
     CreateAllocator();
+    CreatePipelineCache();
     m_swapchain.Init(SwapchainContext{
         .window = m_window,
         .instance = m_instance,
@@ -432,6 +461,65 @@ void GpuDevice::CreateAllocator()
     CheckVk(vmaCreateAllocator(&allocatorInfo, &m_allocator), "vmaCreateAllocator");
 }
 
+void GpuDevice::CreatePipelineCache()
+{
+    std::vector<uint8_t> initialData;
+    if (!m_pipelineCachePath.empty())
+    {
+        initialData = LoadPipelineCacheBlob(m_pipelineCachePath, m_properties);
+    }
+    VkPipelineCacheCreateInfo cacheInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+        .initialDataSize = initialData.size(),
+        .pInitialData = initialData.empty() ? nullptr : initialData.data(),
+    };
+    if (vkCreatePipelineCache(m_device, &cacheInfo, nullptr, &m_pipelineCache) != VK_SUCCESS && !initialData.empty())
+    {
+        MENGINE_LOG_WARN("Pipeline cache: the driver rejected %s, starting empty", m_pipelineCachePath.c_str());
+        initialData.clear();
+        cacheInfo.initialDataSize = 0;
+        cacheInfo.pInitialData = nullptr;
+        CheckVk(vkCreatePipelineCache(m_device, &cacheInfo, nullptr, &m_pipelineCache), "vkCreatePipelineCache");
+    }
+    if (m_pipelineCache == VK_NULL_HANDLE)
+    {
+        throw std::runtime_error("vkCreatePipelineCache failed");
+    }
+    m_pipelineStats.loadedCacheBytes = initialData.size();
+    // A cache that loaded fine needs no rewrite until it grows.
+    m_lastSavedCacheSize = initialData.size();
+}
+
+void GpuDevice::SavePipelineCache()
+{
+    if (m_pipelineCachePath.empty() || m_pipelineCache == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    size_t size = 0;
+    if (vkGetPipelineCacheData(m_device, m_pipelineCache, &size, nullptr) != VK_SUCCESS || size == 0)
+    {
+        return;
+    }
+    if (size == m_lastSavedCacheSize)
+    {
+        return;
+    }
+    std::vector<uint8_t> data(size);
+    // VK_INCOMPLETE cannot happen: nothing else touches the cache in between (single threaded pipeline creation).
+    if (vkGetPipelineCacheData(m_device, m_pipelineCache, &size, data.data()) != VK_SUCCESS)
+    {
+        MENGINE_LOG_WARN("Pipeline cache: vkGetPipelineCacheData failed, not saved");
+        return;
+    }
+    data.resize(size);
+    if (SavePipelineCacheBlob(m_pipelineCachePath, m_properties, data))
+    {
+        m_lastSavedCacheSize = size;
+        MENGINE_LOG_INFO("Pipeline cache: saved %zu bytes to %s", size, m_pipelineCachePath.c_str());
+    }
+}
+
 void GpuDevice::CreateFrameData()
 {
     const VkCommandPoolCreateInfo framePoolInfo{
@@ -543,6 +631,10 @@ void GpuDevice::Shutdown()
     }
 
     vkDeviceWaitIdle(m_device);
+
+    SavePipelineCache();
+    vkDestroyPipelineCache(m_device, m_pipelineCache, nullptr);
+    m_pipelineCache = VK_NULL_HANDLE;
 
     DestroyTexture(m_dummyTexture);
     DestroyTexture(m_dummyCubeTexture);
@@ -1714,6 +1806,7 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
         throw std::runtime_error("CreatePipeline: the graphics queue of this GPU does not run compute (" + name + ")");
     }
     const VkShaderStageFlags pushConstantStages = compute ? VK_SHADER_STAGE_COMPUTE_BIT : creation.pushConstantStages;
+    ValidatePipelineInterface(creation, pushConstantStages);
 
     std::array<VkDescriptorSetLayout, kMaxDescriptorSetLayouts> setLayouts{};
     for (uint32_t index = 0; index < creation.descriptorSetLayoutCount; ++index)
@@ -1828,6 +1921,130 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
     return handle;
 }
 
+void GpuDevice::ValidatePipelineInterface(const PipelineCreation& creation, VkShaderStageFlags pushConstantStages)
+{
+    const std::string name = creation.name ? creation.name : "<unnamed>";
+    const ShaderStateCreation& shaders = creation.shaders;
+
+    // Malformed SPIR-V is never tolerated: the driver would reject or crash on it anyway.
+    std::array<ShaderReflection, kMaxShaderStages> perStage{};
+    std::string error;
+    for (uint32_t index = 0; index < shaders.stageCount; ++index)
+    {
+        const ShaderStage& stage = shaders.stages[index];
+        if (stage.code == nullptr || stage.codeSize == 0 || stage.codeSize % sizeof(uint32_t) != 0)
+        {
+            throw std::runtime_error("CreatePipeline " + name + ": stage " + std::to_string(index) + " has no SPIR-V words");
+        }
+        if (!ReflectShader({stage.code, stage.codeSize / sizeof(uint32_t)}, perStage[index], error))
+        {
+            throw std::runtime_error("CreatePipeline " + name + ": stage " + std::to_string(index) + ": " + error);
+        }
+    }
+    ShaderReflection merged;
+    if (!MergeReflections(std::span(perStage.data(), shaders.stageCount), merged, error))
+    {
+        throw std::runtime_error("CreatePipeline " + name + ": " + error);
+    }
+
+    std::string problems;
+    const auto report = [&](const std::string& problem) {
+        problems += "\n  ";
+        problems += problem;
+    };
+
+    for (uint32_t index = 0; index < shaders.stageCount; ++index)
+    {
+        if (perStage[index].stages != static_cast<VkShaderStageFlags>(shaders.stages[index].stage))
+        {
+            report("stage " + std::to_string(index) + " is declared as " + StageNames(static_cast<VkShaderStageFlags>(shaders.stages[index].stage)) +
+                " but its entry point is " + StageNames(perStage[index].stages));
+        }
+    }
+
+    for (const ReflectedBinding& binding : merged.bindings)
+    {
+        const std::string where = "set " + std::to_string(binding.set) + " binding " + std::to_string(binding.binding) + ": ";
+        if (binding.set >= creation.descriptorSetLayoutCount)
+        {
+            report(where + "used by the shaders, but the pipeline has only " + std::to_string(creation.descriptorSetLayoutCount) + " set layouts");
+            continue;
+        }
+        const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(creation.descriptorSetLayouts[binding.set]);
+        if (layout == nullptr)
+        {
+            continue;
+        }
+        if (layout->setIndex != binding.set)
+        {
+            report(where + "the layout at this position was created for set " + std::to_string(layout->setIndex));
+        }
+        const auto end = layout->bindings.begin() + layout->bindingCount;
+        const auto found = std::find_if(layout->bindings.begin(), end, [&](const DescriptorBinding& candidate) { return candidate.index == binding.binding; });
+        if (found == end)
+        {
+            report(where + "missing from the layout (shader expects " + DescriptorTypeName(binding.type) + ")");
+            continue;
+        }
+        const bool typeMatches = found->type == binding.type
+            || (binding.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && found->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
+            || (binding.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && found->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC);
+        if (!typeMatches)
+        {
+            report(where + "layout has " + DescriptorTypeName(found->type) + ", shader expects " + DescriptorTypeName(binding.type));
+        }
+        if (found->count < binding.count)
+        {
+            report(where + "layout has " + std::to_string(found->count) + " descriptors, shader expects " + std::to_string(binding.count));
+        }
+        if ((found->stages & binding.stages) != binding.stages)
+        {
+            report(where + "layout stages " + StageNames(found->stages) + " miss " + StageNames(binding.stages & ~found->stages) +
+                " that use it");
+        }
+    }
+
+    if (merged.pushConstantSize > creation.pushConstantSize)
+    {
+        report("push constants: shaders use " + std::to_string(merged.pushConstantSize) + " bytes, the pipeline declares " +
+            std::to_string(creation.pushConstantSize));
+    }
+    else if (merged.pushConstantSize > 0 && (pushConstantStages & merged.pushConstantStages) != merged.pushConstantStages)
+    {
+        report("push constants: range stages " + StageNames(pushConstantStages) + " miss " +
+            StageNames(merged.pushConstantStages & ~pushConstantStages) + " that use them");
+    }
+
+    for (uint32_t index = 0; index < creation.specializationConstantCount; ++index)
+    {
+        const uint32_t id = creation.specializationConstants[index].id;
+        if (!std::binary_search(merged.specializationConstantIds.begin(), merged.specializationConstantIds.end(), id))
+        {
+            MENGINE_LOG_WARN("CreatePipeline %s: specialization constant %u is not declared by any stage", name.c_str(), id);
+        }
+    }
+
+    if (problems.empty())
+    {
+        return;
+    }
+    const std::string message = "CreatePipeline " + name + ": shader interface mismatch" + problems;
+#ifdef MENGINE_ENABLE_VALIDATION_LAYERS
+    throw std::runtime_error(message);
+#else
+    MENGINE_LOG_ERROR("%s", message.c_str());
+#endif
+}
+
+void GpuDevice::RecordPipelineCreation(uint64_t startTicks)
+{
+    const double milliseconds =
+        static_cast<double>(SDL_GetPerformanceCounter() - startTicks) * 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
+    ++m_pipelineStats.created;
+    m_pipelineStats.totalMilliseconds += milliseconds;
+    m_pipelineStats.lastMilliseconds = milliseconds;
+}
+
 void GpuDevice::CreateComputePipeline(const VkPipelineShaderStageCreateInfo& stage, Pipeline& pipeline)
 {
     const VkComputePipelineCreateInfo pipelineInfo{
@@ -1835,7 +2052,9 @@ void GpuDevice::CreateComputePipeline(const VkPipelineShaderStageCreateInfo& sta
         .stage = stage,
         .layout = pipeline.layout,
     };
-    CheckVk(vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline.pipeline), "vkCreateComputePipelines");
+    const uint64_t start = SDL_GetPerformanceCounter();
+    CheckVk(vkCreateComputePipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &pipeline.pipeline), "vkCreateComputePipelines");
+    RecordPipelineCreation(start);
 }
 
 void GpuDevice::CreateGraphicsPipeline(
@@ -1941,7 +2160,9 @@ void GpuDevice::CreateGraphicsPipeline(
         .renderPass = GetVulkanRenderPass(creation.renderPass),
         .subpass = 0,
     };
-    CheckVk(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline.pipeline), "vkCreateGraphicsPipelines");
+    const uint64_t start = SDL_GetPerformanceCounter();
+    CheckVk(vkCreateGraphicsPipelines(m_device, m_pipelineCache, 1, &pipelineInfo, nullptr, &pipeline.pipeline), "vkCreateGraphicsPipelines");
+    RecordPipelineCreation(start);
 }
 
 void GpuDevice::DestroyPipeline(PipelineHandle handle)

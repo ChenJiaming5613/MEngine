@@ -25,6 +25,8 @@ public:
         rhi::DescriptorSetLayoutHandle materialLayout);
     void Shutdown();
 
+    // Creates the variants the scene's draws use, so the first frame does not stall on pipeline creation.
+    void WarmPipelines(const Scene& scene);
     // Inside the forward render pass.
     void Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, rhi::DescriptorSetHandle frameSet, uint32_t frameOffset);
 

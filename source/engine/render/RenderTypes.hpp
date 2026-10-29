@@ -9,7 +9,8 @@
 
 namespace mengine::render {
 
-// Mirrors source/shaders/common/Bindings.slang. Only vec4 / mat4 members, so the C++ layout equals std140.
+// Mirrors source/shaders/common/Bindings.slang (and the push constants of Tonemap.slang). Member names match the Slang
+// structs: render/ShaderLayoutChecks.cpp static_asserts every offset and size against slangc's reflection at build time.
 
 struct FrameConstants
 {
@@ -26,12 +27,6 @@ struct FrameConstants
     glm::vec4 shadowParams{0.0f};              // x enabled, y 1 / shadow map size, z normal offset in world units
     glm::vec4 iblParams{0.0f};                 // x intensity, y specular mip count, z skybox blur roughness
 };
-static_assert(sizeof(FrameConstants) == 432);
-static_assert(offsetof(FrameConstants, skyboxInverseViewProjection) == 192);
-static_assert(offsetof(FrameConstants, lightViewProjection) == 256);
-static_assert(offsetof(FrameConstants, cameraPosition) == 320);
-static_assert(offsetof(FrameConstants, directionalDirection) == 368);
-static_assert(offsetof(FrameConstants, iblParams) == 416);
 
 constexpr uint32_t kMaterialFlagNormalTexture = 1u << 0;
 // KHR_materials_pbrSpecularGlossiness: baseColorFactor / texture hold diffuse, the metallic-roughness slot holds the
@@ -51,11 +46,6 @@ struct MaterialData
     float padding[2] = {};
     glm::vec4 specularGlossinessFactor{1.0f}; // rgb specular, a glossiness
 };
-static_assert(sizeof(MaterialData) == 80);
-static_assert(offsetof(MaterialData, metallicFactor) == 32);
-static_assert(offsetof(MaterialData, alphaCutoff) == 48);
-static_assert(offsetof(MaterialData, flags) == 52);
-static_assert(offsetof(MaterialData, specularGlossinessFactor) == 64);
 
 // Push constants of the forward pass (128 bytes, the guaranteed minimum).
 struct DrawConstants
@@ -63,7 +53,13 @@ struct DrawConstants
     glm::mat4 model{1.0f};
     glm::mat4 normalMatrix{1.0f};
 };
-static_assert(sizeof(DrawConstants) == 128);
+
+// Push constants of Tonemap.slang.
+struct TonemapConstants
+{
+    float exposure = 1.0f;
+    uint32_t encodeSrgb = 0;
+};
 
 // Material set (set 1) bindings, in Bindings.slang order.
 enum MaterialBinding : uint32_t

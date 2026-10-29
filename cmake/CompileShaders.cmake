@@ -19,6 +19,12 @@ set(MENGINE_SLANG_SUPPRESSED_WARNINGS 50011 CACHE STRING "slangc warning ids to 
 
 set(MENGINE_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source/shaders")
 
+set(MENGINE_SLANG_WARNING_ARGUMENTS)
+if(MENGINE_SLANG_SUPPRESSED_WARNINGS)
+    list(JOIN MENGINE_SLANG_SUPPRESSED_WARNINGS "," MENGINE_SLANG_WARNING_LIST)
+    set(MENGINE_SLANG_WARNING_ARGUMENTS -warnings-disable "${MENGINE_SLANG_WARNING_LIST}")
+endif()
+
 # MEngineCompileShader(<slang-source> <entry-point>)
 # Writes <staged assets>/shaders/<Name>.<EntryPoint>.spv, loaded at runtime as "shaders/<Name>.<EntryPoint>.spv".
 function(MEngineCompileShader SHADER_SOURCE ENTRY_POINT)
@@ -30,12 +36,6 @@ function(MEngineCompileShader SHADER_SOURCE ENTRY_POINT)
 
     file(GLOB COMMON_SHADERS CONFIGURE_DEPENDS "${MENGINE_SHADER_SOURCE_DIR}/common/*.slang")
 
-    set(WARNING_ARGUMENTS)
-    if(MENGINE_SLANG_SUPPRESSED_WARNINGS)
-        list(JOIN MENGINE_SLANG_SUPPRESSED_WARNINGS "," WARNING_LIST)
-        set(WARNING_ARGUMENTS -warnings-disable "${WARNING_LIST}")
-    endif()
-
     add_custom_command(
         OUTPUT "${SPIRV_OUTPUT}"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${OUTPUT_DIRECTORY}"
@@ -44,7 +44,7 @@ function(MEngineCompileShader SHADER_SOURCE ENTRY_POINT)
             -entry "${ENTRY_POINT}"
             -profile "${MENGINE_SLANG_PROFILE}"
             -I "${MENGINE_SHADER_SOURCE_DIR}"
-            ${WARNING_ARGUMENTS}
+            ${MENGINE_SLANG_WARNING_ARGUMENTS}
             -O2
             -o "${SPIRV_OUTPUT}"
         DEPENDS "${SHADER_ABSOLUTE}" ${COMMON_SHADERS}

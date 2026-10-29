@@ -79,6 +79,14 @@ rhi::PipelineHandle ForwardPbrPass::Pipeline(uint32_t key)
     return pipeline;
 }
 
+void ForwardPbrPass::WarmPipelines(const Scene& scene)
+{
+    for (const SceneDraw& draw : scene.draws)
+    {
+        Pipeline(draw.pipelineKey);
+    }
+}
+
 void ForwardPbrPass::Record(rhi::CommandBuffer& commandBuffer, const Scene& scene, rhi::DescriptorSetHandle frameSet,
     uint32_t frameOffset)
 {
