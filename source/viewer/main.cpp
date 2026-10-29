@@ -11,6 +11,9 @@ SDL_AppResult SDL_AppInit(void** appState, int, char*[])
     // desktop drops it so touchscreens do not double as a mouse.
 #if defined(__ANDROID__)
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+    // Landscape only (either side, following the sensor and the user's rotation lock). Without the hint SDL requests
+    // every orientation for a resizable window, overriding android:screenOrientation in the manifest.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #else
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
