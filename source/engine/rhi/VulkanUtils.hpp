@@ -48,6 +48,18 @@ uint32_t ComputeMipCount(uint32_t width, uint32_t height);
 
 VkAttachmentLoadOp ToVkLoadOp(RenderPassOperation operation);
 
+// Resource state translation, after Raptor's util_to_vk_access_flags / util_to_vk_image_layout /
+// util_determine_pipeline_stage_flags. Stages come from the states rather than the access mask, so pixel and non-pixel
+// shader reads stay apart.
+VkAccessFlags ToVkAccessFlags(ResourceStates states);
+// UNDEFINED for kResourceStateUndefined, which is only valid as the old state of an image barrier.
+VkImageLayout ToVkImageLayout(ResourceStates states);
+// TOP_OF_PIPE when no stage applies (kResourceStateUndefined).
+VkPipelineStageFlags ToVkPipelineStages(ResourceStates states);
+// Aspects an image barrier on this format must name: depth formats with stencil need both without
+// separateDepthStencilLayouts (Vulkan 1.2).
+VkImageAspectFlags BarrierAspectOf(VkFormat format);
+
 // Loads a .spv asset as 32-bit words. Throws when the file is missing or not word sized.
 std::vector<uint32_t> LoadSpirvAsset(const std::string& assetPath);
 

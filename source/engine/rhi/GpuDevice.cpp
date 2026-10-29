@@ -102,16 +102,26 @@ std::optional<uint32_t> FindGraphicsPresentQueueFamily(VkPhysicalDevice physical
     std::vector<VkQueueFamilyProperties> families(familyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, families.data());
 
+    // A family that also runs compute is preferred, so Dispatch works on the single queue.
+    std::optional<uint32_t> graphicsOnly;
     for (uint32_t familyIndex = 0; familyIndex < familyCount; ++familyIndex)
     {
         VkBool32 presentSupported = VK_FALSE;
         vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, familyIndex, surface, &presentSupported);
-        if ((families[familyIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0 && presentSupported == VK_TRUE)
+        if ((families[familyIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0 || presentSupported != VK_TRUE)
+        {
+            continue;
+        }
+        if ((families[familyIndex].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0)
         {
             return familyIndex;
         }
+        if (!graphicsOnly.has_value())
+        {
+            graphicsOnly = familyIndex;
+        }
     }
-    return std::nullopt;
+    return graphicsOnly;
 }
 
 VkDeviceSize AlignUp(VkDeviceSize value, VkDeviceSize alignment)
@@ -139,6 +149,10 @@ bool IsBufferDescriptor(VkDescriptorType type)
     return type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
         || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 }
+
+// Every stage that may read a freshly uploaded resource: uploads finish before any frame uses them.
+constexpr VkPipelineStageFlags kUploadConsumerStages = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT
+    | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
 } // namespace
 
@@ -363,6 +377,19 @@ void GpuDevice::CreateLogicalDevice()
     enabled.samplerAnisotropy = supported.samplerAnisotropy;
     m_textureCompressionBc = supported.textureCompressionBC == VK_TRUE;
     enabled.textureCompressionBC = supported.textureCompressionBC;
+    // Optional GPU-driven rendering features; CommandBuffer checks them before recording indirect draws.
+    m_multiDrawIndirect = supported.multiDrawIndirect == VK_TRUE;
+    enabled.multiDrawIndirect = supported.multiDrawIndirect;
+    m_drawIndirectFirstInstance = supported.drawIndirectFirstInstance == VK_TRUE;
+    enabled.drawIndirectFirstInstance = supported.drawIndirectFirstInstance;
+
+    uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> families(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevice, &familyCount, families.data());
+    m_computeSupported = (families[m_queueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
+    MENGINE_LOG_INFO("Queue family %u: compute %s, multiDrawIndirect %s, drawIndirectFirstInstance %s", m_queueFamily,
+        m_computeSupported ? "yes" : "no", m_multiDrawIndirect ? "yes" : "no", m_drawIndirectFirstInstance ? "yes" : "no");
 
     const VkDeviceCreateInfo deviceInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -451,13 +478,14 @@ void GpuDevice::CreateFrameData()
 
 void GpuDevice::CreateDescriptorPool()
 {
-    constexpr std::array<VkDescriptorType, 6> kTypes = {
+    constexpr std::array<VkDescriptorType, 7> kTypes = {
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
         VK_DESCRIPTOR_TYPE_SAMPLER,
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
     };
     std::array<VkDescriptorPoolSize, kTypes.size()> sizes{};
     for (size_t index = 0; index < kTypes.size(); ++index)
@@ -693,12 +721,11 @@ void GpuDevice::SubmitUploadCommands()
         const VkMemoryBarrier buffersReady{
             .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
             .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT
-                | VK_ACCESS_SHADER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT
+                | VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT,
         };
-        vkCmdPipelineBarrier(m_uploadCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 1,
-            &buffersReady, 0, nullptr, 0, nullptr);
+        vkCmdPipelineBarrier(m_uploadCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages, 0, 1, &buffersReady, 0, nullptr,
+            0, nullptr);
     }
 
     CheckVk(vkEndCommandBuffer(m_uploadCommandBuffer), "vkEndCommandBuffer");
@@ -848,6 +875,13 @@ bool GpuDevice::SupportsLinearFilter(VkFormat format) const
     return (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
 }
 
+bool GpuDevice::SupportsStorageImage(VkFormat format) const
+{
+    VkFormatProperties properties{};
+    vkGetPhysicalDeviceFormatProperties(m_physicalDevice, format, &properties);
+    return (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
+}
+
 void GpuDevice::CreateTextureObjects(Texture& texture)
 {
     const bool cube = texture.type == TextureType::TextureCube;
@@ -863,6 +897,10 @@ void GpuDevice::CreateTextureObjects(Texture& texture)
     if (renderTarget)
     {
         usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    }
+    if ((texture.flags & kTextureFlagStorage) != 0)
+    {
+        usage |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
 
     const VkImageCreateInfo imageInfo{
@@ -929,6 +967,11 @@ TextureHandle GpuDevice::CreateTexture(const TextureCreation& creation)
     if (creation.width == 0 || creation.height == 0 || creation.format == VK_FORMAT_UNDEFINED)
     {
         throw std::runtime_error("CreateTexture: invalid size or format for " + name);
+    }
+    if ((creation.flags & kTextureFlagStorage) != 0 && !SupportsStorageImage(creation.format))
+    {
+        throw std::runtime_error("CreateTexture: format " + std::to_string(static_cast<int>(creation.format)) + " of " + name
+            + " cannot be a storage image on this GPU");
     }
 
     Texture texture;
@@ -1084,16 +1127,17 @@ void GpuDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
 
             barrier(level - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_READ_BIT,
-                VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
         }
         barrier(texture.mipLevels - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
     }
     else
     {
         barrier(0, texture.mipLevels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
     }
+    texture.state = kResourceStateShaderResource;
 
     EndUploadBatch();
 }
@@ -1111,15 +1155,16 @@ void GpuDevice::TransitionToShaderRead(Texture& texture)
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = texture.image,
         .subresourceRange = {
-            .aspectMask = AspectOf(texture.format),
+            .aspectMask = BarrierAspectOf(texture.format),
             .baseMipLevel = 0,
             .levelCount = texture.mipLevels,
             .baseArrayLayer = 0,
             .layerCount = texture.layerCount,
         },
     };
-    vkCmdPipelineBarrier(UploadCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0,
-        nullptr, 1, &imageBarrier);
+    vkCmdPipelineBarrier(UploadCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, kUploadConsumerStages, 0, 0, nullptr, 0, nullptr, 1,
+        &imageBarrier);
+    texture.state = kResourceStateShaderResource;
     EndUploadBatch();
 }
 
@@ -1139,6 +1184,14 @@ void GpuDevice::LinkTextureSampler(TextureHandle texture, SamplerHandle sampler)
     if (Texture* target = m_textures.Access(texture))
     {
         target->sampler = sampler;
+    }
+}
+
+void GpuDevice::SetTextureState(TextureHandle texture, ResourceStates state)
+{
+    if (Texture* target = m_textures.Access(texture))
+    {
+        target->state = state;
     }
 }
 
@@ -1299,6 +1352,19 @@ void GpuDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             }
             bufferInfos[writeCount] = VkDescriptorBufferInfo{.buffer = buffer->buffer, .offset = 0, .range = resource.bufferRange};
             write.pBufferInfo = &bufferInfos[writeCount];
+        }
+        else if (binding->type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+        {
+            // No dummy fallback: the dummy texture is not a storage image. The image must be in kResourceStateUnorderedAccess
+            // (GENERAL) when the shader runs.
+            const Texture* texture = m_textures.Access(resource.texture);
+            if (texture == nullptr || (texture->flags & kTextureFlagStorage) == 0)
+            {
+                throw std::runtime_error("Descriptor set binding " + std::to_string(resource.binding)
+                    + " needs a valid texture created with kTextureFlagStorage");
+            }
+            imageInfos[writeCount] = VkDescriptorImageInfo{.imageView = texture->view, .imageLayout = VK_IMAGE_LAYOUT_GENERAL};
+            write.pImageInfo = &imageInfos[writeCount];
         }
         else
         {
@@ -1597,6 +1663,7 @@ void GpuDevice::ResizeOutputTextures(RenderPassHandle handle, uint32_t width, ui
         texture->width = width;
         texture->height = height;
         CreateTextureObjects(*texture);
+        texture->state = kResourceStateUndefined;
     };
     for (uint32_t index = 0; index < renderPass->renderTargetCount; ++index)
     {
@@ -1628,6 +1695,26 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
 {
     const std::string name = creation.name ? creation.name : "<unnamed>";
 
+    // A lone compute stage makes a compute pipeline (Raptor tells them apart the same way, through its shader state).
+    const ShaderStateCreation& shaders = creation.shaders;
+    if (shaders.stageCount == 0)
+    {
+        throw std::runtime_error("CreatePipeline: no shader stages for " + name);
+    }
+    const bool compute = shaders.stages[0].stage == VK_SHADER_STAGE_COMPUTE_BIT;
+    for (uint32_t index = 0; index < shaders.stageCount; ++index)
+    {
+        if ((shaders.stages[index].stage == VK_SHADER_STAGE_COMPUTE_BIT) != compute || (compute && index > 0))
+        {
+            throw std::runtime_error("CreatePipeline: a compute stage must be the only stage of " + name);
+        }
+    }
+    if (compute && !m_computeSupported)
+    {
+        throw std::runtime_error("CreatePipeline: the graphics queue of this GPU does not run compute (" + name + ")");
+    }
+    const VkShaderStageFlags pushConstantStages = compute ? VK_SHADER_STAGE_COMPUTE_BIT : creation.pushConstantStages;
+
     std::array<VkDescriptorSetLayout, kMaxDescriptorSetLayouts> setLayouts{};
     for (uint32_t index = 0; index < creation.descriptorSetLayoutCount; ++index)
     {
@@ -1640,7 +1727,7 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
     }
 
     const VkPushConstantRange pushConstantRange{
-        .stageFlags = creation.pushConstantStages,
+        .stageFlags = pushConstantStages,
         .offset = 0,
         .size = creation.pushConstantSize,
     };
@@ -1653,7 +1740,8 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
     };
     Pipeline pipeline;
     pipeline.name = name;
-    pipeline.pushConstantStages = creation.pushConstantStages;
+    pipeline.bindPoint = compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
+    pipeline.pushConstantStages = pushConstantStages;
     pipeline.pushConstantSize = creation.pushConstantSize;
     CheckVk(vkCreatePipelineLayout(m_device, &layoutInfo, nullptr, &pipeline.layout), "vkCreatePipelineLayout");
 
@@ -1709,107 +1797,14 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
             };
         }
 
-        std::array<VkVertexInputBindingDescription, kMaxVertexStreams> vertexBindings{};
-        for (uint32_t index = 0; index < creation.vertexInput.streamCount; ++index)
+        if (compute)
         {
-            const VertexStream& stream = creation.vertexInput.streams[index];
-            vertexBindings[index] = VkVertexInputBindingDescription{.binding = stream.binding, .stride = stream.stride, .inputRate = stream.inputRate};
+            CreateComputePipeline(stages[0], pipeline);
         }
-        std::array<VkVertexInputAttributeDescription, kMaxVertexAttributes> vertexAttributes{};
-        for (uint32_t index = 0; index < creation.vertexInput.attributeCount; ++index)
+        else
         {
-            const VertexAttribute& attribute = creation.vertexInput.attributes[index];
-            vertexAttributes[index] = VkVertexInputAttributeDescription{
-                .location = attribute.location,
-                .binding = attribute.binding,
-                .format = attribute.format,
-                .offset = attribute.offset,
-            };
+            CreateGraphicsPipeline(creation, std::span(stages.data(), creation.shaders.stageCount), pipeline);
         }
-        const VkPipelineVertexInputStateCreateInfo vertexInputState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount = creation.vertexInput.streamCount,
-            .pVertexBindingDescriptions = vertexBindings.data(),
-            .vertexAttributeDescriptionCount = creation.vertexInput.attributeCount,
-            .pVertexAttributeDescriptions = vertexAttributes.data(),
-        };
-
-        const VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            .topology = creation.topology,
-        };
-        const VkPipelineViewportStateCreateInfo viewportState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-            .viewportCount = 1,
-            .scissorCount = 1,
-        };
-        const VkPipelineRasterizationStateCreateInfo rasterizationState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-            .polygonMode = creation.rasterization.polygonMode,
-            .cullMode = creation.rasterization.cullMode,
-            .frontFace = creation.rasterization.frontFace,
-            .depthBiasEnable = creation.rasterization.depthBiasEnable ? VK_TRUE : VK_FALSE,
-            .depthBiasConstantFactor = creation.rasterization.depthBiasConstantFactor,
-            .depthBiasClamp = 0.0f,
-            .depthBiasSlopeFactor = creation.rasterization.depthBiasSlopeFactor,
-            .lineWidth = 1.0f,
-        };
-        const VkPipelineMultisampleStateCreateInfo multisampleState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-        };
-        const VkPipelineDepthStencilStateCreateInfo depthStencilState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-            .depthTestEnable = creation.depthStencil.depthTestEnable ? VK_TRUE : VK_FALSE,
-            .depthWriteEnable = creation.depthStencil.depthWriteEnable ? VK_TRUE : VK_FALSE,
-            .depthCompareOp = creation.depthStencil.depthCompareOp,
-        };
-
-        std::array<VkPipelineColorBlendAttachmentState, kMaxImageOutputs> blendAttachments{};
-        for (uint32_t index = 0; index < creation.renderPass.colorCount; ++index)
-        {
-            const BlendStateCreation& blend = creation.blend;
-            blendAttachments[index] = VkPipelineColorBlendAttachmentState{
-                .blendEnable = blend.blendEnable ? VK_TRUE : VK_FALSE,
-                .srcColorBlendFactor = blend.sourceColor,
-                .dstColorBlendFactor = blend.destinationColor,
-                .colorBlendOp = blend.colorOperation,
-                .srcAlphaBlendFactor = blend.sourceAlpha,
-                .dstAlphaBlendFactor = blend.destinationAlpha,
-                .alphaBlendOp = blend.alphaOperation,
-                .colorWriteMask = blend.writeMask,
-            };
-        }
-        const VkPipelineColorBlendStateCreateInfo colorBlendState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-            .attachmentCount = creation.renderPass.colorCount,
-            .pAttachments = blendAttachments.data(),
-        };
-
-        const std::array<VkDynamicState, 2> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-        const VkPipelineDynamicStateCreateInfo dynamicState{
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-            .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
-            .pDynamicStates = dynamicStates.data(),
-        };
-
-        const VkGraphicsPipelineCreateInfo pipelineInfo{
-            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .stageCount = creation.shaders.stageCount,
-            .pStages = stages.data(),
-            .pVertexInputState = &vertexInputState,
-            .pInputAssemblyState = &inputAssemblyState,
-            .pViewportState = &viewportState,
-            .pRasterizationState = &rasterizationState,
-            .pMultisampleState = &multisampleState,
-            .pDepthStencilState = &depthStencilState,
-            .pColorBlendState = &colorBlendState,
-            .pDynamicState = &dynamicState,
-            .layout = pipeline.layout,
-            .renderPass = GetVulkanRenderPass(creation.renderPass),
-            .subpass = 0,
-        };
-        CheckVk(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline.pipeline), "vkCreateGraphicsPipelines");
     }
     catch (...)
     {
@@ -1831,6 +1826,122 @@ PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
     }
     *slot = std::move(pipeline);
     return handle;
+}
+
+void GpuDevice::CreateComputePipeline(const VkPipelineShaderStageCreateInfo& stage, Pipeline& pipeline)
+{
+    const VkComputePipelineCreateInfo pipelineInfo{
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .stage = stage,
+        .layout = pipeline.layout,
+    };
+    CheckVk(vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline.pipeline), "vkCreateComputePipelines");
+}
+
+void GpuDevice::CreateGraphicsPipeline(
+    const PipelineCreation& creation, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline)
+{
+    std::array<VkVertexInputBindingDescription, kMaxVertexStreams> vertexBindings{};
+    for (uint32_t index = 0; index < creation.vertexInput.streamCount; ++index)
+    {
+        const VertexStream& stream = creation.vertexInput.streams[index];
+        vertexBindings[index] = VkVertexInputBindingDescription{.binding = stream.binding, .stride = stream.stride, .inputRate = stream.inputRate};
+    }
+    std::array<VkVertexInputAttributeDescription, kMaxVertexAttributes> vertexAttributes{};
+    for (uint32_t index = 0; index < creation.vertexInput.attributeCount; ++index)
+    {
+        const VertexAttribute& attribute = creation.vertexInput.attributes[index];
+        vertexAttributes[index] = VkVertexInputAttributeDescription{
+            .location = attribute.location,
+            .binding = attribute.binding,
+            .format = attribute.format,
+            .offset = attribute.offset,
+        };
+    }
+    const VkPipelineVertexInputStateCreateInfo vertexInputState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = creation.vertexInput.streamCount,
+        .pVertexBindingDescriptions = vertexBindings.data(),
+        .vertexAttributeDescriptionCount = creation.vertexInput.attributeCount,
+        .pVertexAttributeDescriptions = vertexAttributes.data(),
+    };
+
+    const VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = creation.topology,
+    };
+    const VkPipelineViewportStateCreateInfo viewportState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount = 1,
+    };
+    const VkPipelineRasterizationStateCreateInfo rasterizationState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .polygonMode = creation.rasterization.polygonMode,
+        .cullMode = creation.rasterization.cullMode,
+        .frontFace = creation.rasterization.frontFace,
+        .depthBiasEnable = creation.rasterization.depthBiasEnable ? VK_TRUE : VK_FALSE,
+        .depthBiasConstantFactor = creation.rasterization.depthBiasConstantFactor,
+        .depthBiasClamp = 0.0f,
+        .depthBiasSlopeFactor = creation.rasterization.depthBiasSlopeFactor,
+        .lineWidth = 1.0f,
+    };
+    const VkPipelineMultisampleStateCreateInfo multisampleState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+    };
+    const VkPipelineDepthStencilStateCreateInfo depthStencilState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = creation.depthStencil.depthTestEnable ? VK_TRUE : VK_FALSE,
+        .depthWriteEnable = creation.depthStencil.depthWriteEnable ? VK_TRUE : VK_FALSE,
+        .depthCompareOp = creation.depthStencil.depthCompareOp,
+    };
+
+    std::array<VkPipelineColorBlendAttachmentState, kMaxImageOutputs> blendAttachments{};
+    for (uint32_t index = 0; index < creation.renderPass.colorCount; ++index)
+    {
+        const BlendStateCreation& blend = creation.blend;
+        blendAttachments[index] = VkPipelineColorBlendAttachmentState{
+            .blendEnable = blend.blendEnable ? VK_TRUE : VK_FALSE,
+            .srcColorBlendFactor = blend.sourceColor,
+            .dstColorBlendFactor = blend.destinationColor,
+            .colorBlendOp = blend.colorOperation,
+            .srcAlphaBlendFactor = blend.sourceAlpha,
+            .dstAlphaBlendFactor = blend.destinationAlpha,
+            .alphaBlendOp = blend.alphaOperation,
+            .colorWriteMask = blend.writeMask,
+        };
+    }
+    const VkPipelineColorBlendStateCreateInfo colorBlendState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .attachmentCount = creation.renderPass.colorCount,
+        .pAttachments = blendAttachments.data(),
+    };
+
+    const std::array<VkDynamicState, 2> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    const VkPipelineDynamicStateCreateInfo dynamicState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data(),
+    };
+
+    const VkGraphicsPipelineCreateInfo pipelineInfo{
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = static_cast<uint32_t>(stages.size()),
+        .pStages = stages.data(),
+        .pVertexInputState = &vertexInputState,
+        .pInputAssemblyState = &inputAssemblyState,
+        .pViewportState = &viewportState,
+        .pRasterizationState = &rasterizationState,
+        .pMultisampleState = &multisampleState,
+        .pDepthStencilState = &depthStencilState,
+        .pColorBlendState = &colorBlendState,
+        .pDynamicState = &dynamicState,
+        .layout = pipeline.layout,
+        .renderPass = GetVulkanRenderPass(creation.renderPass),
+        .subpass = 0,
+    };
+    CheckVk(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline.pipeline), "vkCreateGraphicsPipelines");
 }
 
 void GpuDevice::DestroyPipeline(PipelineHandle handle)

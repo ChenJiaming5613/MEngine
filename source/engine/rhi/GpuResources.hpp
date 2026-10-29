@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace mengine::rhi {
@@ -37,12 +38,15 @@ constexpr uint32_t kMaxDescriptorsPerSet = 16;
 constexpr uint32_t kMaxVertexStreams = 8;
 constexpr uint32_t kMaxVertexAttributes = 8;
 constexpr uint32_t kMaxSpecializationConstants = 8;
+constexpr uint32_t kMaxBarriersPerBatch = 8;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Creation descriptions
 
 struct BufferCreation
 {
+    // Buffers written by the GPU need the usages of every later use: STORAGE_BUFFER for compute writes, INDIRECT_BUFFER
+    // for indirect draws and dispatches, TRANSFER_DST for CommandBuffer::FillBuffer.
     VkBufferUsageFlags usage = 0;
     ResourceUsage resourceUsage = ResourceUsage::Immutable;
     VkDeviceSize size = 0;
@@ -85,6 +89,8 @@ struct SamplerCreation
     const char* name = nullptr;
 };
 
+// A pipeline is a compute pipeline when its only stage is VK_SHADER_STAGE_COMPUTE_BIT; its vertex input, raster, depth,
+// blend and render pass state are then ignored.
 struct ShaderStage
 {
     VkShaderStageFlagBits stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -105,6 +111,7 @@ struct DescriptorBinding
     VkDescriptorType type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     uint32_t index = 0;
     uint32_t count = 1;
+    // Compute layouts must name VK_SHADER_STAGE_COMPUTE_BIT.
     VkShaderStageFlags stages = VK_SHADER_STAGE_ALL_GRAPHICS;
 };
 
@@ -255,6 +262,7 @@ struct PipelineCreation
     std::array<DescriptorSetLayoutHandle, kMaxDescriptorSetLayouts> descriptorSetLayouts{};
     uint32_t descriptorSetLayoutCount = 0;
     uint32_t pushConstantSize = 0;
+    // Ignored by compute pipelines, which always use VK_SHADER_STAGE_COMPUTE_BIT.
     VkShaderStageFlags pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     // 32-bit constants applied to every stage.
@@ -265,6 +273,57 @@ struct PipelineCreation
 
     PipelineCreation& AddDescriptorSetLayout(DescriptorSetLayoutHandle layout);
     PipelineCreation& AddSpecializationConstant(uint32_t id, uint32_t value);
+};
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Barriers, after Raptor's ExecutionBarrier / ImageBarrier / MemoryBarrier. One ExecutionBarrier is recorded as a single
+// vkCmdPipelineBarrier whose stage masks are the union of its entries.
+
+struct ImageBarrier
+{
+    TextureHandle texture;
+    ResourceStates newState = kResourceStateUndefined;
+    // Defaults to the texture's tracked state. Required for a partial range, whose subresources may differ.
+    std::optional<ResourceStates> oldState;
+    uint32_t baseMipLevel = 0;
+    uint32_t mipLevelCount = VK_REMAINING_MIP_LEVELS;
+    uint32_t baseArrayLayer = 0;
+    uint32_t arrayLayerCount = VK_REMAINING_ARRAY_LAYERS;
+};
+
+struct BufferBarrier
+{
+    BufferHandle buffer;
+    ResourceStates oldState = kResourceStateUndefined;
+    ResourceStates newState = kResourceStateUndefined;
+    VkDeviceSize offset = 0;
+    VkDeviceSize size = VK_WHOLE_SIZE;
+};
+
+// A global memory barrier (Raptor's MemoryBarrier, renamed: <windows.h> defines a MemoryBarrier macro). Covers every
+// buffer and the memory of every image, without layout changes.
+struct GlobalBarrier
+{
+    ResourceStates oldState = kResourceStateUndefined;
+    ResourceStates newState = kResourceStateUndefined;
+};
+
+struct ExecutionBarrier
+{
+    std::array<ImageBarrier, kMaxBarriersPerBatch> images{};
+    uint32_t imageCount = 0;
+    std::array<BufferBarrier, kMaxBarriersPerBatch> buffers{};
+    uint32_t bufferCount = 0;
+    std::optional<GlobalBarrier> global;
+
+    // Whole texture from its tracked state; the tracked state becomes newState.
+    ExecutionBarrier& AddImage(TextureHandle texture, ResourceStates newState);
+    // A partial range leaves the tracked state alone; see GpuDevice::SetTextureState.
+    ExecutionBarrier& AddImage(const ImageBarrier& barrier);
+    ExecutionBarrier& AddBuffer(BufferHandle buffer, ResourceStates oldState, ResourceStates newState);
+    ExecutionBarrier& AddBuffer(const BufferBarrier& barrier);
+    ExecutionBarrier& SetGlobal(ResourceStates oldState, ResourceStates newState);
+    bool IsEmpty() const { return imageCount == 0 && bufferCount == 0 && !global.has_value(); }
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -294,6 +353,10 @@ struct Texture
     uint32_t layerCount = 1;
     TextureType type = TextureType::Texture2D;
     uint8_t flags = kTextureFlagNone;
+    // State of every subresource as of the last recorded command, as Raptor's Texture::state. Kept by uploads, render
+    // passes (BindPass/EndPass) and CommandBuffer barriers; uploaded and plain textures start as kResourceStateShaderResource,
+    // render targets as kResourceStateUndefined.
+    ResourceStates state = kResourceStateUndefined;
     SamplerHandle sampler;
     std::string name;
 };

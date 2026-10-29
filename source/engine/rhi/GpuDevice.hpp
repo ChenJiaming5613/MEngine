@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -76,6 +77,8 @@ public:
 
     // Default sampler used by descriptor sets that do not name one.
     void LinkTextureSampler(TextureHandle texture, SamplerHandle sampler);
+    // Declares the state of every subresource, after barriers on partial ranges (per-mip transitions) left them uniform.
+    void SetTextureState(TextureHandle texture, ResourceStates state);
     // Rewrites every descriptor of the set under the same handle; the old VkDescriptorSet is freed later.
     void UpdateDescriptorSet(DescriptorSetHandle handle, const DescriptorSetCreation& creation);
     // Recreates the pass's output textures (same handles) and framebuffer. Descriptor sets sampling them must be updated.
@@ -117,6 +120,14 @@ public:
     bool SupportsLinearBlit(VkFormat format) const;
     // Linear filtering of sampled images; for depth formats this enables hardware 2x2 PCF with compare samplers.
     bool SupportsLinearFilter(VkFormat format) const;
+    // kTextureFlagStorage needs this for the texture's format.
+    bool SupportsStorageImage(VkFormat format) const;
+    // The graphics queue also runs compute; compute pipelines and Dispatch need it.
+    bool SupportsCompute() const { return m_computeSupported; }
+    // Indirect draws with drawCount > 1.
+    bool SupportsMultiDrawIndirect() const { return m_multiDrawIndirect; }
+    // Indirect draw records with a non-zero firstInstance.
+    bool SupportsDrawIndirectFirstInstance() const { return m_drawIndirectFirstInstance; }
 
     TextureHandle GetDummyTexture() const { return m_dummyTexture; }
     TextureHandle GetDummyCubeTexture() const { return m_dummyCubeTexture; }
@@ -195,6 +206,9 @@ private:
     void UploadTexture(Texture& texture, const void* data, size_t dataSize, uint32_t providedLevels, bool generateMips);
     void TransitionToShaderRead(Texture& texture);
     void CreateFramebuffer(RenderPass& renderPass);
+    // Fill in pipeline.pipeline; CreatePipeline has already made the layout and the shader stages.
+    void CreateComputePipeline(const VkPipelineShaderStageCreateInfo& stage, Pipeline& pipeline);
+    void CreateGraphicsPipeline(const PipelineCreation& creation, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline);
     void WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayout& layout, const DescriptorSetCreation& creation);
     VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
 
@@ -214,6 +228,9 @@ private:
     bool m_debugUtilsEnabled = false;
     bool m_samplerAnisotropy = false;
     bool m_textureCompressionBc = false;
+    bool m_computeSupported = false;
+    bool m_multiDrawIndirect = false;
+    bool m_drawIndirectFirstInstance = false;
 
     PFN_vkSetDebugUtilsObjectNameEXT m_setObjectName = nullptr;
     PFN_vkCmdBeginDebugUtilsLabelEXT m_cmdBeginLabel = nullptr;

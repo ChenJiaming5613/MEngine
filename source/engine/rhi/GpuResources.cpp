@@ -163,4 +163,40 @@ PipelineCreation& PipelineCreation::AddSpecializationConstant(uint32_t id, uint3
     return *this;
 }
 
+ExecutionBarrier& ExecutionBarrier::AddImage(TextureHandle texture, ResourceStates newState)
+{
+    return AddImage(ImageBarrier{.texture = texture, .newState = newState});
+}
+
+ExecutionBarrier& ExecutionBarrier::AddImage(const ImageBarrier& barrier)
+{
+    MENGINE_ASSERT(imageCount < kMaxBarriersPerBatch);
+    if (imageCount < kMaxBarriersPerBatch)
+    {
+        images[imageCount++] = barrier;
+    }
+    return *this;
+}
+
+ExecutionBarrier& ExecutionBarrier::AddBuffer(BufferHandle buffer, ResourceStates oldState, ResourceStates newState)
+{
+    return AddBuffer(BufferBarrier{.buffer = buffer, .oldState = oldState, .newState = newState});
+}
+
+ExecutionBarrier& ExecutionBarrier::AddBuffer(const BufferBarrier& barrier)
+{
+    MENGINE_ASSERT(bufferCount < kMaxBarriersPerBatch);
+    if (bufferCount < kMaxBarriersPerBatch)
+    {
+        buffers[bufferCount++] = barrier;
+    }
+    return *this;
+}
+
+ExecutionBarrier& ExecutionBarrier::SetGlobal(ResourceStates oldState, ResourceStates newState)
+{
+    global = GlobalBarrier{.oldState = oldState, .newState = newState};
+    return *this;
+}
+
 } // namespace mengine::rhi
