@@ -1,6 +1,14 @@
 {
   "scenes": [
     {
+      "name": "DamagedHelmet",
+      "path": "glTF-Sample-Assets/Models/DamagedHelmet/glTF/DamagedHelmet.gltf"
+    },
+    {
+      "name": "MetalRoughSpheres",
+      "path": "glTF-Sample-Assets/Models/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf"
+    },
+    {
       "name": "Sponza",
       "path": "glTF-Sample-Assets/Models/Sponza/glTF/Sponza.gltf",
       "camera": {
