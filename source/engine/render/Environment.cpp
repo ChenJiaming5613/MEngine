@@ -148,22 +148,14 @@ void LoadEnvironment(rhi::GpuDevice& device, std::optional<std::string_view> dir
                 LoadKtx2(JoinPath(base, "irradiance.ktx2"), asset::kVkFormatR16G16B16A16Sfloat, 6);
             const asset::Ktx2Image brdfLut = LoadKtx2(JoinPath(base, "brdf_lut.ktx2"), asset::kVkFormatR16G16Sfloat, 1);
 
-            device.BeginUploadBatch();
-            try
-            {
-                environment.specular = CreateEnvironmentTexture(device, specular, VK_FORMAT_R16G16B16A16_SFLOAT,
-                    JoinPath(base, "specular.ktx2"));
-                environment.irradiance = CreateEnvironmentTexture(device, irradiance, VK_FORMAT_R16G16B16A16_SFLOAT,
-                    JoinPath(base, "irradiance.ktx2"));
-                environment.brdfLut =
-                    CreateEnvironmentTexture(device, brdfLut, VK_FORMAT_R16G16_SFLOAT, JoinPath(base, "brdf_lut.ktx2"));
-            }
-            catch (...)
-            {
-                device.EndUploadBatch();
-                throw;
-            }
-            device.EndUploadBatch();
+            rhi::UploadBatchScope batch(device);
+            environment.specular = CreateEnvironmentTexture(device, specular, VK_FORMAT_R16G16B16A16_SFLOAT,
+                JoinPath(base, "specular.ktx2"));
+            environment.irradiance = CreateEnvironmentTexture(device, irradiance, VK_FORMAT_R16G16B16A16_SFLOAT,
+                JoinPath(base, "irradiance.ktx2"));
+            environment.brdfLut =
+                CreateEnvironmentTexture(device, brdfLut, VK_FORMAT_R16G16_SFLOAT, JoinPath(base, "brdf_lut.ktx2"));
+            batch.End();
 
             environment.specularMipCount = static_cast<uint32_t>(specular.levels.size());
             environment.isFallback = false;
@@ -175,6 +167,7 @@ void LoadEnvironment(rhi::GpuDevice& device, std::optional<std::string_view> dir
         }
         catch (const std::exception& exception)
         {
+            rhi::RethrowIfDeviceUnusable(exception);
             MENGINE_LOG_ERROR("Failed to load environment %s: %s; using a uniform environment", base.c_str(), exception.what());
             device.DestroyTexture(environment.specular);
             device.DestroyTexture(environment.irradiance);

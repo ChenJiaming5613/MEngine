@@ -234,6 +234,8 @@ private:
     friend class FrameGraphResources;
 
     static constexpr uint32_t kNone = ~0u;
+    // Execute tracks a group's active members in a 64-bit mask.
+    static constexpr size_t kMaxPassesPerGroup = 64;
 
     enum class ResourceKind : uint8_t
     {
@@ -275,6 +277,7 @@ private:
         uint32_t owner = kNone; // node that created or first imported it
 
         // Compile results.
+        bool importDestroyed = false;
         bool available = false;
         uint32_t firstUse = kNone;
         uint32_t lastUse = kNone;

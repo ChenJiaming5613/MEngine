@@ -1,13 +1,13 @@
 // Directional shadow lookup (MEngine's addition, not in the UE4 2013 notes). Together with the caster's depth bias, the
 // receiver offset along its normal by shadowParams.z (about 1.5 texels) removes acne. 3x3 compare taps; with a LINEAR
 // compare sampler each tap is itself a 2x2 bilinear PCF.
-float DirectionalShadow(float3 worldPosition, float3 geometricNormal)
+float DirectionalShadow(float3 worldPosition, float3 vertexNormal)
 {
     if (frame.shadowParams.x == 0.0)
     {
         return 1.0;
     }
-    float3 receiver = worldPosition + geometricNormal * frame.shadowParams.z;
+    float3 receiver = worldPosition + vertexNormal * frame.shadowParams.z;
     float4 clip = mul(frame.lightViewProjection, float4(receiver, 1.0));
     float3 ndc = clip.xyz / clip.w;
     // The projection encloses the whole scene, so nothing outside the map casts a shadow.

@@ -39,12 +39,26 @@ const char* VkResultName(VkResult result)
     }
 }
 
+bool VulkanError::IsRecoverable() const
+{
+    return m_result == VK_ERROR_OUT_OF_HOST_MEMORY || m_result == VK_ERROR_OUT_OF_DEVICE_MEMORY
+        || m_result == VK_ERROR_OUT_OF_POOL_MEMORY || m_result == VK_ERROR_FRAGMENTED_POOL;
+}
+
 void CheckVk(VkResult result, const char* operation)
 {
     if (result != VK_SUCCESS)
     {
-        throw std::runtime_error(std::string(operation) + " failed with " + VkResultName(result) + " ("
+        throw VulkanError(result, std::string(operation) + " failed with " + VkResultName(result) + " ("
             + std::to_string(static_cast<int>(result)) + ")");
+    }
+}
+
+void RethrowIfDeviceUnusable(const std::exception& exception)
+{
+    if (const auto* vulkanError = dynamic_cast<const VulkanError*>(&exception); vulkanError != nullptr && !vulkanError->IsRecoverable())
+    {
+        throw;
     }
 }
 

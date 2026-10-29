@@ -620,7 +620,8 @@ namespace mengine::render
         {
             auto d3d10ext = reinterpret_cast<const DDS_HEADER_DXT10*>(reinterpret_cast<const char*>(header) + sizeof(DDS_HEADER));
 
-            if (d3d10ext->arraySize == 0)
+            // MEngine: the upper bound (D3D11's array limit) also keeps arraySize * 6 for cubes from overflowing.
+            if (d3d10ext->arraySize == 0 || d3d10ext->arraySize > 2048)
             {
                 return false;
             }
@@ -744,6 +745,20 @@ namespace mengine::render
                     textureInfo.dimension = TextureDimension::Texture2D;
                 }
             }
+        }
+
+        // MEngine: the layout below is sized from the header, so reject values a valid file cannot have (D3D11 limits)
+        // before a few corrupt bytes turn into a huge allocation.
+        const uint32_t largestExtent = std::max({textureInfo.width, textureInfo.height, textureInfo.depth});
+        uint32_t fullMipChain = 1;
+        while ((largestExtent >> fullMipChain) != 0)
+        {
+            ++fullMipChain;
+        }
+        if (largestExtent == 0 || textureInfo.mipLevels > fullMipChain || textureInfo.arraySize == 0
+            || textureInfo.arraySize > 2048u * 6u)
+        {
+            return false;
         }
 
         if (FillTextureInfoOffsets(textureInfo, textureInfo.data.size(), dataOffset) == 0)

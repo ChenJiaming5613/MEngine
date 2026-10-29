@@ -54,8 +54,6 @@ enum ResourceState : uint32_t
     kResourceStateCopySource = 1u << 10,
     kResourceStatePresent = 1u << 11,
     kResourceStateCommon = 1u << 12, // GENERAL layout and every access: a heavy fallback
-    kResourceStateGenericRead = kResourceStateVertexAndConstantBuffer | kResourceStateIndexBuffer | kResourceStateShaderResource
-        | kResourceStateIndirectArgument | kResourceStateCopySource,
 };
 
 using ResourceStates = uint32_t;

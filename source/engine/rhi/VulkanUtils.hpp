@@ -27,13 +27,29 @@
 #endif
 
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace mengine::rhi {
 
-// Throws std::runtime_error naming the operation when result is not VK_SUCCESS.
+class VulkanError : public std::runtime_error
+{
+public:
+    VulkanError(VkResult result, const std::string& message) : std::runtime_error(message), m_result(result) {}
+    VkResult Result() const { return m_result; }
+    // Out of memory is survivable by dropping the resource; anything else (device lost, ...) leaves the device unusable.
+    bool IsRecoverable() const;
+
+private:
+    VkResult m_result;
+};
+
+// Throws VulkanError naming the operation when result is not VK_SUCCESS.
 void CheckVk(VkResult result, const char* operation);
+// For catch blocks that degrade on bad assets: rethrows the exception being handled when it is an unrecoverable
+// VulkanError.
+void RethrowIfDeviceUnusable(const std::exception& exception);
 const char* VkResultName(VkResult result);
 
 bool IsDepthFormat(VkFormat format);

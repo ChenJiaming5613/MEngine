@@ -52,22 +52,26 @@ DescriptorBinding* DescriptorSetLayoutCreation::FindBinding(uint32_t index)
     return nullptr;
 }
 
-DescriptorSetCreation& DescriptorSetCreation::AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range)
+DescriptorSetCreation& DescriptorSetCreation::AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range,
+    uint32_t arrayElement)
 {
     MENGINE_ASSERT(resourceCount < kMaxDescriptorsPerSet);
     if (resourceCount < kMaxDescriptorsPerSet)
     {
-        resources[resourceCount++] = DescriptorResource{.binding = binding, .buffer = buffer, .bufferRange = range};
+        resources[resourceCount++] =
+            DescriptorResource{.binding = binding, .arrayElement = arrayElement, .buffer = buffer, .bufferRange = range};
     }
     return *this;
 }
 
-DescriptorSetCreation& DescriptorSetCreation::AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler)
+DescriptorSetCreation& DescriptorSetCreation::AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler,
+    uint32_t arrayElement)
 {
     MENGINE_ASSERT(resourceCount < kMaxDescriptorsPerSet);
     if (resourceCount < kMaxDescriptorsPerSet)
     {
-        resources[resourceCount++] = DescriptorResource{.binding = binding, .texture = texture, .sampler = sampler};
+        resources[resourceCount++] =
+            DescriptorResource{.binding = binding, .arrayElement = arrayElement, .texture = texture, .sampler = sampler};
     }
     return *this;
 }

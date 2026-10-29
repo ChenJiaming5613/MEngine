@@ -22,6 +22,8 @@ struct ReflectedBinding
     VkDescriptorType type = VK_DESCRIPTOR_TYPE_SAMPLER;
     uint32_t count = 1;
     VkShaderStageFlags stages = 0;
+    // Image bindings only.
+    TextureType textureType = TextureType::Texture2D;
 };
 
 struct ShaderReflection

@@ -176,6 +176,17 @@ bool IsBufferDescriptor(VkDescriptorType type)
         || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 }
 
+bool IsImageDescriptor(VkDescriptorType type)
+{
+    return type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+        || type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+}
+
+const char* TextureTypeName(TextureType type)
+{
+    return type == TextureType::TextureCube ? "cube" : "2D";
+}
+
 // Every stage that may read a freshly uploaded resource: uploads finish before any frame uses them.
 constexpr VkPipelineStageFlags kUploadConsumerStages = VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT
     | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -648,7 +659,7 @@ void GpuDevice::CreateDefaultResources()
 {
     m_defaultSampler = CreateSampler(SamplerCreation{.name = "DefaultSampler"});
 
-    BeginUploadBatch();
+    UploadBatchScope batch(*this);
     const std::array<uint8_t, 4> white = {255, 255, 255, 255};
     m_dummyTexture = CreateTexture(TextureCreation{
         .width = 1,
@@ -668,7 +679,7 @@ void GpuDevice::CreateDefaultResources()
         .initialDataSize = sizeof(blackFaces),
         .name = "DummyCubeTexture",
     });
-    EndUploadBatch();
+    batch.End();
 }
 
 void GpuDevice::Shutdown()
@@ -751,7 +762,7 @@ void GpuDevice::Shutdown()
 
     m_swapchain.Destroy();
 
-    for (const auto& [hash, renderPass] : m_renderPassCache)
+    for (const auto& [output, renderPass] : m_renderPassCache)
     {
         vkDestroyRenderPass(m_device, renderPass, nullptr);
     }
@@ -853,6 +864,28 @@ void GpuDevice::EndUploadBatch()
     SubmitUploadCommands();
 }
 
+UploadBatchScope::~UploadBatchScope()
+{
+    if (!m_open)
+    {
+        return;
+    }
+    try
+    {
+        m_device.EndUploadBatch();
+    }
+    catch (const std::exception& exception)
+    {
+        MENGINE_LOG_ERROR("Upload batch failed during cleanup: %s", exception.what());
+    }
+}
+
+void UploadBatchScope::End()
+{
+    m_open = false;
+    m_device.EndUploadBatch();
+}
+
 void GpuDevice::SubmitUploadCommands()
 {
     if (m_uploadHasBufferCopies)
@@ -941,41 +974,55 @@ BufferHandle GpuDevice::CreateBuffer(const BufferCreation& creation)
         .usage = dynamic ? VMA_MEMORY_USAGE_AUTO : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
     };
 
+    const BufferHandle handle = m_buffers.Obtain();
+    Buffer* slot = m_buffers.Access(handle);
+    if (slot == nullptr)
+    {
+        throw std::runtime_error("Buffer pool exhausted");
+    }
+
     Buffer buffer;
     VmaAllocationInfo info{};
-    CheckVk(vmaCreateBuffer(m_allocator, &bufferInfo, &allocationInfo, &buffer.buffer, &buffer.allocation, &info), "vmaCreateBuffer");
+    const VkResult result =
+        vmaCreateBuffer(m_allocator, &bufferInfo, &allocationInfo, &buffer.buffer, &buffer.allocation, &info);
+    if (result != VK_SUCCESS)
+    {
+        m_buffers.Release(handle);
+        CheckVk(result, "vmaCreateBuffer");
+    }
     buffer.size = creation.size;
     buffer.usage = usage;
     buffer.resourceUsage = creation.resourceUsage;
     buffer.mappedData = dynamic ? info.pMappedData : nullptr;
     buffer.name = creation.name ? creation.name : "";
     SetResourceName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<uint64_t>(buffer.buffer), creation.name);
+    *slot = std::move(buffer);
 
     if (dynamic && creation.initialData != nullptr)
     {
-        std::memcpy(buffer.mappedData, creation.initialData, creation.size);
-        vmaFlushAllocation(m_allocator, buffer.allocation, 0, creation.size);
+        std::memcpy(slot->mappedData, creation.initialData, creation.size);
+        vmaFlushAllocation(m_allocator, slot->allocation, 0, creation.size);
     }
     else if (upload)
     {
-        BeginUploadBatch();
-        const StagingBuffer staging = CreateStagingBuffer(creation.size);
-        std::memcpy(staging.mappedData, creation.initialData, creation.size);
-        vmaFlushAllocation(m_allocator, staging.allocation, 0, creation.size);
-        const VkBufferCopy copy{.size = creation.size};
-        vkCmdCopyBuffer(UploadCommandBuffer(), staging.buffer, buffer.buffer, 1, &copy);
-        m_uploadHasBufferCopies = true;
-        EndUploadBatch();
+        try
+        {
+            UploadBatchScope batch(*this);
+            const StagingBuffer staging = CreateStagingBuffer(creation.size);
+            std::memcpy(staging.mappedData, creation.initialData, creation.size);
+            vmaFlushAllocation(m_allocator, staging.allocation, 0, creation.size);
+            const VkBufferCopy copy{.size = creation.size};
+            vkCmdCopyBuffer(UploadCommandBuffer(), staging.buffer, slot->buffer, 1, &copy);
+            m_uploadHasBufferCopies = true;
+            batch.End();
+        }
+        catch (...)
+        {
+            // Deferred: an enclosing batch may still submit the copy.
+            DestroyBuffer(handle);
+            throw;
+        }
     }
-
-    const BufferHandle handle = m_buffers.Obtain();
-    Buffer* slot = m_buffers.Access(handle);
-    if (slot == nullptr)
-    {
-        vmaDestroyBuffer(m_allocator, buffer.buffer, buffer.allocation);
-        throw std::runtime_error("Buffer pool exhausted");
-    }
-    *slot = std::move(buffer);
     return handle;
 }
 
@@ -1161,8 +1208,8 @@ TextureHandle GpuDevice::CreateTexture(const TextureCreation& creation)
     }
     catch (...)
     {
-        vkDestroyImageView(m_device, texture.view, nullptr);
-        vmaDestroyImage(m_allocator, texture.image, texture.allocation);
+        // Deferred: an enclosing batch may still submit commands that use the image.
+        DeferTextureObjects(texture);
         throw;
     }
 
@@ -1202,7 +1249,7 @@ void GpuDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
             + std::to_string(dataSize));
     }
 
-    BeginUploadBatch();
+    UploadBatchScope batch(*this);
     const VkCommandBuffer commandBuffer = UploadCommandBuffer();
     const StagingBuffer staging = CreateStagingBuffer(stagingSize);
 
@@ -1286,13 +1333,12 @@ void GpuDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
             VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
     }
     texture.state = kResourceStateShaderResource;
-
-    EndUploadBatch();
+    batch.End();
 }
 
 void GpuDevice::TransitionToShaderRead(Texture& texture)
 {
-    BeginUploadBatch();
+    UploadBatchScope batch(*this);
     const VkImageMemoryBarrier imageBarrier{
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .srcAccessMask = 0,
@@ -1313,7 +1359,7 @@ void GpuDevice::TransitionToShaderRead(Texture& texture)
     vkCmdPipelineBarrier(UploadCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, kUploadConsumerStages, 0, 0, nullptr, 0, nullptr, 1,
         &imageBarrier);
     texture.state = kResourceStateShaderResource;
-    EndUploadBatch();
+    batch.End();
 }
 
 void GpuDevice::DestroyTexture(TextureHandle handle)
@@ -1474,13 +1520,19 @@ void GpuDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             throw std::runtime_error("Descriptor set " + std::string(creation.name ? creation.name : "<unnamed>") + " writes binding "
                 + std::to_string(resource.binding) + " that is not in its layout");
         }
+        if (resource.arrayElement >= binding->count)
+        {
+            throw std::runtime_error("Descriptor set " + std::string(creation.name ? creation.name : "<unnamed>") + " writes element "
+                + std::to_string(resource.arrayElement) + " of binding " + std::to_string(resource.binding) + ", which has "
+                + std::to_string(binding->count));
+        }
 
         VkWriteDescriptorSet& write = writes[writeCount];
         write = VkWriteDescriptorSet{
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet = set,
             .dstBinding = resource.binding,
-            .dstArrayElement = 0,
+            .dstArrayElement = resource.arrayElement,
             .descriptorCount = 1,
             .descriptorType = binding->type,
         };
@@ -1513,7 +1565,12 @@ void GpuDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             const Texture* texture = m_textures.Access(resource.texture);
             if (texture == nullptr)
             {
-                texture = m_textures.Access(m_dummyTexture);
+                texture = m_textures.Access(binding->textureType == TextureType::TextureCube ? m_dummyCubeTexture : m_dummyTexture);
+            }
+            else if (texture->type != binding->textureType)
+            {
+                throw std::runtime_error("Descriptor set binding " + std::to_string(resource.binding) + " expects a "
+                    + TextureTypeName(binding->textureType) + ", got " + texture->name + " (" + TextureTypeName(texture->type) + ")");
             }
             SamplerHandle samplerHandle = resource.sampler;
             if (!m_samplers.IsAlive(samplerHandle))
@@ -1529,6 +1586,27 @@ void GpuDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             write.pImageInfo = &imageInfos[writeCount];
         }
         ++writeCount;
+    }
+
+    // Without VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT every element a shader may access must be valid.
+    for (uint32_t bindingIndex = 0; bindingIndex < layout.bindingCount; ++bindingIndex)
+    {
+        const DescriptorBinding& binding = layout.bindings[bindingIndex];
+        if (binding.count == 1)
+        {
+            continue;
+        }
+        uint32_t writtenElements = 0;
+        for (uint32_t index = 0; index < creation.resourceCount; ++index)
+        {
+            writtenElements += creation.resources[index].binding == binding.index ? 1u : 0u;
+        }
+        if (writtenElements < binding.count)
+        {
+            throw std::runtime_error("Descriptor set " + std::string(creation.name ? creation.name : "<unnamed>") + " writes "
+                + std::to_string(writtenElements) + " of the " + std::to_string(binding.count) + " elements of binding "
+                + std::to_string(binding.index));
+        }
     }
 
     vkUpdateDescriptorSets(m_device, writeCount, writes.data(), 0, nullptr);
@@ -1597,8 +1675,7 @@ void GpuDevice::DestroyDescriptorSet(DescriptorSetHandle handle)
 
 VkRenderPass GpuDevice::GetVulkanRenderPass(const RenderPassOutput& output)
 {
-    const uint64_t hash = output.Hash();
-    if (const auto found = m_renderPassCache.find(hash); found != m_renderPassCache.end())
+    if (const auto found = m_renderPassCache.find(output); found != m_renderPassCache.end())
     {
         return found->second;
     }
@@ -1690,7 +1767,7 @@ VkRenderPass GpuDevice::GetVulkanRenderPass(const RenderPassOutput& output)
     };
     VkRenderPass renderPass = VK_NULL_HANDLE;
     CheckVk(vkCreateRenderPass(m_device, &renderPassInfo, nullptr, &renderPass), "vkCreateRenderPass");
-    m_renderPassCache.emplace(hash, renderPass);
+    m_renderPassCache.emplace(output, renderPass);
     return renderPass;
 }
 
@@ -2040,6 +2117,11 @@ void GpuDevice::ValidatePipelineInterface(const PipelineCreation& creation, VkSh
         if (found->count < binding.count)
         {
             report(where + "layout has " + std::to_string(found->count) + " descriptors, shader expects " + std::to_string(binding.count));
+        }
+        if (IsImageDescriptor(binding.type) && found->textureType != binding.textureType)
+        {
+            report(where + "layout declares a " + TextureTypeName(found->textureType) + " view, shader samples a "
+                + TextureTypeName(binding.textureType));
         }
         if ((found->stages & binding.stages) != binding.stages)
         {

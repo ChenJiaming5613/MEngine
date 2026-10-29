@@ -384,7 +384,7 @@ void CommandBuffer::FillBuffer(BufferHandle bufferHandle, uint32_t value, VkDevi
         return;
     }
     if ((buffer->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0 || offset % 4 != 0 || (size != VK_WHOLE_SIZE && size % 4 != 0)
-        || offset >= buffer->size)
+        || offset >= buffer->size || (size != VK_WHOLE_SIZE && size > buffer->size - offset))
     {
         MENGINE_LOG_ERROR("FillBuffer: %s needs TRANSFER_DST usage and a 4-byte aligned range inside the buffer", buffer->name.c_str());
         return;

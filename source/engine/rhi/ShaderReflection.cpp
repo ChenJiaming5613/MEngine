@@ -150,6 +150,7 @@ bool ReflectShader(std::span<const uint32_t> code, ShaderReflection& out, std::s
             .type = static_cast<VkDescriptorType>(binding->descriptor_type),
             .count = binding->count,
             .stages = out.stages,
+            .textureType = binding->image.dim == SpvDimCube ? TextureType::TextureCube : TextureType::Texture2D,
         });
     }
     std::sort(out.bindings.begin(), out.bindings.end(), BindingLess);
@@ -274,7 +275,8 @@ DescriptorSetLayoutCreation BuildDescriptorSetLayout(const ShaderReflection& mer
             throw std::runtime_error(std::string("BuildDescriptorSetLayout: more than ") + std::to_string(kMaxDescriptorsPerSet) +
                 " bindings in set " + std::to_string(setIndex) + " of " + (name != nullptr ? name : "<unnamed>"));
         }
-        creation.AddBinding({.type = binding.type, .index = binding.binding, .count = binding.count, .stages = binding.stages});
+        creation.AddBinding({.type = binding.type, .index = binding.binding, .count = binding.count, .stages = binding.stages,
+            .textureType = binding.textureType});
     }
     return creation;
 }

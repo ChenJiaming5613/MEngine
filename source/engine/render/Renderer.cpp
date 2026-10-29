@@ -35,8 +35,10 @@ void Renderer::Init(rhi::GpuDevice& device)
     frameLayout
         .AddBinding({.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, .index = 0,
             .stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT})
-        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 1, .stages = VK_SHADER_STAGE_FRAGMENT_BIT})
-        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 2, .stages = VK_SHADER_STAGE_FRAGMENT_BIT})
+        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 1, .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .textureType = rhi::TextureType::TextureCube})
+        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 2, .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .textureType = rhi::TextureType::TextureCube})
         .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 3, .stages = VK_SHADER_STAGE_FRAGMENT_BIT})
         .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 4, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
     m_frameLayout = device.CreateDescriptorSetLayout(frameLayout);

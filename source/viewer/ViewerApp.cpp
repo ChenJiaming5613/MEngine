@@ -213,9 +213,16 @@ private:
         {
             m_currentScene = index;
             MENGINE_LOG_INFO("Loading scene %s (%s)", sceneConfig->name.c_str(), sceneConfig->path.c_str());
-            m_renderer.LoadScene(sceneConfig->path);
-            // The scene's pipelines were just created (warm-up); persist them.
-            m_device.SavePipelineCache();
+            m_sceneLoadFailed = !m_renderer.LoadScene(sceneConfig->path);
+            if (m_sceneLoadFailed)
+            {
+                MENGINE_LOG_ERROR("Failed to load scene %s; showing an empty scene", sceneConfig->name.c_str());
+            }
+            else
+            {
+                // The scene's pipelines were just created (warm-up); persist them.
+                m_device.SavePipelineCache();
+            }
         }
 
         const render::Scene& scene = m_renderer.GetScene();
@@ -322,7 +329,14 @@ private:
                 ImGui::EndCombo();
             }
         }
-        ImGui::Text("Scene: %s", scene.path.empty() ? "<none>" : scene.path.c_str());
+        if (m_sceneLoadFailed)
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "Scene: failed to load (see log)");
+        }
+        else
+        {
+            ImGui::Text("Scene: %s", scene.path.empty() ? "<none>" : scene.path.c_str());
+        }
         ImGui::Text("Draws: %zu (%u visible)  Materials: %zu  Textures: %zu", scene.draws.size(),
             m_renderer.GetCullingStats().visible, scene.materials.size(), scene.textures.size());
         ImGui::Text("Environment: %s", environment.isFallback ? "<uniform fallback>" : environment.directory.c_str());
@@ -613,6 +627,7 @@ private:
 
     std::optional<ViewerConfig> m_config;
     size_t m_currentScene = 0;
+    bool m_sceneLoadFailed = false;
     std::optional<size_t> m_pendingScene;
 
     glm::vec2 m_panelMin{0.0f};

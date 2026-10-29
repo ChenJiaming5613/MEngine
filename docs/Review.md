@@ -1,30 +1,30 @@
 # MEngine 代码审查（2026-10-29，基于 `0a9cf0c`）
 
-范围：`source/engine`、`source/viewer`、`source/shaders`、`cmake`、`programs/IblBaker`。行号以本次注释精简后的代码为准。标 ✔ 的条目已人工复核代码确认。
+范围：`source/engine`、`source/viewer`、`source/shaders`、`cmake`、`programs/IblBaker`。行号以本次注释精简后的代码为准。标 ✔ 的条目已人工复核代码确认；P0 表格最后一列记录处理结果（`0a9cf0c` 之后的 P0 提交）。
 
 优先级：**P0** 是确定的缺陷，应尽快修；**P1** 必须在阶段 3（多线程）之前解决；**P2** 应在对应的后续阶段开始之前解决；**P3** 是整理类工作，顺手做。
 
 ## 1. 确定的缺陷（P0）
 
-| # | 位置 | 问题 | 建议 |
+| # | 位置 | 问题 | 建议 / 状态 |
 | --- | --- | --- | --- |
-| 1 ✔ | `shaders/Pbr.slang:66-91` | 双面材质背面的法线贴图 TBN 符号错误。传入的 N 已取反；有切线的分支得到 (-T, +B, -N)，用导数构建的分支得到 (T, -B, -N)，正确结果应为 (-T, -B, -N)。影响带法线贴图的双面植被背面（Sponza、Bistro）。 | 用未取反的法线构建 TBN，扰动后整体取反；或两个分支都只取反 T |
-| 2 ✔ | `shaders/common/Brdf.slang:DGgx`、`Pbr.slang:143` | roughness 没有下限。roughness = 0 且 NoH = 1 时 `DGgx` 为 0/0 = NaN；粗糙度很小时 D 会超过 RGBA16F 上限变成 inf。MetalRoughSpheres 有 roughness 0 的球。 | 解析光源路径钳制 `max(roughness, 0.045)`（IBL 不受影响） |
-| 3 ✔ | `rhi/GpuDevice.cpp:959-968` | 上传批次不是 RAII：`CreateStagingBuffer` 抛异常后 `m_uploadDepth` 永久加 1，之后所有上传都不再提交且不报错；`CreateBuffer` 还会泄漏已创建的 VkBuffer。 | 把 `GltfLoader.cpp` 里的 `UploadBatchScope` 提升为 RHI 公共类型，内部也用它；`CreateBuffer` 用 scope guard 回收 |
-| 4 | `rhi/GpuDevice.cpp:~1495-1507`、`ShaderReflection.cpp:142` | 描述符写入固定 `descriptorCount = 1`、`dstArrayElement = 0`，但 layout 和反射都允许 `count > 1`：数组中除第 0 个之外的元素从不写入。 | `DescriptorResource` 加 `arrayElement`；或在 count > 1 时显式报错 |
-| 5 | `rhi/GpuDevice.cpp:~1516` | 纹理无效时总是回退到 2D dummy，cube 绑定会因此触发校验错误；`m_dummyCubeTexture` 已创建，但这里没有用到。 | 按绑定的维度选择对应的 dummy |
-| 6 | `rhi/GpuDevice.cpp:~2336-2351` | 动态 uniform 环在帧中途耗尽时抛异常，此时 `m_frameActive` 仍为 true，下一次 `BeginFrame` 断言失败，帧状态无法恢复。 | 耗尽时返回失败并记录，下一帧扩容 |
-| 7 | `viewer/ViewerApp.cpp:209-265` | 忽略 `Renderer::LoadScene` 的返回值：加载失败时 `m_currentScene` 照样切换，pipeline cache 照样保存，下拉框显示的是失败的场景。 | 按返回值处理失败分支 |
-| 8 | `render/GltfLoader.cpp:877-902`、`DdsFile.cpp:538,613` | 工作线程里的解码异常在 `future.get()` 处重新抛出，导致整个场景加载失败，违背“纹理失败只告警”的约定；DDS 的 `mipMapCount` / `arraySize` 没有上限，一个畸形文件就可能 `bad_alloc`。 | lambda 内捕获异常写入 `prepared.error`；mip 数钳制到 `log2(max(w,h)) + 1` |
-| 9 | `render/Environment.cpp:176`、`GltfLoader.cpp:929,1693` | `catch (const std::exception&)` 会把 `CheckVk` 抛出的 OOM、device lost 也当成资源损坏，降级处理。 | RHI 抛专用的 `VulkanError`，资源路径只捕获资源类错误 |
-| 10 | `render/graph/FrameGraph.cpp:453,576` | 导入纹理被销毁时，只有第一个导入它的 pass 被标为无效，其他读取者仍被调度并拿到失效句柄。 | 把资源本身标为不可用，依赖它的 pass 一律跳过 |
-| 11 | `render/graph/FrameGraph.cpp:778,1214` | 合并组成员数没有上限，超过 64 时 `1ull << member` 是未定义行为（只有一个 assert）。 | 合并时限制组大小，或改用动态位集 |
-| 12 | `rhi/CommandBuffer.cpp:~385` | `FillBuffer` 只检查了 `offset`，没有检查 `offset + size <= size`，与错误信息不符。 | 补上这项检查 |
-| 13 | `rhi/GpuDevice.cpp:~1601` | render pass 缓存只用 64 位哈希、不比较内容，哈希冲突时会静默返回错误的 `VkRenderPass`。 | 命中后比较 `RenderPassOutput` |
-| 14 | `rhi/GpuEnums.hpp:~57` | `kResourceStateGenericRead` 没有使用，而且按 `ToVkImageLayout` 的优先级会被映射成 `TRANSFER_SRC` 布局，是个陷阱。 | 删除 |
-| 15 | `shaders/common/Bindings.slang`、`DebugLine.slang` | DebugLine 包含 Bindings 后，同一模块里有两个 push_constant 块，能用完全依赖 `-O2` 删掉未用的那个。 | 拆分 Bindings（见 P2-8） |
-| 16 | `cmake/StageAssets.cmake:90-100` | 资产镜像是 MEngine 的 POST_BUILD 步骤，只改 `.slang` 或资产时 exe 旁的 `assets/` 可能不会更新（Ninja 下必然如此，VS 在 IDE 里也可能）。需要验证。 | 改为独立的 `MEngineMirrorAssets` ALL 目标 |
-| 17 | `android/app/build.gradle:6` | 所有 variant 共用一个 `generated/mengine_assets`，Debug 和 Release 的 CMake 会互相覆盖、互相清理。 | 按 variant 分目录 |
+| 1 ✔ | `shaders/Pbr.slang:66-91` | 双面材质背面的法线贴图 TBN 符号错误。传入的 N 已取反；有切线的分支得到 (-T, +B, -N)，用导数构建的分支得到 (T, -B, -N)，正确结果应为 (-T, -B, -N)。影响带法线贴图的双面植被背面（Sponza、Bistro）。 | 用未取反的法线构建 TBN，扰动后整体取反；或两个分支都只取反 T<br>**已修复**：用正面法线构建 TBN，背面把扰动结果整体取反 |
+| 2 ✔ | `shaders/common/Brdf.slang:DGgx`、`Pbr.slang:143` | roughness 没有下限。roughness = 0 且 NoH = 1 时 `DGgx` 为 0/0 = NaN；粗糙度很小时 D 会超过 RGBA16F 上限变成 inf。MetalRoughSpheres 有 roughness 0 的球。 | 解析光源路径钳制 `max(roughness, 0.045)`（IBL 不受影响）<br>**已修复**：解析光源路径 roughness 下限 0.089（半精度下 D < 约 5e3），输出钳制到 65504 |
+| 3 ✔ | `rhi/GpuDevice.cpp:959-968` | 上传批次不是 RAII：`CreateStagingBuffer` 抛异常后 `m_uploadDepth` 永久加 1，之后所有上传都不再提交且不报错；`CreateBuffer` 还会泄漏已创建的 VkBuffer。 | 把 `GltfLoader.cpp` 里的 `UploadBatchScope` 提升为 RHI 公共类型，内部也用它；`CreateBuffer` 用 scope guard 回收<br>**已修复**：公共 `rhi::UploadBatchScope`；`CreateBuffer` 先占池槽、失败时延迟销毁；`CreateTexture` 失败时也改为延迟销毁（原来立即销毁，外层批次提交时会访问已释放的图像） |
+| 4 | `rhi/GpuDevice.cpp:~1495-1507`、`ShaderReflection.cpp:142` | 描述符写入固定 `descriptorCount = 1`、`dstArrayElement = 0`，但 layout 和反射都允许 `count > 1`：数组中除第 0 个之外的元素从不写入。 | `DescriptorResource` 加 `arrayElement`；或在 count > 1 时显式报错<br>**已修复**：`DescriptorResource::arrayElement`，越界报错，数组绑定未写满时报错 |
+| 5 | `rhi/GpuDevice.cpp:~1516` | 纹理无效时总是回退到 2D dummy，cube 绑定会因此触发校验错误；`m_dummyCubeTexture` 已创建，但这里没有用到。 | 按绑定的维度选择对应的 dummy<br>**已修复**：`DescriptorBinding::textureType` 决定回退的 dummy 并校验写入的纹理类型；反射记录 cube 维度，`CreatePipeline` 校验 layout 与着色器一致 |
+| 6 | `rhi/GpuDevice.cpp:~2336-2351` | 动态 uniform 环在帧中途耗尽时抛异常，此时 `m_frameActive` 仍为 true，下一次 `BeginFrame` 断言失败，帧状态无法恢复。 | 耗尽时返回失败并记录，下一帧扩容<br>**不是实际缺陷**：帧内异常会让应用以失败退出，不存在“下一帧”；并入 P1-5 重做 |
+| 7 | `viewer/ViewerApp.cpp:209-265` | 忽略 `Renderer::LoadScene` 的返回值：加载失败时 `m_currentScene` 照样切换，pipeline cache 照样保存，下拉框显示的是失败的场景。 | 按返回值处理失败分支<br>**已修复**：加载失败时不保存 cache，面板显示失败状态 |
+| 8 | `render/GltfLoader.cpp:877-902`、`DdsFile.cpp:538,613` | 工作线程里的解码异常在 `future.get()` 处重新抛出，导致整个场景加载失败，违背“纹理失败只告警”的约定；DDS 的 `mipMapCount` / `arraySize` 没有上限，一个畸形文件就可能 `bad_alloc`。 | lambda 内捕获异常写入 `prepared.error`；mip 数钳制到 `log2(max(w,h)) + 1`<br>**已修复**：工作线程捕获异常，只让该纹理回退；DDS 拒绝超过完整 mip 链的 mip 数和超过 2048 的数组 |
+| 9 | `render/Environment.cpp:176`、`GltfLoader.cpp:929,1693` | `catch (const std::exception&)` 会把 `CheckVk` 抛出的 OOM、device lost 也当成资源损坏，降级处理。 | RHI 抛专用的 `VulkanError`，资源路径只捕获资源类错误<br>**已修复**：`rhi::VulkanError`；降级路径调用 `RethrowIfDeviceUnusable`，只有内存不足类错误会被降级 |
+| 10 | `render/graph/FrameGraph.cpp:453,576` | 导入纹理被销毁时，只有第一个导入它的 pass 被标为无效，其他读取者仍被调度并拿到失效句柄。 | 把资源本身标为不可用，依赖它的 pass 一律跳过<br>**已修复**：导入的纹理和 buffer 失效时资源本身不可用，所有读取者 skipped |
+| 11 | `render/graph/FrameGraph.cpp:778,1214` | 合并组成员数没有上限，超过 64 时 `1ull << member` 是未定义行为（只有一个 assert）。 | 合并时限制组大小，或改用动态位集<br>**已修复**：合并组最多 `kMaxPassesPerGroup`（64）个节点 |
+| 12 | `rhi/CommandBuffer.cpp:~385` | `FillBuffer` 只检查了 `offset`，没有检查 `offset + size <= size`，与错误信息不符。 | 补上这项检查<br>**已修复** |
+| 13 | `rhi/GpuDevice.cpp:~1601` | render pass 缓存只用 64 位哈希、不比较内容，哈希冲突时会静默返回错误的 `VkRenderPass`。 | 命中后比较 `RenderPassOutput`<br>**已修复**：缓存键改为 `RenderPassOutput` 本身（`operator==` + 哈希） |
+| 14 | `rhi/GpuEnums.hpp:~57` | `kResourceStateGenericRead` 没有使用，而且按 `ToVkImageLayout` 的优先级会被映射成 `TRANSFER_SRC` 布局，是个陷阱。 | 删除<br>**已修复**：删除 |
+| 15 | `shaders/common/Bindings.slang`、`DebugLine.slang` | DebugLine 包含 Bindings 后，同一模块里有两个 push_constant 块，能用完全依赖 `-O2` 删掉未用的那个。 | 拆分 Bindings（见 P2-8）<br>**推迟**到 P2-8（Bindings 拆分） |
+| 16 | `cmake/StageAssets.cmake:90-100` | 资产镜像是 MEngine 的 POST_BUILD 步骤，只改 `.slang` 或资产时 exe 旁的 `assets/` 可能不会更新（Ninja 下必然如此，VS 在 IDE 里也可能）。需要验证。 | 改为独立的 `MEngineMirrorAssets` ALL 目标<br>**VS 生成器下已验证正常**（只改 `.slang` 时 MSBuild 仍执行镜像）；只影响 Ninja，降为 P3 |
+| 17 | `android/app/build.gradle:6` | 所有 variant 共用一个 `generated/mengine_assets`，Debug 和 Release 的 CMake 会互相覆盖、互相清理。 | 按 variant 分目录<br>**降为 P3**：两个 variant 暂存的内容相同，只在并行构建时互相干扰；需要能运行 Gradle 的环境再改 |
 
 ## 2. 阶段 3（多线程）之前必须解决（P1）
 

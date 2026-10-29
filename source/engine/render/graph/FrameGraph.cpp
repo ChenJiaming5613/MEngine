@@ -450,7 +450,15 @@ void FrameGraph::ValidateDeclarations()
             }
             else
             {
+                resource.importDestroyed = true;
                 DeclareError(resource.owner, "imports a destroyed texture as '" + resource.name + "'");
+            }
+            break;
+        case ResourceKind::Buffer:
+            if (m_device->AccessBuffer(resource.buffer) == nullptr)
+            {
+                resource.importDestroyed = true;
+                DeclareError(resource.owner, "imports a destroyed buffer as '" + resource.name + "'");
             }
             break;
         case ResourceKind::Backbuffer:
@@ -575,7 +583,7 @@ void FrameGraph::ResolveAvailability()
         {
             resource.available = resource.kind == ResourceKind::Transient
                 ? resource.owner != kNone && m_nodes[resource.owner].active
-                : resource.kind != ResourceKind::Unresolved;
+                : resource.kind != ResourceKind::Unresolved && !resource.importDestroyed;
         }
         for (Node& node : m_nodes)
         {
@@ -589,8 +597,10 @@ void FrameGraph::ResolveAvailability()
                 if (!resource.available && !access.optional)
                 {
                     node.active = false;
-                    node.status = "skipped: needs '" + resource.name + "' of disabled pass '"
-                        + (resource.owner != kNone ? m_nodes[resource.owner].name : std::string("?")) + "'";
+                    node.status = resource.importDestroyed
+                        ? "skipped: '" + resource.name + "' is a destroyed import"
+                        : "skipped: needs '" + resource.name + "' of disabled pass '"
+                            + (resource.owner != kNone ? m_nodes[resource.owner].name : std::string("?")) + "'";
                     changed = true;
                     break;
                 }
@@ -775,7 +785,9 @@ void FrameGraph::CullAndSchedule()
             continue;
         }
         attachmentsOf(node, colors, depth);
-        if (!m_schedule.empty() && m_schedule.back().group != kNone && canMerge(m_groups[m_schedule.back().group], node, colors, depth))
+        if (!m_schedule.empty() && m_schedule.back().group != kNone
+            && m_groups[m_schedule.back().group].nodes.size() < kMaxPassesPerGroup
+            && canMerge(m_groups[m_schedule.back().group], node, colors, depth))
         {
             RenderPassGroup& group = m_groups[m_schedule.back().group];
             group.nodes.push_back(index);
@@ -1211,9 +1223,8 @@ void FrameGraph::Execute(rhi::CommandBuffer& commandBuffer, const RenderView& vi
         }
 
         const RenderPassGroup& group = m_groups[entry.group];
-        MENGINE_ASSERT(group.nodes.size() <= 64);
         uint64_t activeMask = 0;
-        for (size_t member = 0; member < group.nodes.size() && member < 64; ++member)
+        for (size_t member = 0; member < group.nodes.size(); ++member)
         {
             activeMask |= m_nodes[group.nodes[member]].pass->IsActive() ? 1ull << member : 0ull;
         }

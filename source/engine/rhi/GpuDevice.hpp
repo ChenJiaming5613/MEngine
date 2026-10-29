@@ -100,7 +100,7 @@ public:
     // Recreates the pass's output textures (same handles) and framebuffer. Descriptor sets sampling them must be updated.
     void ResizeOutputTextures(RenderPassHandle handle, uint32_t width, uint32_t height);
 
-    // Batches staging copies and mip generation into one submission; nestable.
+    // Batches staging copies and mip generation into one submission; nestable. Prefer UploadBatchScope.
     void BeginUploadBatch();
     void EndUploadBatch();
 
@@ -312,12 +312,31 @@ private:
     ResourcePool<DescriptorSet, DescriptorSetHandle> m_descriptorSets;
     ResourcePool<Pipeline, PipelineHandle> m_pipelines;
     ResourcePool<RenderPass, RenderPassHandle> m_renderPasses;
-    std::unordered_map<uint64_t, VkRenderPass> m_renderPassCache;
+    std::unordered_map<RenderPassOutput, VkRenderPass, RenderPassOutputHash> m_renderPassCache;
     std::vector<PendingDestruction> m_pendingDestructions;
 
     TextureHandle m_dummyTexture;
     TextureHandle m_dummyCubeTexture;
     SamplerHandle m_defaultSampler;
+};
+
+// Keeps Begin/EndUploadBatch balanced. Leaving the scope by an exception still submits the batch: the commands recorded
+// so far reference resources that exist (failed creations defer their destruction), and an open batch would swallow
+// every later upload.
+class UploadBatchScope
+{
+public:
+    explicit UploadBatchScope(GpuDevice& device) : m_device(device) { m_device.BeginUploadBatch(); }
+    ~UploadBatchScope();
+    // Submits now (for the outermost scope), so submission errors reach the caller.
+    void End();
+
+    UploadBatchScope(const UploadBatchScope&) = delete;
+    UploadBatchScope& operator=(const UploadBatchScope&) = delete;
+
+private:
+    GpuDevice& m_device;
+    bool m_open = true;
 };
 
 } // namespace mengine::rhi

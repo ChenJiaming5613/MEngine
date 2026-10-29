@@ -876,16 +876,25 @@ private:
             const bool hasBytes = bytes.has_value();
             pending.push_back(std::async(std::launch::async,
                 [prepared = std::move(prepared), hasBytes, srgb, bcSupported]() mutable {
-                    if (hasBytes)
+                    try
                     {
-                        if (IsDds(prepared.bytes))
+                        if (hasBytes)
                         {
-                            PrepareDds(prepared, srgb, bcSupported);
+                            if (IsDds(prepared.bytes))
+                            {
+                                PrepareDds(prepared, srgb, bcSupported);
+                            }
+                            else
+                            {
+                                PrepareEncodedImage(prepared, srgb);
+                            }
                         }
-                        else
-                        {
-                            PrepareEncodedImage(prepared, srgb);
-                        }
+                    }
+                    catch (const std::exception& exception)
+                    {
+                        // A bad image (or bad_alloc from its declared size) only costs this texture.
+                        prepared.format = VK_FORMAT_UNDEFINED;
+                        prepared.error = exception.what();
                     }
                     return std::move(prepared);
                 }));
@@ -928,6 +937,7 @@ private:
             }
             catch (const std::exception& exception)
             {
+                rhi::RethrowIfDeviceUnusable(exception);
                 MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_path.c_str(), label.c_str(), exception.what());
             }
         }
@@ -1604,37 +1614,6 @@ private:
     size_t m_skippedTransmissiveDraws = 0;
 };
 
-// Keeps the device's upload batch balanced even when loading throws halfway.
-class UploadBatchScope
-{
-public:
-    explicit UploadBatchScope(rhi::GpuDevice& device) : m_device(device) { m_device.BeginUploadBatch(); }
-    ~UploadBatchScope()
-    {
-        if (m_open)
-        {
-            try
-            {
-                m_device.EndUploadBatch();
-            }
-            catch (const std::exception& exception)
-            {
-                MENGINE_LOG_ERROR("Upload batch failed during cleanup: %s", exception.what());
-            }
-        }
-    }
-    void End()
-    {
-        m_open = false;
-        m_device.EndUploadBatch();
-    }
-    UploadBatchScope(const UploadBatchScope&) = delete;
-    UploadBatchScope& operator=(const UploadBatchScope&) = delete;
-
-private:
-    rhi::GpuDevice& m_device;
-    bool m_open = true;
-};
 
 } // namespace
 
@@ -1686,14 +1665,15 @@ bool LoadGltfScene(rhi::GpuDevice& device, std::string_view assetPath, rhi::Desc
 
     try
     {
-        UploadBatchScope batch(device);
+        rhi::UploadBatchScope batch(device);
         GltfSceneBuilder(device, parsed.model, path, materialLayout, scene).Build();
         batch.End();
     }
     catch (const std::exception& exception)
     {
-        MENGINE_LOG_ERROR("Failed to load scene %s: %s", path.c_str(), exception.what());
         scene.Destroy(device);
+        rhi::RethrowIfDeviceUnusable(exception);
+        MENGINE_LOG_ERROR("Failed to load scene %s: %s", path.c_str(), exception.what());
         return false;
     }
 

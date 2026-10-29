@@ -55,8 +55,8 @@ VertexOutput VertexMainTangent(VertexInputTangent input)
 }
 
 // glTF: bitangent = cross(normal, tangent.xyz) * tangent.w. Without tangents the frame follows the UV gradients, as in
-// the glTF sample viewer (MEngine's addition, not in the notes).
-float3 ApplyNormalMap(VertexOutput input, float3 N, bool frontFacing)
+// the glTF sample viewer (MEngine's addition, not in the notes). N is the front face normal.
+float3 ApplyNormalMap(VertexOutput input, float3 N)
 {
     float3 tangentNormal = normalTexture.Sample(input.texCoord).xyz * 2.0 - 1.0;
     tangentNormal.xy *= material.normalScale;
@@ -67,11 +67,6 @@ float3 ApplyNormalMap(VertexOutput input, float3 N, bool frontFacing)
     {
         T = normalize(input.tangent.xyz - N * dot(N, input.tangent.xyz));
         B = cross(N, T) * input.tangent.w;
-        if (!frontFacing)
-        {
-            T = -T;
-            B = -B;
-        }
     }
     else
     {
@@ -92,6 +87,11 @@ float3 ApplyNormalMap(VertexOutput input, float3 N, bool frontFacing)
     return normalize(T * tangentNormal.x + B * tangentNormal.y + N * tangentNormal.z);
 }
 
+// Point lights make GGX a delta-like peak: roughness 0 gives 0 / 0 at NoH = 1, and D near 1 / (pi alpha^2) overflows
+// the RGBA16F target long before that. 0.089 keeps D below ~5e3 (Filament's half precision minimum).
+static const float kMinAnalyticRoughness = 0.089;
+static const float kHalfMax = 65504.0;
+
 // Eq. 1-5 for one light: Lo = (f_d + f_s) * radiance * NoL.
 float3 EvaluateDirectLight(float3 N, float3 V, float3 L, float3 radiance, float3 diffuseColor, float3 specularColor,
                            float roughness, float NoV)
@@ -107,9 +107,10 @@ float3 EvaluateDirectLight(float3 N, float3 V, float3 L, float3 radiance, float3
         float3 H = normalize(L + V);
         float NoH = saturate(dot(N, H));
         float VoH = saturate(dot(V, H));
-        float D = DGgx(roughness, NoH);
+        float analyticRoughness = max(roughness, kMinAnalyticRoughness);
+        float D = DGgx(analyticRoughness, NoH);
         float3 F = FSchlickSg(specularColor, VoH);
-        float G = GSmithAnalytic(roughness, NoV, NoL);
+        float G = GSmithAnalytic(analyticRoughness, NoV, NoL);
         brdf += SpecularCookTorrance(D, F, G, NoL, NoV);
     }
     return brdf * radiance * NoL;
@@ -145,16 +146,18 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
         diffuseColor = DiffuseColorFromMetallic(baseColor.rgb, metallic);
     }
 
-    // Back faces of double sided materials use the reversed normal (glTF 2.0, 3.9.5).
-    float3 N = normalize(input.normal);
-    if (!frontFacing)
-    {
-        N = -N;
-    }
-    float3 geometricNormal = N;
+    // Back faces of double sided materials use the reversed normal (glTF 2.0, 3.9.5); with a normal map the whole
+    // tangent frame is reversed, i.e. the perturbed front face normal is negated.
+    float3 vertexNormal = normalize(input.normal);
+    float3 N = vertexNormal;
     if ((material.flags & kMaterialFlagNormalTexture) != 0)
     {
-        N = ApplyNormalMap(input, N, frontFacing);
+        N = ApplyNormalMap(input, vertexNormal);
+    }
+    if (!frontFacing)
+    {
+        vertexNormal = -vertexNormal;
+        N = -N;
     }
 
     float3 V = normalize(frame.cameraPosition.xyz - input.worldPosition);
@@ -177,7 +180,7 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
         float3 L = -frame.directionalDirection.xyz;
         if (dot(N, L) > 0.0)
         {
-            float shadow = DirectionalShadow(input.worldPosition, geometricNormal);
+            float shadow = DirectionalShadow(input.worldPosition, vertexNormal);
             direct += EvaluateDirectLight(N, V, L, directionalRadiance * shadow, diffuseColor, specularColor, roughness, NoV);
         }
     }
@@ -190,5 +193,5 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
 
     float3 emissive = material.emissiveFactor.rgb * emissiveTexture.Sample(input.texCoord).rgb;
     float3 color = direct + (diffuseIbl + specularIbl) * occlusion * frame.iblParams.x + emissive;
-    return float4(color, 1.0);
+    return float4(min(color, kHalfMax), 1.0);
 }

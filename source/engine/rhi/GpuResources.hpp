@@ -109,6 +109,8 @@ struct DescriptorBinding
     uint32_t count = 1;
     // Compute layouts must name VK_SHADER_STAGE_COMPUTE_BIT.
     VkShaderStageFlags stages = VK_SHADER_STAGE_ALL_GRAPHICS;
+    // Image bindings: the view type the shader samples; picks the dummy for invalid textures and is checked on writes.
+    TextureType textureType = TextureType::Texture2D;
 };
 
 struct DescriptorSetLayoutCreation
@@ -126,6 +128,7 @@ struct DescriptorSetLayoutCreation
 struct DescriptorResource
 {
     uint32_t binding = 0;
+    uint32_t arrayElement = 0;
     BufferHandle buffer;
     VkDeviceSize bufferRange = VK_WHOLE_SIZE;
     TextureHandle texture;
@@ -141,8 +144,10 @@ struct DescriptorSetCreation
     const char* name = nullptr;
 
     // For UNIFORM_BUFFER_DYNAMIC bindings range must be the size of one element of the dynamic buffer.
-    DescriptorSetCreation& AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range = VK_WHOLE_SIZE);
-    DescriptorSetCreation& AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler = {});
+    // Every element of an arrayed binding must be written.
+    DescriptorSetCreation& AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range = VK_WHOLE_SIZE,
+        uint32_t arrayElement = 0);
+    DescriptorSetCreation& AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler = {}, uint32_t arrayElement = 0);
 };
 
 struct VertexStream
@@ -223,6 +228,12 @@ struct RenderPassOutput
     RenderPassOutput& SetDepth(VkFormat format);
     RenderPassOutput& SetOperations(RenderPassOperation color, RenderPassOperation depth);
     uint64_t Hash() const;
+    bool operator==(const RenderPassOutput&) const = default;
+};
+
+struct RenderPassOutputHash
+{
+    size_t operator()(const RenderPassOutput& output) const { return static_cast<size_t>(output.Hash()); }
 };
 
 struct RenderPassCreation
