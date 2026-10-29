@@ -12,6 +12,7 @@ namespace mengine {
 void Input::EndFrame()
 {
     m_mouseDelta = glm::vec2(0.0f);
+    m_wheelDelta = 0.0f;
     for (Touch& touch : m_touches)
     {
         touch.delta = glm::vec2(0.0f);
@@ -22,6 +23,7 @@ void Input::Reset()
 {
     m_mouseHeld.fill(false);
     m_mouseDelta = glm::vec2(0.0f);
+    m_wheelDelta = 0.0f;
     m_touches.clear();
 }
 
@@ -47,6 +49,13 @@ void Input::HandleEvent(const SDL_Event& event, const Window& window)
         if (event.motion.which != SDL_TOUCH_MOUSEID)
         {
             m_mouseDelta += glm::vec2(event.motion.xrel, event.motion.yrel);
+        }
+        break;
+
+    case SDL_EVENT_MOUSE_WHEEL:
+        if (event.wheel.which != SDL_TOUCH_MOUSEID && !HitsUi(event.wheel.mouse_x, event.wheel.mouse_y))
+        {
+            m_wheelDelta += event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -event.wheel.y : event.wheel.y;
         }
         break;
 

@@ -1,8 +1,6 @@
 #pragma once
 
-#include <SDL3/SDL_touch.h>
-
-#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <optional>
 
@@ -15,42 +13,81 @@ namespace render {
 class Camera;
 }
 
-// Unity scene view style fly camera.
-// Desktop: hold the right mouse button to look around (relative mouse mode) and move with WASD, Q/E down/up.
-// Touch: a virtual joystick. A finger that lands on the left half of the screen is the stick: dragging up / down moves
-// forward / backward, left / right strafes, and the speed grows with the drag distance up to moveSpeed at the rim.
-// A finger on the right half looks around. Both work at the same time.
-// Input that starts over ImGui, or keys while ImGui owns the keyboard, is ignored.
+// The scene a controller frames. Bounds are the world space AABB of every draw.
+struct CameraScene
+{
+    bool hasBounds = false;
+    glm::vec3 boundsMin{0.0f};
+    glm::vec3 boundsMax{0.0f};
+
+    // Pose from config.json for this scene, if any. Only the fly controller's home view uses it.
+    struct Pose
+    {
+        glm::vec3 position{0.0f};
+        float yawDegrees = 0.0f;
+        float pitchDegrees = 0.0f;
+    };
+    std::optional<Pose> configuredPose;
+
+    // Unit box around the origin without bounds, like the rest of the viewer.
+    glm::vec3 Center() const;
+    // Half the diagonal (bounding sphere radius), at least 1e-3.
+    float Radius() const;
+    // Largest side of the AABB, at least 1e-3.
+    float MaxExtent() const;
+};
+
+struct CameraInput
+{
+    const Input& input;
+    Window& window;
+    bool uiWantsKeyboard = false;
+    bool uiWantsMouse = false;
+};
+
+// Turns user input into camera motion. The viewer owns one instance per mode and drives the active one; every mode
+// writes the same render::Camera (position, yaw, pitch, clip planes), so the renderer does not know which is active.
+//
+// Lifecycle: SetScene on every controller when a scene loads, ResetView on the active one; Activate / Deactivate when
+// the mode changes (the new controller takes over the current pose instead of jumping); Update once per frame.
 class CameraController
 {
 public:
-    float moveSpeed = 3.0f;               // units per second
-    float mouseDegreesPerPixel = 0.15f;
-    float touchDegreesPerPixel = 0.25f;
+    // Far plane every mode keeps at least, so a small scene still shows the skybox far away.
+    static constexpr float kMinFarPlane = 100.0f;
 
-    // Drawn by the viewer; in window points like Input.
-    struct Joystick
-    {
-        bool active = false;        // a finger holds the stick; otherwise center is the idle hint position
-        glm::vec2 center{0.0f};     // where the stick finger landed (follows it when dragged past the rim)
-        glm::vec2 knob{0.0f};       // finger position, clamped to the rim
-        float radius = 0.0f;        // drag distance for full speed
-    };
+    CameraController() = default;
+    virtual ~CameraController() = default;
+    CameraController(const CameraController&) = delete;
+    CameraController& operator=(const CameraController&) = delete;
 
-    void Update(render::Camera& camera, const Input& input, Window& window, float deltaSeconds, bool uiWantsKeyboard);
+    // Shown in the mode list.
+    virtual const char* Name() const = 0;
+    // One line describing the controls.
+    virtual const char* Help() const = 0;
 
-    // True once the device has reported a touch (from the start on Android), so the hint is not shown on desktops.
-    bool UsesTouch() const { return m_usesTouch; }
-    const Joystick& GetJoystick() const { return m_joystick; }
+    // Remembers the scene; does not touch the camera.
+    virtual void SetScene(const CameraScene& scene) { m_scene = scene; }
+    // Moves the camera to this mode's home view of the scene.
+    virtual void ResetView(render::Camera& camera) = 0;
 
-private:
-    glm::vec2 UpdateTouches(render::Camera& camera, const Input& input, Window& window);
+    // The camera keeps its pose; the controller adopts it.
+    virtual void Activate(render::Camera& camera) = 0;
+    virtual void Deactivate(Window& window) { static_cast<void>(window); }
 
-    bool m_mouseLook = false;
-    bool m_usesTouch = false;
-    std::optional<SDL_FingerID> m_stickFinger;
-    std::optional<SDL_FingerID> m_lookFinger;
-    Joystick m_joystick;
+    virtual void Update(render::Camera& camera, const CameraInput& input, float deltaSeconds) = 0;
+
+    // Inside the viewer's ImGui panel: settings of this mode.
+    virtual void DrawSettings() {}
+    // Between ImGui::NewFrame and EndFrame, outside any window: on-screen widgets (background draw list).
+    virtual void DrawOverlay() const {}
+
+protected:
+    // Far plane that keeps the whole scene visible from the camera: twice the distance to the farthest bounding sphere
+    // point, at least kMinFarPlane.
+    float FarPlaneFor(const render::Camera& camera) const;
+
+    CameraScene m_scene;
 };
 
 } // namespace mengine

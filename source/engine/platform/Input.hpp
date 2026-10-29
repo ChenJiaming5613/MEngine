@@ -42,6 +42,8 @@ public:
     // True while the button is held, unless the press started over UI.
     bool IsMouseButtonHeld(uint8_t button) const;
     glm::vec2 MouseDelta() const { return m_mouseDelta; }
+    // Wheel notches this frame, positive away from the user; wheel input over UI is dropped.
+    float WheelDelta() const { return m_wheelDelta; }
 
     const std::vector<Touch>& Touches() const { return m_touches; }
 
@@ -51,6 +53,7 @@ private:
     UiHitTest m_uiHitTest;
     std::array<bool, 8> m_mouseHeld{};
     glm::vec2 m_mouseDelta{0.0f};
+    float m_wheelDelta = 0.0f;
     std::vector<Touch> m_touches;
 };
 

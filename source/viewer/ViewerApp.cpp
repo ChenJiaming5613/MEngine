@@ -1,6 +1,8 @@
 #include "ViewerApp.hpp"
 
 #include "CameraController.hpp"
+#include "FlyCameraController.hpp"
+#include "OrbitCameraController.hpp"
 #include "ViewerConfig.hpp"
 #include "core/Log.hpp"
 #include "render/Camera.hpp"
@@ -28,6 +30,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -42,7 +45,13 @@ namespace {
 constexpr const char* kConfigPath = "config.json";
 constexpr double kMaxCameraStepSeconds = 0.1;
 constexpr double kStatsRefreshSeconds = 0.5;
-constexpr float kMinFarPlane = 100.0f;
+
+enum CameraMode : size_t
+{
+    kCameraModeFly = 0, // default
+    kCameraModeOrbit = 1,
+    kCameraModeCount = 2,
+};
 
 class ViewerApp final : public Application
 {
@@ -67,6 +76,7 @@ protected:
             m_device.WaitIdle();
         }
         GetInput().SetUiHitTest({});
+        ActiveCameraController().Deactivate(GetWindow());
         m_renderer.Shutdown();
         m_imGui.Shutdown();
         m_device.Shutdown();
@@ -83,7 +93,13 @@ protected:
         }
 
         const float cameraStep = static_cast<float>(std::min(deltaSeconds, kMaxCameraStepSeconds));
-        m_cameraController.Update(m_camera, GetInput(), GetWindow(), cameraStep, m_imGui.WantsKeyboard());
+        const CameraInput cameraInput{
+            .input = GetInput(),
+            .window = GetWindow(),
+            .uiWantsKeyboard = m_imGui.WantsKeyboard(),
+            .uiWantsMouse = m_imGui.WantsMouse(),
+        };
+        ActiveCameraController().Update(m_camera, cameraInput, cameraStep);
 
         if (!m_device.BeginFrame())
         {
@@ -156,34 +172,34 @@ private:
         }
 
         const render::Scene& scene = m_renderer.GetScene();
-        glm::vec3 center(0.0f);
-        float radius = 1.0f;
-        if (scene.HasBounds())
+        CameraScene cameraScene;
+        cameraScene.hasBounds = scene.HasBounds();
+        if (cameraScene.hasBounds)
         {
-            center = 0.5f * (scene.boundsMin + scene.boundsMax);
-            radius = std::max(0.5f * glm::length(scene.boundsMax - scene.boundsMin), 1e-3f);
+            cameraScene.boundsMin = scene.boundsMin;
+            cameraScene.boundsMax = scene.boundsMax;
         }
 
         m_camera = render::Camera{};
         if (sceneConfig != nullptr && sceneConfig->camera)
         {
-            m_camera.position = sceneConfig->camera->position;
-            m_camera.yawDegrees = sceneConfig->camera->yawDegrees;
-            m_camera.pitchDegrees = sceneConfig->camera->pitchDegrees;
+            cameraScene.configuredPose = CameraScene::Pose{
+                .position = sceneConfig->camera->position,
+                .yawDegrees = sceneConfig->camera->yawDegrees,
+                .pitchDegrees = sceneConfig->camera->pitchDegrees,
+            };
             m_camera.fovYDegrees = sceneConfig->camera->fovYDegrees;
         }
-        else
+        for (const std::unique_ptr<CameraController>& controller : m_cameraControllers)
         {
-            // Frame the bounding sphere from +Z, looking down -Z.
-            const float distance = radius / std::sin(glm::radians(m_camera.fovYDegrees) * 0.5f);
-            m_camera.position = center + glm::vec3(0.0f, 0.0f, distance);
+            controller->SetScene(cameraScene);
         }
-        m_camera.ClampPitch();
-        m_camera.farPlane = std::max(kMinFarPlane, 2.0f * (glm::length(m_camera.position - center) + radius));
-        m_cameraController.moveSpeed = std::max(0.5f, radius * 0.25f);
+        ActiveCameraController().ResetView(m_camera);
 
         // The light starts just above the camera with E = 1 at the scene center, like Vulkan-glTF-PBR's unit color
         // directional light under the same exposure.
+        const glm::vec3 center = cameraScene.Center();
+        const float radius = cameraScene.Radius();
         m_settings.light = render::PointLight{};
         m_settings.light.position = m_camera.position + glm::vec3(0.0f, 1.0f, 0.0f);
         const float lightDistance = glm::length(m_settings.light.position - center);
@@ -317,10 +333,32 @@ private:
 
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
         {
+            CameraController& active = ActiveCameraController();
+            if (ImGui::BeginCombo("Control", active.Name()))
+            {
+                for (size_t mode = 0; mode < m_cameraControllers.size(); ++mode)
+                {
+                    const bool selected = mode == m_cameraMode;
+                    if (ImGui::Selectable(m_cameraControllers[mode]->Name(), selected))
+                    {
+                        SetCameraMode(mode);
+                    }
+                    if (selected)
+                    {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset"))
+            {
+                ActiveCameraController().ResetView(m_camera);
+            }
             ImGui::Text("Position: %.2f %.2f %.2f", m_camera.position.x, m_camera.position.y, m_camera.position.z);
             ImGui::Text("Yaw %.1f  Pitch %.1f", m_camera.yawDegrees, m_camera.pitchDegrees);
-            ImGui::SliderFloat("Move Speed", &m_cameraController.moveSpeed, 0.1f, 50.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
-            ImGui::TextDisabled("RMB + WASD/QE; touch: left half joystick, right half look");
+            ActiveCameraController().DrawSettings();
+            ImGui::TextDisabled("%s", ActiveCameraController().Help());
         }
 
         const ImVec2 position = ImGui::GetWindowPos();
@@ -330,31 +368,23 @@ private:
         ImGui::End();
         m_anyPopupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
-        DrawJoystick();
+        ActiveCameraController().DrawOverlay();
         m_imGui.EndFrame();
     }
 
-    // Touch devices only: a faint ring where the stick usually sits, and the live stick while a finger holds it.
-    void DrawJoystick() const
+    CameraController& ActiveCameraController() { return *m_cameraControllers[m_cameraMode]; }
+
+    // The new controller takes over the current view instead of jumping to its home view.
+    void SetCameraMode(size_t mode)
     {
-        if (!m_cameraController.UsesTouch())
+        if (mode == m_cameraMode || mode >= m_cameraControllers.size())
         {
             return;
         }
-        const CameraController::Joystick& joystick = m_cameraController.GetJoystick();
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-        const ImVec2 center(joystick.center.x, joystick.center.y);
-        const float thickness = std::max(2.0f, joystick.radius * 0.04f);
-        if (!joystick.active)
-        {
-            drawList->AddCircle(center, joystick.radius, IM_COL32(255, 255, 255, 60), 48, thickness);
-            drawList->AddCircleFilled(center, joystick.radius * 0.35f, IM_COL32(255, 255, 255, 40), 32);
-            return;
-        }
-        drawList->AddCircleFilled(center, joystick.radius, IM_COL32(0, 0, 0, 50), 48);
-        drawList->AddCircle(center, joystick.radius, IM_COL32(255, 255, 255, 150), 48, thickness);
-        drawList->AddCircleFilled(ImVec2(joystick.knob.x, joystick.knob.y), joystick.radius * 0.35f,
-            IM_COL32(255, 255, 255, 140), 32);
+        ActiveCameraController().Deactivate(GetWindow());
+        m_cameraMode = mode;
+        ActiveCameraController().Activate(m_camera);
+        MENGINE_LOG_INFO("Camera control: %s", ActiveCameraController().Name());
     }
 
     rhi::GpuDevice m_device;
@@ -362,7 +392,11 @@ private:
     render::Renderer m_renderer;
     render::Camera m_camera;
     render::RenderSettings m_settings;
-    CameraController m_cameraController;
+    std::array<std::unique_ptr<CameraController>, kCameraModeCount> m_cameraControllers{
+        std::make_unique<FlyCameraController>(),
+        std::make_unique<OrbitCameraController>(),
+    };
+    size_t m_cameraMode = kCameraModeFly;
 
     std::optional<ViewerConfig> m_config;
     size_t m_currentScene = 0;
