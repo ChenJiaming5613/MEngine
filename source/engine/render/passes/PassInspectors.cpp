@@ -77,11 +77,15 @@ bool SkyboxPass::DrawInspector(RenderSettings& settings)
 
 const char* ForwardPbrPass::Description() const
 {
-    return "Shades every glTF draw with the point light, the shadowed directional light and IBL.";
+    return "Shades the draws inside the camera frustum with the point light, the shadowed directional light and IBL.";
 }
 
 bool ForwardPbrPass::DrawInspector(RenderSettings& settings)
 {
+    ImGui::Checkbox("Frustum Culling", &settings.frustumCulling);
+    ImGui::SameLine();
+    ImGui::Checkbox("Freeze", &settings.freezeCulling);
+    ImGui::Text("Draws: %u / %u", m_drawCount, m_sceneDrawCount);
     ImGui::SliderFloat("IBL Intensity", &settings.iblIntensity, 0.0f, 4.0f, "%.2f");
 
     DirectionalLight& directional = settings.directional;
@@ -137,6 +141,7 @@ bool DebugDrawPass::DrawInspector(RenderSettings& settings)
 {
     ImGui::Checkbox("Scene Bounds", &settings.debugSceneBounds);
     ImGui::Checkbox("Shadow Frustum", &settings.debugShadowFrustum);
+    ImGui::Checkbox("Draw Bounds", &settings.debugDrawBounds);
     return true;
 }
 

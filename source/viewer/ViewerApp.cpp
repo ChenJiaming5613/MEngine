@@ -324,7 +324,8 @@ private:
             }
         }
         ImGui::Text("Scene: %s", scene.path.empty() ? "<none>" : scene.path.c_str());
-        ImGui::Text("Draws: %zu  Materials: %zu  Textures: %zu", scene.draws.size(), scene.materials.size(), scene.textures.size());
+        ImGui::Text("Draws: %zu (%u visible)  Materials: %zu  Textures: %zu", scene.draws.size(),
+            m_renderer.GetCullingStats().visible, scene.materials.size(), scene.textures.size());
         ImGui::Text("Environment: %s", environment.isFallback ? "<uniform fallback>" : environment.directory.c_str());
 
         if (ImGui::CollapsingHeader("Device"))
@@ -432,8 +433,14 @@ private:
 
         if (ImGui::CollapsingHeader("Debug"))
         {
+            const render::CullingStats& culling = m_renderer.GetCullingStats();
+            ImGui::Checkbox("Frustum Culling", &m_settings.frustumCulling);
+            ImGui::SameLine();
+            ImGui::Checkbox("Freeze Culling", &m_settings.freezeCulling);
+            ImGui::Text("Visible Draws: %u / %u%s", culling.visible, culling.draws, culling.frozen ? " (frozen)" : "");
             ImGui::Checkbox("Scene Bounds", &m_settings.debugSceneBounds);
             ImGui::Checkbox("Shadow Frustum", &m_settings.debugShadowFrustum);
+            ImGui::Checkbox("Draw Bounds", &m_settings.debugDrawBounds);
         }
 
         if (ImGui::CollapsingHeader("Frame Graph"))

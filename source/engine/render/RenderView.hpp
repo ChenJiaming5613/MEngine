@@ -4,6 +4,7 @@
 #include "rhi/GpuResources.hpp"
 
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 namespace mengine::render {
@@ -22,6 +23,8 @@ inline constexpr VkFormat kHdrFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 struct RenderView
 {
     const Scene* scene = nullptr;
+    // Indices into scene->draws that survived the camera frustum culling, in draw order.
+    std::span<const uint32_t> visibleDraws;
     const RenderSettings* settings = nullptr;
     rhi::DescriptorSetHandle frameSet;
     // Dynamic offset of this frame's FrameConstants in the frame set.

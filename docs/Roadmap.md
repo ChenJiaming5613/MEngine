@@ -29,7 +29,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 实现规则：
 
 - 只链接 1.0 符号的约束不变：`vkGetPhysicalDeviceFeatures2`、`vkGetPhysicalDeviceProperties2`（1.1 入口）和所有扩展函数都经 `vkGetInstanceProcAddr` / `vkGetDeviceProcAddr` 运行时获取。
-- `GpuDevice` 汇总成一个能力结构（例如 `DeviceCapabilities`），渲染层只查询能力，不直接判断扩展名。ImGui 面板显示当前档位与各开关。
+- `GpuDevice` 汇总成一个能力结构（`DeviceCapabilities`），渲染层只查询能力，不直接判断扩展名。ImGui 面板显示当前档位与各开关。**已完成**（`99eb18a`）：查询 1.0/1.1 核心与 T1/T2 扩展的特性和限制、队列族、内存堆、格式支持，按本节的表判定档位并列出每项要求；只查询，不启用任何新能力。Device Capabilities 窗口从 MEngine 面板的 Device 分组打开，默认关闭。
 - 不引入 dynamic rendering：Raptor 第 4 章起在有扩展时使用 `VK_KHR_dynamic_rendering`，MEngine 一律走 `VkRenderPass`。
 
 ## 2. 各章新增内容
@@ -40,7 +40,17 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 
 - **新增**：基础库（分配器、容器、文件、日志、服务，`raptor/foundation`）；窗口、输入、相机（`raptor/application`）；RHI：`GpuDevice`、`CommandBuffer`、`GpuResources`（Creation 描述 + 句柄 + 资源池、延迟销毁）；`GpuProfiler`（timestamp query）；ImGui 服务；带资源缓存的 `Renderer`；`main.cpp` 中的 glTF 加载与绘制。
 - **能力**：T0。
-- **MEngine 现状**：已完成（阶段 0）。RHI 按此章蓝本实现，并提前吸收了后续章节的 `ResourceState`、`ExecutionBarrier`、compute、indirect draw（`02d7c32`）。
+- **MEngine 现状**：已完成（阶段 0）。RHI 按此章蓝本实现，并提前吸收了后续章节的 `ResourceState`、`ExecutionBarrier`、compute、indirect draw（`02d7c32`）。阶段 0 的收尾（设备能力分级、CPU 视锥剔除）也已完成。
+- **阶段 0 收尾的设计决定**（CPU 视锥剔除，细节见 `Architecture.md` 5.10）：
+
+  | 编号 | 决定 |
+  | --- | --- |
+  | C1 | 每个 draw 在加载时存世界空间 AABB（局部包围盒 8 个角点经世界矩阵变换）；空包围盒视为可见 |
+  | C2 | 视锥平面从 view-projection 的行提取（Gribb & Hartmann），近平面按 Vulkan 深度 `z >= 0`，平面归一化 |
+  | C3 | 包围盒测试用中心 + 半长对 6 个平面逐一判断，保守（只会多画，不会少画） |
+  | C4 | 剔除结果是按原顺序排列的 draw 下标，经 `RenderView::visibleDraws` 交给 pass，管线 / 材质排序不变 |
+  | C5 | 只剔除 Forward；方向光阴影投射者不剔除（光源视锥覆盖整个场景，按相机剔除会破坏阴影按需重绘） |
+  | C6 | 调试：可关闭剔除、冻结剔除视锥、绘制每个 draw 的包围盒（可见绿 / 剔除红）和冻结的视锥 |
 - **取舍**：不采用 foundation 库（用 STL / SDL）、`Renderer` 资源缓存层、独立的 `ShaderState` 资源（见 `Architecture.md` 4.1）。
 
 ### 第 2 章 改进资源管理
@@ -241,7 +251,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 
 | 阶段 | 内容 | 来源章节 | 档位 | 解除的当前限制（`Architecture.md` 第 11 节） |
 | --- | --- | --- | --- | --- |
-| 0 | RHI（已完成）；收尾：设备能力分级、CPU 视锥剔除 | 1 | T0 | 无视锥剔除 |
+| 0 | RHI；收尾：设备能力分级、CPU 视锥剔除（**已完成**） | 1 | T0 | 无视锥剔除 |
 | 1 | Pipeline cache、着色器反射（含特化常量）、构建期结构体布局校验（**已完成**） | 2、9 | T0 | 无 pipeline cache、首帧卡顿 |
 | 2 | Frame Graph（含 compute 节点）、调试绘制（**已完成**） | 4、5 | T0 | 手写 pass 顺序与 resize |
 | 3 | 线程池、异步场景加载、并行录制 | 3 | T0 | 场景加载同步阻塞 |

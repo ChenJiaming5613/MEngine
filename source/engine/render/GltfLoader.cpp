@@ -1506,17 +1506,23 @@ private:
         {
             draw.pipelineKey |= kPipelineKeyTangents;
         }
-        m_scene.draws.push_back(draw);
 
-        for (int corner = 0; corner < 8; ++corner)
+        // An empty primitive (no positions) keeps empty bounds and stays out of the scene bounds.
+        if (primitive.boundsMin.x <= primitive.boundsMax.x)
         {
-            const glm::vec3 local((corner & 1) ? primitive.boundsMax.x : primitive.boundsMin.x,
-                (corner & 2) ? primitive.boundsMax.y : primitive.boundsMin.y,
-                (corner & 4) ? primitive.boundsMax.z : primitive.boundsMin.z);
-            const glm::vec3 point = glm::vec3(world * glm::vec4(local, 1.0f));
-            m_scene.boundsMin = glm::min(m_scene.boundsMin, point);
-            m_scene.boundsMax = glm::max(m_scene.boundsMax, point);
+            for (int corner = 0; corner < 8; ++corner)
+            {
+                const glm::vec3 local((corner & 1) ? primitive.boundsMax.x : primitive.boundsMin.x,
+                    (corner & 2) ? primitive.boundsMax.y : primitive.boundsMin.y,
+                    (corner & 4) ? primitive.boundsMax.z : primitive.boundsMin.z);
+                const glm::vec3 point = glm::vec3(world * glm::vec4(local, 1.0f));
+                draw.boundsMin = glm::min(draw.boundsMin, point);
+                draw.boundsMax = glm::max(draw.boundsMax, point);
+            }
+            m_scene.boundsMin = glm::min(m_scene.boundsMin, draw.boundsMin);
+            m_scene.boundsMax = glm::max(m_scene.boundsMax, draw.boundsMax);
         }
+        m_scene.draws.push_back(draw);
     }
 
     void CreateDraws()

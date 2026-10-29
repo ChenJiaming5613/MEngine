@@ -121,8 +121,9 @@ void ForwardPbrPass::Execute(FrameGraphContext& context)
     const uint32_t frameOffset = context.view.frameOffset;
     uint32_t boundKey = ~0u;
     uint32_t boundMaterial = ~0u;
-    for (const SceneDraw& draw : scene.draws)
+    for (const uint32_t drawIndex : context.view.visibleDraws)
     {
+        const SceneDraw& draw = scene.draws[drawIndex];
         if (draw.pipelineKey != boundKey)
         {
             commandBuffer.BindPipeline(Pipeline(draw.pipelineKey));
@@ -146,6 +147,8 @@ void ForwardPbrPass::Execute(FrameGraphContext& context)
         commandBuffer.PushConstants(&draw.constants, sizeof(DrawConstants));
         commandBuffer.DrawIndexed(primitive.indexCount);
     }
+    m_drawCount = static_cast<uint32_t>(context.view.visibleDraws.size());
+    m_sceneDrawCount = static_cast<uint32_t>(scene.draws.size());
 }
 
 } // namespace mengine::render

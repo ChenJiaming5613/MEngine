@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 namespace mengine::rhi {
 class GpuDevice;
@@ -28,7 +29,8 @@ namespace mengine::render {
 
 class Camera;
 
-// Builds the frame graph once and runs it every frame:
+// Builds the frame graph once and runs it every frame. The forward draws are culled on the CPU against the camera
+// frustum first (render/Culling.hpp); shadow casters are not culled. Then:
 //   Shadow (only when the light, the scene or the shadow toggle changes) -> Forward (opaque, then alpha mask) -> Skybox
 //   -> DebugDraw (lines, when any) into an RGBA16F target -> Tonemap -> ImGui into the backbuffer.
 // The graph merges Forward + Skybox + DebugDraw and Tonemap + ImGui into one render pass each.
@@ -51,6 +53,8 @@ public:
     FrameGraph& GetFrameGraph() { return m_graph; }
     // Lines added before Render (after GpuDevice::BeginFrame or earlier) are drawn this frame, then cleared.
     DebugDraw& GetDebugDraw() { return m_debugDraw; }
+    // Frustum culling result of the last Render.
+    const CullingStats& GetCullingStats() const { return m_cullingStats; }
 
     // Records the frame between GpuDevice::BeginFrame and EndFrame. ImGui (if any) must have finished its frame.
     void Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui);
@@ -82,6 +86,12 @@ private:
     Scene m_scene;
     Environment m_environment;
     uint64_t m_sceneVersion = 0;
+
+    // Draws inside the camera (or frozen) frustum this frame; RenderView::visibleDraws points here.
+    std::vector<uint32_t> m_visibleDraws;
+    glm::mat4 m_frozenViewProjection{1.0f};
+    bool m_cullingFrozen = false;
+    CullingStats m_cullingStats;
 };
 
 } // namespace mengine::render

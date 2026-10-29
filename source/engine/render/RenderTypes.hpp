@@ -123,9 +123,23 @@ struct RenderSettings
     float skyboxBlur = 1.5f / 9.0f;
     PointLight light;
     DirectionalLight directional;
+    // CPU view frustum culling of the forward draws against each draw's world AABB (render/Culling.hpp).
+    bool frustumCulling = true;
+    // Keeps culling with the camera of the frame it was frozen in, so the culled draws can be inspected from outside.
+    bool freezeCulling = false;
     // Debug lines the renderer adds itself (render/DebugDraw.hpp).
     bool debugSceneBounds = false;
     bool debugShadowFrustum = false;
+    // Every draw's world AABB: visible ones green, culled ones red; plus the culling frustum while it is frozen.
+    bool debugDrawBounds = false;
+};
+
+// What the last Render culled, for debug UI.
+struct CullingStats
+{
+    uint32_t draws = 0;
+    uint32_t visible = 0;
+    bool frozen = false;
 };
 
 } // namespace mengine::render

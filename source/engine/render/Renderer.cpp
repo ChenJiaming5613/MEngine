@@ -1,6 +1,7 @@
 #include "render/Renderer.hpp"
 
 #include "render/Camera.hpp"
+#include "render/Culling.hpp"
 #include "render/GltfLoader.hpp"
 #include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
@@ -207,6 +208,39 @@ void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGu
     const rhi::DynamicAllocation allocation = device.DynamicAllocate(sizeof(FrameConstants));
     std::memcpy(allocation.data, &constants, sizeof(constants));
 
+    // Frustum culling of the forward draws. Shadow casters are not culled: the light frustum encloses the scene bounds,
+    // so every caster is inside it, and culling by the camera would re-render the cached map whenever the camera moves.
+    if (settings.freezeCulling)
+    {
+        if (!m_cullingFrozen)
+        {
+            m_frozenViewProjection = constants.viewProjection;
+            m_cullingFrozen = true;
+        }
+    }
+    else
+    {
+        m_cullingFrozen = false;
+    }
+    const glm::mat4& cullViewProjection = m_cullingFrozen ? m_frozenViewProjection : constants.viewProjection;
+    if (settings.frustumCulling)
+    {
+        CullDraws(m_scene, Frustum::FromViewProjection(cullViewProjection), m_visibleDraws);
+    }
+    else
+    {
+        m_visibleDraws.resize(m_scene.draws.size());
+        for (uint32_t index = 0; index < static_cast<uint32_t>(m_visibleDraws.size()); ++index)
+        {
+            m_visibleDraws[index] = index;
+        }
+    }
+    m_cullingStats = {
+        .draws = static_cast<uint32_t>(m_scene.draws.size()),
+        .visible = static_cast<uint32_t>(m_visibleDraws.size()),
+        .frozen = m_cullingFrozen,
+    };
+
     if (settings.debugSceneBounds && m_scene.HasBounds())
     {
         m_debugDraw.Aabb(m_scene.boundsMin, m_scene.boundsMax, glm::vec4(1.0f, 0.85f, 0.1f, 1.0f));
@@ -215,12 +249,33 @@ void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGu
     {
         m_debugDraw.Frustum(shadowView.viewProjection, glm::vec4(1.0f, 0.4f, 0.1f, 1.0f));
     }
+    if (settings.debugDrawBounds)
+    {
+        // m_visibleDraws is sorted, so one pass over the draws splits them into visible and culled.
+        size_t next = 0;
+        for (uint32_t index = 0; index < static_cast<uint32_t>(m_scene.draws.size()); ++index)
+        {
+            const SceneDraw& draw = m_scene.draws[index];
+            const bool visible = next < m_visibleDraws.size() && m_visibleDraws[next] == index;
+            next += visible ? 1 : 0;
+            if (draw.boundsMin.x <= draw.boundsMax.x)
+            {
+                m_debugDraw.Aabb(draw.boundsMin, draw.boundsMax,
+                    visible ? glm::vec4(0.2f, 1.0f, 0.3f, 1.0f) : glm::vec4(1.0f, 0.15f, 0.15f, 1.0f));
+            }
+        }
+        if (m_cullingFrozen)
+        {
+            m_debugDraw.Frustum(m_frozenViewProjection, glm::vec4(0.3f, 0.7f, 1.0f, 1.0f));
+        }
+    }
     m_debugDraw.Upload();
 
     m_shadow.Prepare(castShadows, direction, m_sceneVersion);
     m_imGuiPass.SetLayer(imGui);
     const RenderView view{
         .scene = &m_scene,
+        .visibleDraws = m_visibleDraws,
         .settings = &settings,
         .frameSet = m_frameSet,
         .frameOffset = allocation.offset,

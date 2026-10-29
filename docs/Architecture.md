@@ -115,7 +115,7 @@ graph TB
 - **场景切换**：ImGui 下拉框只记下 `m_pendingScene`；真正的 `LoadSceneAt` 在下一帧 `BeginFrame` 之前执行，因为加载需要等 GPU 空闲并释放旧场景。
 - **相机与灯光复位**：每次换场景先把场景包围盒和 config 里的相机位姿交给所有相机控制器（`SetScene`），再让当前控制器回到它的默认视角（`ResetView`）；然后按相机位置重置点光源（让场景中心照度 E = 1）和方向光。
 - **每帧**：当前 `CameraController::Update` → `GpuDevice::BeginFrame`（失败则跳过本帧）→ 构建 ImGui 面板 → `Renderer::Render` → `GpuDevice::EndFrame`。
-- **面板**：场景切换、性能（FPS、管线统计、各节点 GPU 计时）、灯光、相机；Debug 面板开关场景包围盒和阴影视锥调试线；Frame Graph 面板显示节点、render pass、资源生命周期，并切换节点开关和纹理复用（5.8）。
+- **面板**：场景切换、性能（FPS、管线统计、各节点 GPU 计时）、灯光、相机；Debug 面板开关视锥剔除及冻结、显示可见 / 总 draw 数，开关场景包围盒、阴影视锥和每个 draw 包围盒的调试线；Frame Graph 面板显示节点、render pass、资源生命周期，并切换节点开关和纹理复用（5.8）。
 - **事件**：窗口尺寸变化时 `MarkSwapchainDirty`；Esc / Android 返回键退出；前后台切换转成 `GpuDevice::SetSuspended`。
 
 ### 3.3 输入与相机控制
@@ -401,7 +401,8 @@ indirect 命令会检查 buffer 的 `INDIRECT_BUFFER` 用途、偏移对齐、`d
 ```mermaid
 graph LR
     A["NeedsCompile?<br/>（尺寸、格式、开关变化）<br/>FrameGraph::Compile"] --> B["填 FrameConstants<br/>DynamicAllocate"]
-    B --> C["调试线<br/>DebugDraw::Upload"]
+    B --> V["视锥剔除<br/>CullDraws"]
+    V --> C["调试线<br/>DebugDraw::Upload"]
     C --> D["ShadowPass::Prepare<br/>填 RenderView"]
     D --> E["FrameGraph::Execute"]
 ```
@@ -421,11 +422,12 @@ graph LR
 ```
 
 - **FrameConstants**：视图、投影、天空盒逆矩阵、阴影矩阵、相机位置、点光源、方向光、阴影参数、IBL 参数，每帧写进动态 uniform 环，通过 set 0 的动态偏移绑定。
-- **RenderView**（`RenderView.hpp`）：节点 `Execute` 的每帧输入，包括场景、设置、frame set 及其动态偏移、是否在着色器里编码 sRGB。同一个头文件定义图资源名（`ShadowMap`、`HdrColor`、`SceneDepth`、`Backbuffer`）。
+- **RenderView**（`RenderView.hpp`）：节点 `Execute` 的每帧输入，包括场景、通过视锥剔除的 draw 下标（`visibleDraws`）、设置、frame set 及其动态偏移、是否在着色器里编码 sRGB。同一个头文件定义图资源名（`ShadowMap`、`HdrColor`、`SceneDepth`、`Backbuffer`）。
 - **阴影按需重绘**：`ShadowPass::Prepare` 比较阴影开关、方向光方向和场景版本，只在首次和这些条件变化时让 `IsActive()` 返回 true。阴影图由 `ShadowPass` 持有并导入图，跳过的帧保留旧内容；图因此把它的深度推导为 store + `sampleDepth`。
 - **关闭 Shadow 节点**：导入的阴影图不会因为节点被禁用而失效，Forward 仍然可以读到它最后一次的内容。所以 `Renderer` 用 `FrameGraph::IsScheduled("Shadow")` 决定 `shadowParams.x`：节点没有被调度时不采样阴影，否则会显示不再跟随光源和场景的旧阴影。重新启用后，如果期间光源或场景变了，`Prepare` 会触发重绘。
 - **阴影视锥**：`FitShadowView` 用正交投影贴合场景包围盒（四周外扩 2 个 texel，供 3×3 PCF 使用），与相机投影一样翻转 Y，所以沿用前向 pass 的绕序和剔除规则。
-- **Forward render pass**：Forward 先画所有 draw（已排好序：不透明在前，MASK 在后），然后天空盒（深度测试 `LESS_OR_EQUAL`、不写深度，只填仍在远平面的像素），最后画调试线。场景深度之后没有读者，所以 store 为 `DONT_CARE`。
+- **视锥剔除**（`Culling.hpp`）：见 5.10。Forward 只画 `visibleDraws`；阴影投射者不剔除。
+- **Forward render pass**：Forward 先画可见的 draw（已排好序：不透明在前，MASK 在后），然后天空盒（深度测试 `LESS_OR_EQUAL`、不写深度，只填仍在远平面的像素），最后画调试线。场景深度之后没有读者，所以 store 为 `DONT_CARE`。
 - **Swapchain pass**：Tonemap 用全屏三角形采样 HDR 目标，做曝光和 Uncharted 2 曲线；表面不是 sRGB 格式时在着色器里编码 sRGB。ImGui 画在同一个 pass 里。
 
 ### 5.2 描述符与常量约定
@@ -449,7 +451,7 @@ C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang`（以及
 | Pass | 图中的访问 | 管线变体 | 说明 |
 | --- | --- | --- | --- |
 | `ShadowPass` | 导入自己持有的 D16 2048² 阴影图，深度附件 Clear | `{MASK, 双面, 镜像}` 共 8 种，场景加载后按需预热 | 按需重绘（5.1）；静态深度偏移（常量 1.25、斜率 1.75）；MASK 材质只额外绑定 UV 流和材质 set 做裁剪 |
-| `ForwardPbrPass` | 创建 `HdrColor`（RGBA16F）和 `SceneDepth`，都 Clear；以 `PixelShaderResource` 读 `ShadowMap` | `PipelineKeyBits` 的 16 种组合（MASK、双面、镜像、有切线），场景加载后按需预热 | 点光源、带阴影的方向光、split sum IBL；按管线和材质切换时才重新绑定 |
+| `ForwardPbrPass` | 创建 `HdrColor`（RGBA16F）和 `SceneDepth`，都 Clear；以 `PixelShaderResource` 读 `ShadowMap` | `PipelineKeyBits` 的 16 种组合（MASK、双面、镜像、有切线），场景加载后按需预热 | 点光源、带阴影的方向光、split sum IBL；只画 `visibleDraws`；按管线和材质切换时才重新绑定 |
 | `SkyboxPass` | Load `HdrColor`、`SceneDepth` | 1 个 | 采样镜面立方体，与 Forward 合并 |
 | `DebugDrawPass` | Load `HdrColor`、`SceneDepth` | 1 个（`LINE_LIST`） | 画 `DebugDraw` 的线（5.9）；没有线时 `IsActive()` 为 false |
 | `TonemapPass` | 以 `PixelShaderResource` 读 `HdrColor`；backbuffer 颜色附件 DontCare | 1 个 | 自带 set（layout 由着色器反射生成）和采样器；`OnCompiled` 里把 set 指向新的 HDR 纹理 |
@@ -466,7 +468,7 @@ C++ 端 `RenderTypes.hpp` 与 Slang 端 `shaders/common/Bindings.slang`（以及
 - `buffers / textures / samplers`：场景拥有的 GPU 资源，`Scene::Destroy` 统一释放（延迟）。
 - `primitives`：4 个**分离的**顶点流（position、normal、texcoord、可选 tangent），每个流有自己的 buffer 和偏移；索引 buffer、类型、数量；材质下标；局部包围盒。
 - `materials`：材质 uniform buffer、descriptor set、alpha 模式、双面、是否透射。
-- `draws`：(primitive, material, pipelineKey, DrawConstants)。节点层级在加载时展开成世界矩阵，所以渲染时没有场景图遍历。
+- `draws`：(primitive, material, pipelineKey, DrawConstants, 世界空间 AABB)。AABB 由局部包围盒的 8 个角点经世界矩阵变换后求得，供视锥剔除使用；没有顶点的 primitive 包围盒为空，剔除时视为可见，也不计入场景包围盒。节点层级在加载时展开成世界矩阵，所以渲染时没有场景图遍历。
 - 场景包围盒用于相机取景、阴影视锥和移动速度。
 
 ### 5.5 glTF 加载流水线
@@ -580,6 +582,17 @@ graph LR
 - **为什么放在 Skybox 之后**：线不写深度。如果先画线，远平面上的天空会把线覆盖掉。
 - **内置开关**：`RenderSettings::debugSceneBounds`（场景包围盒，黄色）和 `debugShadowFrustum`（阴影正交视锥，橙色），由查看器 Debug 面板控制，默认关闭。外部代码可以通过 `Renderer::GetDebugDraw()` 自己加线。
 
+### 5.10 视锥剔除
+
+`render/Culling.hpp` 提供 CPU 端的视锥剔除（Roadmap 阶段 0 收尾），GPU 剔除与遮挡剔除见 Roadmap 阶段 8。
+
+- **视锥**：`Frustum::FromViewProjection` 从 view-projection 的行提取 6 个向内的平面（Gribb & Hartmann），按 Vulkan 深度范围取近平面 `z >= 0`；平面归一化，透视与正交投影都适用，Y 翻转不影响结果。
+- **测试**：`IntersectsAabb` 用中心 + 半长：中心到平面的有符号距离加上包围盒在法线上的投影半径小于 0 时，包围盒完全在该平面外，剔除。测试是保守的：视锥边角附近不相交的包围盒也可能通过（多画一个 draw，不会少画）；空包围盒总是可见。
+- **使用**：`Renderer::Render` 每帧用相机的 `viewProjection` 调用 `CullDraws`，得到按原顺序排列的可见 draw 下标（管线、材质排序保持不变），通过 `RenderView::visibleDraws` 交给 `ForwardPbrPass`。
+- **阴影不剔除**：方向光的正交视锥贴合整个场景包围盒，所有投射者都在其内；按相机剔除投射者会让阴影图在相机每次移动时都重绘，破坏“按需重绘”。点光源阴影（阶段 6）会复用 `Frustum` 按光源剔除。
+- **调试**：`RenderSettings::frustumCulling`（默认开）、`freezeCulling`（冻结开启那一帧的相机视锥，便于从外部观察被剔除的 draw）、`debugDrawBounds`（每个 draw 的 AABB，可见为绿、剔除为红；冻结时同时画出冻结的视锥，蓝色）。`Renderer::GetCullingStats()` 给出上一帧的可见 / 总 draw 数，查看器 Debug 面板和 Forward 节点的 inspector 都能看到。
+- **效果**（桌面 Debug，1280×720）：Sponza 默认相机 103 个 draw 中可见 39 个；Bistro 2570 个 draw，沿街默认视角可见 2183 个，转向 yaw 0 时可见 357 个，Forward GPU 时间 8.5 ms → 5.9 ms。
+
 ## 6. 资源与着色器管线
 
 ### 6.1 资产暂存
@@ -659,11 +672,11 @@ graph LR
 3. 以 `FrameGraphNodeType::Compute` 注册。在 `Setup` 里用 `Read` / `Write` / `ReadWrite` 声明访问，例如 `ReadWrite(name, kResourceStateUnorderedAccess)`；外部 buffer 先 `ImportBuffer`。图会给瞬时纹理加上 `kTextureFlagStorage`（并检查格式），在节点执行前插入纹理和 buffer barrier，后续使用者的 barrier 也由图生成。
 4. `Execute` 里只需 `BindPipeline` → `BindDescriptorSet` → `Dispatch`。不在图里的 compute 工作仍可以像以前一样手写 barrier（4.8）。
 
-**后续路线**（第 2–15 章的集成顺序与进度见 [`Roadmap.md`](Roadmap.md)）：阶段 0 剩余（设备能力分级、CPU 视锥剔除）→ ~~第 2 章 pipeline cache 与着色器反射~~（已完成）→ ~~第 4、5 章 Frame Graph 与调试绘制~~（已完成）→ 第 3 章多线程 → 第 11 章 TAA（含 Frame Graph 历史资源）→ 第 7 章 clustered forward → 第 8 章点光源阴影 → 第 10 章体积雾 → 第 6 章 GPU 剔除与 indirect → 第 5 章异步计算 → 桌面专属的第 9、12–15 章。
+**后续路线**（第 2–15 章的集成顺序与进度见 [`Roadmap.md`](Roadmap.md)）：~~阶段 0 收尾：设备能力分级、CPU 视锥剔除~~（已完成）→ ~~第 2 章 pipeline cache 与着色器反射~~（已完成）→ ~~第 4、5 章 Frame Graph 与调试绘制~~（已完成）→ 第 3 章多线程 → 第 11 章 TAA（含 Frame Graph 历史资源）→ 第 7 章 clustered forward → 第 8 章点光源阴影 → 第 10 章体积雾 → 第 6 章 GPU 剔除与 indirect → 第 5 章异步计算 → 桌面专属的第 9、12–15 章。
 
 ## 11. 当前限制
 
-- 无抗锯齿、无视锥剔除；alpha BLEND 当作 MASK；无透射/折射。
+- 无抗锯齿；视锥剔除只在 CPU 上按 draw 做（无遮挡剔除、无 GPU 剔除）；alpha BLEND 当作 MASK；无透射/折射。
 - 只有方向光有阴影，点光源没有。
 - 场景加载同步阻塞；所有工作在单一图形队列上。
 - 描述符没有数组和 bindless；每个 `DescriptorSetCreation` 最多 16 个资源，每个管线最多 4 个 set layout、3 个着色器阶段，最多 4 个颜色附件。

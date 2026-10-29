@@ -62,6 +62,10 @@ struct SceneDraw
     uint32_t material = 0;
     uint32_t pipelineKey = 0;
     DrawConstants constants;
+    // World space AABB of the primitive's bounds under the draw's transform; empty (min > max) when unknown, which
+    // culling treats as always visible.
+    glm::vec3 boundsMin{std::numeric_limits<float>::max()};
+    glm::vec3 boundsMax{std::numeric_limits<float>::lowest()};
 };
 
 // GPU side of a loaded glTF scene. Draws are sorted by pipeline (opaque before mask), then material.

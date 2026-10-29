@@ -17,9 +17,9 @@ namespace mengine::render {
 
 struct Scene;
 
-// Direct lighting (point light, shadowed directional light) plus IBL for every glTF draw. Creates the HDR target
-// (kResourceHdrColor) and the scene depth (kResourceSceneDepth) and clears both; samples kResourceShadowMap. Pipeline
-// variants are keyed by PipelineKeyBits and created on first use.
+// Direct lighting (point light, shadowed directional light) plus IBL for the glTF draws that survived frustum culling
+// (RenderView::visibleDraws). Creates the HDR target (kResourceHdrColor) and the scene depth (kResourceSceneDepth) and
+// clears both; samples kResourceShadowMap. Pipeline variants are keyed by PipelineKeyBits and created on first use.
 class ForwardPbrPass final : public FrameGraphPass
 {
 public:
@@ -48,6 +48,9 @@ private:
     std::vector<uint32_t> m_vertexTangentCode;
     std::vector<uint32_t> m_fragmentCode;
     std::array<rhi::PipelineHandle, kPipelineKeyCount> m_pipelines{};
+    // Draws recorded by the last Execute, out of the scene's draws (for the inspector).
+    uint32_t m_drawCount = 0;
+    uint32_t m_sceneDrawCount = 0;
 };
 
 } // namespace mengine::render
