@@ -23,6 +23,8 @@ VertexOutput VertexMain(uint vertexId : SV_VulkanVertexID)
 float4 FragmentMain(VertexOutput input) : SV_Target
 {
     float4 direction = mul(frame.skyboxInverseViewProjection, float4(input.clipPosition, 1.0, 1.0));
-    float3 radiance = specularMap.SampleLevel(normalize(direction.xyz / direction.w), 0.0).rgb;
+    // Like Vulkan-glTF-PBR, show the prefiltered cube at a small roughness so the background is blurred.
+    float lod = frame.iblParams.z * (frame.iblParams.y - 1.0);
+    float3 radiance = specularMap.SampleLevel(normalize(direction.xyz / direction.w), lod).rgb;
     return float4(radiance * frame.iblParams.x, 1.0);
 }

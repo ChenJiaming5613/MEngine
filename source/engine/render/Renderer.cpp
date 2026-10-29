@@ -183,7 +183,8 @@ void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGu
     constants.cameraPosition = glm::vec4(camera.position, 1.0f);
     constants.lightPositionRadius = glm::vec4(settings.light.position, std::max(settings.light.radius, 1e-3f));
     constants.lightColorIntensity = glm::vec4(settings.light.color, settings.light.intensity);
-    constants.iblParams = glm::vec4(settings.iblIntensity, static_cast<float>(m_environment.specularMipCount), 0.0f, 0.0f);
+    constants.iblParams = glm::vec4(settings.iblIntensity, static_cast<float>(m_environment.specularMipCount),
+        glm::clamp(settings.skyboxBlur, 0.0f, 1.0f), 0.0f);
 
     const DirectionalLight& directional = settings.directional;
     const float directionLength = glm::length(directional.direction);

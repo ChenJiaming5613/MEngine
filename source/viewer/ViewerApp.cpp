@@ -293,6 +293,7 @@ private:
         {
             ImGui::SliderFloat("Exposure", &m_settings.exposure, 0.1f, 32.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
             ImGui::SliderFloat("IBL Intensity", &m_settings.iblIntensity, 0.0f, 4.0f, "%.2f");
+            ImGui::SliderFloat("Skybox Blur", &m_settings.skyboxBlur, 0.0f, 1.0f, "%.3f");
 
             render::DirectionalLight& directional = m_settings.directional;
             ImGui::PushID("Directional");

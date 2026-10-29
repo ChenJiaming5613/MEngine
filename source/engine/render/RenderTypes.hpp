@@ -24,7 +24,7 @@ struct FrameConstants
     glm::vec4 directionalDirection{0.0f};      // xyz normalized direction the light travels
     glm::vec4 directionalColorIntensity{0.0f}; // rgb color, w intensity
     glm::vec4 shadowParams{0.0f};              // x enabled, y 1 / shadow map size, z normal offset in world units
-    glm::vec4 iblParams{0.0f};                 // x intensity, y specular mip count
+    glm::vec4 iblParams{0.0f};                 // x intensity, y specular mip count, z skybox blur roughness
 };
 static_assert(sizeof(FrameConstants) == 432);
 static_assert(offsetof(FrameConstants, skyboxInverseViewProjection) == 192);
@@ -116,6 +116,9 @@ struct RenderSettings
     // Vulkan-glTF-PBR's default for its Uncharted 2 curve.
     float exposure = 4.5f;
     float iblIntensity = 1.0f;
+    // Roughness of the prefiltered specular cube the skybox samples. Vulkan-glTF-PBR samples lod 1.5 of a 10 mip
+    // cube, i.e. Roughness 1.5 / 9; 0 shows the sharp source environment.
+    float skyboxBlur = 1.5f / 9.0f;
     PointLight light;
     DirectionalLight directional;
 };

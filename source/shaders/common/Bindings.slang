@@ -18,7 +18,7 @@ struct FrameConstants
     float4 directionalDirection;      // xyz normalized direction the light travels
     float4 directionalColorIntensity; // rgb color, w intensity
     float4 shadowParams;              // x enabled, y 1 / shadow map size, z normal offset in world units
-    float4 iblParams;                 // x intensity, y specular mip count
+    float4 iblParams;                 // x intensity, y specular mip count, z skybox blur roughness
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<FrameConstants> frame;
