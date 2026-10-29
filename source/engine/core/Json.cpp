@@ -63,7 +63,6 @@ std::optional<double> JsonValue::AsNumber() const
     {
         return std::nullopt;
     }
-    // "1" parses as an integer and "1.0" as a real; both are numbers here.
     if (m_value->type == TG3JSON_INT)
     {
         return static_cast<double>(m_value->u.integer);

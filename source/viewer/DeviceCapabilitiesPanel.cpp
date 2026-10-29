@@ -34,7 +34,6 @@ using rhi::DeviceTier;
 
 constexpr double kHeapRefreshSeconds = 0.5;
 
-// -- Palette ----------------------------------------------------------------------------------------------------------
 constexpr ImU32 kYes = IM_COL32(0x5C, 0xC2, 0x6E, 255);
 constexpr ImU32 kNo = IM_COL32(0xE0, 0x48, 0x48, 255);
 constexpr ImU32 kMuted = IM_COL32(0x7A, 0x7A, 0x7A, 255);
@@ -57,9 +56,7 @@ ImVec4 ToVec4(ImU32 color)
     return ImGui::ColorConvertU32ToFloat4(color);
 }
 
-// -- Small widgets ----------------------------------------------------------------------------------------------------
-
-// A check mark or a cross, one text line high.
+// One text line high.
 void StatusMark(bool met)
 {
     const float size = ImGui::GetTextLineHeight();
@@ -97,7 +94,7 @@ void OptionalMark(std::optional<bool> value)
     }
 }
 
-// A rounded label. `filled` false draws only the outline.
+// `filled` false draws only the outline.
 void Pill(const char* text, ImU32 color, bool filled = true)
 {
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -241,7 +238,6 @@ bool ContainsInsensitive(std::string_view text, const char* pattern)
     return it != text.end();
 }
 
-// A full width row with a section title inside a table.
 void SectionRow(const char* title, int columns)
 {
     ImGui::TableNextRow();
@@ -258,8 +254,6 @@ void SectionRow(const char* title, int columns)
 
 constexpr ImGuiTableFlags kTableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersOuterH
     | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX;
-
-// -- Feature rows -----------------------------------------------------------------------------------------------------
 
 struct FeatureRow
 {
@@ -400,8 +394,6 @@ size_t MetCount(const std::vector<CapabilityCheck>& checks)
 
 } // namespace
 
-// =====================================================================================================================
-
 bool DeviceCapabilitiesPanel::Contains(float x, float y) const
 {
     return x >= m_windowMin[0] && y >= m_windowMin[1] && x <= m_windowMax[0] && y <= m_windowMax[1];
@@ -473,7 +465,7 @@ void DeviceCapabilitiesPanel::DrawHeader(const rhi::GpuDevice& device)
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(properties.deviceName);
 
-    // Tier ladder: reached tiers filled.
+    // Reached tiers filled.
     ImGui::SameLine(0.0f, ImGui::GetFontSize() * 1.5f);
     for (const DeviceTier tier : {DeviceTier::T0, DeviceTier::T1, DeviceTier::T2})
     {

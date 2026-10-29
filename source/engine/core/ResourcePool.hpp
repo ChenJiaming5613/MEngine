@@ -8,7 +8,7 @@
 
 namespace mengine {
 
-// Fixed capacity pool with a free list, as in Raptor's ResourcePool, plus generations for stale handle checks.
+// Raptor's ResourcePool plus generations for stale handle checks. Never reallocates after Init.
 template <typename T, typename HandleT>
 class ResourcePool
 {

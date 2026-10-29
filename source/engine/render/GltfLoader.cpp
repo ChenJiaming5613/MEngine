@@ -61,8 +61,7 @@ std::string Describe(tg3_str name, std::string_view kind, uint32_t index)
     return result;
 }
 
-// --- extension JSON (tinygltf keeps unknown extensions as generic values) --------------------------------------------
-
+// tinygltf keeps unknown extensions as generic JSON values.
 const tg3_value* FindExtension(const tg3_extras_ext& ext, std::string_view name)
 {
     for (uint32_t i = 0; i < ext.extensions_count; ++i)
@@ -524,8 +523,6 @@ public:
     }
 
 private:
-    // --- accessors -------------------------------------------------------------------------------------------------
-
     struct AccessorLayout
     {
         const uint8_t* data = nullptr; // first element, null when the accessor has no buffer view (all zeros)
@@ -686,8 +683,6 @@ private:
         return indices;
     }
 
-    // --- GPU buffers -----------------------------------------------------------------------------------------------
-
     rhi::BufferHandle CreateBuffer(VkBufferUsageFlags usage, const void* data, VkDeviceSize size, const std::string& name)
     {
         rhi::BufferCreation creation;
@@ -786,8 +781,6 @@ private:
         }
         return CreateIndexStream(indices);
     }
-
-    // --- textures --------------------------------------------------------------------------------------------------
 
     std::optional<std::vector<uint8_t>> ReadImageBytes(uint32_t imageIndex, std::string* error) const
     {
@@ -1075,8 +1068,6 @@ private:
         return {m_imageTextures[it->second], Sampler(texture.sampler)};
     }
 
-    // --- materials -------------------------------------------------------------------------------------------------
-
     void CreateMaterials()
     {
         for (uint32_t i = 0; i < m_model.materials_count; ++i)
@@ -1189,8 +1180,6 @@ private:
         material.descriptorSet = m_device.CreateDescriptorSet(setCreation);
         m_scene.materials.push_back(std::move(material));
     }
-
-    // --- primitives ------------------------------------------------------------------------------------------------
 
     static int32_t FindAttribute(const tg3_primitive& primitive, std::string_view name)
     {
@@ -1420,8 +1409,6 @@ private:
         primitive.indexCount = indexBinding.count;
         ComputeBounds(positionAccessor, &positions, primitive);
     }
-
-    // --- nodes -----------------------------------------------------------------------------------------------------
 
     static glm::mat4 LocalTransform(const tg3_node& node)
     {

@@ -13,7 +13,7 @@ namespace render {
 class Camera;
 }
 
-// The scene a controller frames. Bounds are the world space AABB of every draw.
+// Bounds are the world space AABB of every draw.
 struct CameraScene
 {
     bool hasBounds = false;
@@ -45,11 +45,10 @@ struct CameraInput
     bool uiWantsMouse = false;
 };
 
-// Turns user input into camera motion. The viewer owns one instance per mode and drives the active one; every mode
-// writes the same render::Camera (position, yaw, pitch, clip planes), so the renderer does not know which is active.
-//
-// Lifecycle: SetScene on every controller when a scene loads, ResetView on the active one; Activate / Deactivate when
-// the mode changes (the new controller takes over the current pose instead of jumping); Update once per frame.
+// Turns input into camera motion. Every mode writes the same render::Camera (position, yaw, pitch, clip planes), so
+// the renderer does not know which one is active.
+// Lifecycle: SetScene on every controller when a scene loads, ResetView on the active one; Deactivate / Activate on a
+// mode change (the new controller adopts the current pose); Update once per frame.
 class CameraController
 {
 public:
@@ -61,7 +60,6 @@ public:
     CameraController(const CameraController&) = delete;
     CameraController& operator=(const CameraController&) = delete;
 
-    // Shown in the mode list.
     virtual const char* Name() const = 0;
     // One line describing the controls.
     virtual const char* Help() const = 0;
@@ -77,7 +75,7 @@ public:
 
     virtual void Update(render::Camera& camera, const CameraInput& input, float deltaSeconds) = 0;
 
-    // Inside the viewer's ImGui panel: settings of this mode.
+    // Inside the viewer's ImGui panel.
     virtual void DrawSettings() {}
     // Between ImGui::NewFrame and EndFrame, outside any window: on-screen widgets (background draw list).
     virtual void DrawOverlay() const {}

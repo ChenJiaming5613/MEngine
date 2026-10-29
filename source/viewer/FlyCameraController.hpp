@@ -11,10 +11,9 @@
 namespace mengine {
 
 // Unity scene view style fly camera.
-// Desktop: hold the right mouse button to look around (relative mouse mode) and move with WASD, Q/E down/up.
-// Touch: a virtual joystick. A finger that lands on the left half of the screen is the stick: dragging up / down moves
-// forward / backward, left / right strafes, and the speed grows with the drag distance up to moveSpeed at the rim.
-// A finger on the right half looks around. Both work at the same time.
+// Desktop: hold the right mouse button to look around (relative mouse mode), WASD to move, Q/E down/up.
+// Touch: a finger landing on the left half is a virtual joystick (up / down moves, left / right strafes, speed grows
+// with the drag distance up to moveSpeed at the rim); a finger on the right half looks around. Both work at once.
 // Input that starts over ImGui, or keys while ImGui owns the keyboard, is ignored.
 class FlyCameraController final : public CameraController
 {

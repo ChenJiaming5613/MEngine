@@ -33,7 +33,7 @@ struct GpuDeviceCreation
 
 struct PipelineStats
 {
-    // Pipelines created through vkCreate*Pipelines (ImGui's own pipeline is not counted).
+    // Excludes ImGui's pipelines.
     uint32_t created = 0;
     double totalMilliseconds = 0.0;
     double lastMilliseconds = 0.0;
@@ -62,7 +62,6 @@ public:
     void Init(const GpuDeviceCreation& creation);
     void Shutdown();
 
-    // -- Resources ------------------------------------------------------------------------------------------------------
     // Creation throws on Vulkan errors. Initial data is uploaded in the current upload batch, or in a one-off batch.
     BufferHandle CreateBuffer(const BufferCreation& creation);
     TextureHandle CreateTexture(const TextureCreation& creation);
@@ -105,7 +104,6 @@ public:
     void BeginUploadBatch();
     void EndUploadBatch();
 
-    // -- Frame ----------------------------------------------------------------------------------------------------------
     // Waits for the frame slot, recreates the swapchain if needed and acquires an image.
     // Returns false when nothing can be rendered this iteration (minimized, out of date, surface lost).
     bool BeginFrame();
@@ -132,7 +130,7 @@ public:
     bool IsSwapchainSrgb() const { return IsSrgbFormat(m_swapchain.SurfaceFormat().format); }
 
     VkFormat GetDepthFormat() const { return m_depthFormat; }
-    // textureCompressionBC: BC1-BC7 can be sampled (desktop GPUs; rare on Android).
+    // BC1-BC7 sampling: desktop GPUs, rare on Android.
     bool SupportsTextureCompressionBc() const { return m_textureCompressionBc; }
     bool SupportsLinearBlit(VkFormat format) const;
     // Linear filtering of sampled images; for depth formats this enables hardware 2x2 PCF with compare samplers.
@@ -154,9 +152,8 @@ public:
     uint64_t GetAbsoluteFrame() const { return m_absoluteFrame; }
     uint32_t GetFrameSlot() const { return m_frameSlot; }
     const VkPhysicalDeviceProperties& GetProperties() const { return m_properties; }
-    // What the physical device supports (queried once at Init) and its tier; render paths check this instead of
-    // extension names. Supported is not enabled: GetEnabledFeatures and the `enabled` flags of the extension lists say
-    // what the device was created with.
+    // What the physical device supports, queried once at Init. Supported is not enabled: GetEnabledFeatures and
+    // ExtensionInfo::enabled say what the device was created with.
     const DeviceCapabilities& GetCapabilities() const { return m_capabilities; }
     const VkPhysicalDeviceFeatures& GetEnabledFeatures() const { return m_enabledFeatures; }
     // Per memory heap: the driver's budget and usage (VK_EXT_memory_budget, else 0) and MEngine's VMA statistics.
@@ -237,7 +234,7 @@ private:
     void UploadTexture(Texture& texture, const void* data, size_t dataSize, uint32_t providedLevels, bool generateMips);
     void TransitionToShaderRead(Texture& texture);
     void CreateFramebuffer(RenderPass& renderPass);
-    // Fill in pipeline.pipeline; CreatePipeline has already made the layout and the shader stages.
+    // Fill pipeline.pipeline; pipeline.layout and the stages already exist.
     void CreateComputePipeline(const VkPipelineShaderStageCreateInfo& stage, Pipeline& pipeline);
     void CreateGraphicsPipeline(const PipelineCreation& creation, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline);
     // Compares the reflected shader interface with the layouts, push constants and specialization constants of the
@@ -247,7 +244,6 @@ private:
     void WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayout& layout, const DescriptorSetCreation& creation);
     VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
 
-    // -- Vulkan objects -------------------------------------------------------------------------------------------------
     SDL_Window* m_window = nullptr;
     VkInstance m_instance = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
@@ -280,7 +276,6 @@ private:
     PFN_vkCmdBeginDebugUtilsLabelEXT m_cmdBeginLabel = nullptr;
     PFN_vkCmdEndDebugUtilsLabelEXT m_cmdEndLabel = nullptr;
 
-    // -- Swapchain and frames -------------------------------------------------------------------------------------------
     Swapchain m_swapchain;
     RenderPassOutput m_swapchainOutput;
     RenderPassHandle m_swapchainPass;
@@ -297,13 +292,11 @@ private:
     CommandBuffer m_commandBuffer;
     GpuProfiler m_profiler;
 
-    // -- Dynamic uniform ring -------------------------------------------------------------------------------------------
     BufferHandle m_dynamicBuffer;
     uint32_t m_dynamicBytesPerFrame = 0;
     uint32_t m_dynamicFrameStart = 0;
     uint32_t m_dynamicUsed = 0;
 
-    // -- Uploads --------------------------------------------------------------------------------------------------------
     VkCommandPool m_uploadPool = VK_NULL_HANDLE;
     VkCommandBuffer m_uploadCommandBuffer = VK_NULL_HANDLE;
     VkFence m_uploadFence = VK_NULL_HANDLE;
@@ -312,7 +305,6 @@ private:
     std::vector<StagingBuffer> m_uploadStaging;
     VkDeviceSize m_uploadStagingBytes = 0;
 
-    // -- Pools and caches -----------------------------------------------------------------------------------------------
     ResourcePool<Buffer, BufferHandle> m_buffers;
     ResourcePool<Texture, TextureHandle> m_textures;
     ResourcePool<Sampler, SamplerHandle> m_samplers;

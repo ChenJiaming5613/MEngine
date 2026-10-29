@@ -1,5 +1,5 @@
-# Khronos SPIRV-Reflect: runtime reflection of the shipped SPIR-V (descriptor bindings, push constants,
-# specialization constants). Only the C implementation is built; it carries its own copy of spirv.h.
+# Khronos SPIRV-Reflect for runtime reflection of the shipped SPIR-V. Only the C implementation is built; it carries its
+# own spirv.h.
 set(MENGINE_SPIRV_REFLECT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/SPIRV-Reflect")
 
 add_library(spirv_reflect STATIC "${MENGINE_SPIRV_REFLECT_DIR}/spirv_reflect.c")

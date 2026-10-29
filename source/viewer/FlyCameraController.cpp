@@ -65,7 +65,6 @@ void FlyCameraController::ResetView(render::Camera& camera)
     }
     else
     {
-        // Frame the bounding sphere from +Z, looking down -Z.
         const float distance = m_scene.Radius() / std::sin(glm::radians(camera.fovYDegrees) * 0.5f);
         camera.position = m_scene.Center() + glm::vec3(0.0f, 0.0f, distance);
         camera.yawDegrees = 0.0f;
@@ -112,7 +111,6 @@ glm::vec2 FlyCameraController::UpdateTouches(render::Camera& camera, const Input
         std::clamp(kStickRadiusFraction * static_cast<float>(std::min(width, height)), kMinStickRadius, kMaxStickRadius);
     m_joystick.radius = radius;
 
-    // Fingers that lifted give up their role.
     if (m_stickFinger && FindTouch(input, *m_stickFinger) == nullptr)
     {
         m_stickFinger.reset();
@@ -182,7 +180,7 @@ void FlyCameraController::Update(render::Camera& camera, const CameraInput& cont
 {
     const Input& input = context.input;
 
-    // Desktop: right mouse look. Input already drops presses that started over ImGui.
+    // Input already drops presses that started over ImGui.
     SetMouseLook(context.window, input.IsMouseButtonHeld(SDL_BUTTON_RIGHT));
     if (m_mouseLook)
     {

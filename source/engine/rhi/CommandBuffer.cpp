@@ -15,7 +15,7 @@ constexpr VkClearColorValue kDefaultClearColor = {{0.0f, 0.0f, 0.0f, 1.0f}};
 constexpr ResourceStates kStatesCoveredByPassDependency =
     kResourceStateRenderTarget | kResourceStateDepthWrite | kResourceStateDepthRead | kResourceStatePixelShaderResource;
 
-// The state a non-swapchain pass leaves an attachment in, matching its final layout.
+// Must match the final layouts chosen by GpuDevice::GetVulkanRenderPass.
 ResourceStates AttachmentFinalState(const RenderPassOutput& output, bool depth)
 {
     if (depth)
@@ -83,9 +83,6 @@ void CommandBuffer::SetClearDepth(float depth)
     m_clearValues[kMaxImageOutputs].depthStencil = VkClearDepthStencilValue{.depth = depth, .stencil = 0};
 }
 
-// =====================================================================================================================
-// Render passes
-
 void CommandBuffer::PrepareAttachments(const RenderPass& renderPass)
 {
     if (renderPass.isSwapchain)
@@ -112,7 +109,6 @@ void CommandBuffer::PrepareAttachments(const RenderPass& renderPass)
         {
             return;
         }
-        // Without a load the old contents are irrelevant: the pass begins from UNDEFINED, so any attachment layout works.
         barrier.AddImage(ImageBarrier{
             .texture = handle,
             .newState = load ? finalState : (depth ? kResourceStateDepthWrite : kResourceStateRenderTarget),
@@ -209,9 +205,6 @@ void CommandBuffer::EndPass()
     m_currentPipeline = nullptr;
 }
 
-// =====================================================================================================================
-// State
-
 void CommandBuffer::BindPipeline(PipelineHandle pipelineHandle)
 {
     const Pipeline* pipeline = m_device->AccessPipeline(pipelineHandle);
@@ -280,9 +273,6 @@ void CommandBuffer::SetScissor(int32_t x, int32_t y, uint32_t width, uint32_t he
     const VkRect2D scissor{.offset = {x, y}, .extent = {width, height}};
     vkCmdSetScissor(m_commandBuffer, 0, 1, &scissor);
 }
-
-// =====================================================================================================================
-// Draws
 
 void CommandBuffer::Draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance)
 {
@@ -360,9 +350,6 @@ void CommandBuffer::DrawIndexedIndirect(BufferHandle bufferHandle, VkDeviceSize 
     }
 }
 
-// =====================================================================================================================
-// Compute
-
 void CommandBuffer::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
 {
     if (m_insidePass || m_currentPipeline == nullptr || m_currentPipeline->bindPoint != VK_PIPELINE_BIND_POINT_COMPUTE)
@@ -388,9 +375,6 @@ void CommandBuffer::DispatchIndirect(BufferHandle bufferHandle, VkDeviceSize off
     }
 }
 
-// =====================================================================================================================
-// Transfer
-
 void CommandBuffer::FillBuffer(BufferHandle bufferHandle, uint32_t value, VkDeviceSize offset, VkDeviceSize size)
 {
     const Buffer* buffer = m_device->AccessBuffer(bufferHandle);
@@ -407,9 +391,6 @@ void CommandBuffer::FillBuffer(BufferHandle bufferHandle, uint32_t value, VkDevi
     }
     vkCmdFillBuffer(m_commandBuffer, buffer->buffer, offset, size, value);
 }
-
-// =====================================================================================================================
-// Synchronization
 
 void CommandBuffer::Barrier(const ExecutionBarrier& barrier)
 {
@@ -503,7 +484,7 @@ void CommandBuffer::Barrier(const ExecutionBarrier& barrier)
             .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             .srcAccessMask = ToVkAccessFlags(entry.oldState),
             .dstAccessMask = ToVkAccessFlags(entry.newState),
-            // Raptor passes family 0 here; IGNORED is what a single-queue barrier means.
+            // Single queue: no ownership transfer.
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .buffer = buffer->buffer,
@@ -545,9 +526,6 @@ void CommandBuffer::GlobalBarrier(ResourceStates oldState, ResourceStates newSta
 {
     Barrier(ExecutionBarrier{}.SetGlobal(oldState, newState));
 }
-
-// =====================================================================================================================
-// Debugging
 
 void CommandBuffer::PushMarker(const char* name)
 {

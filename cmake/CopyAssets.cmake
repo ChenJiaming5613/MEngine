@@ -4,16 +4,13 @@
 #   cmake -DMODE=MIRROR -DSOURCE_DIR=... -DDESTINATION_DIR=... -P CopyAssets.cmake
 #   cmake -DMODE=PRUNE_SHADERS -DDESTINATION_DIR=... -DKEEP_SHADERS=a.spv|b.spv -P CopyAssets.cmake
 #
-# STAGE copies assets/ to <dir>/ and every <SCENE_SOURCE_ROOT>/<scene dir> to <dir>/models/<scene dir>. It deletes
-# staged files and directories that no longer exist in assets/ (shaders/ is managed by PRUNE_SHADERS), and anything in
-# models/ that is outside the configured scene directories or no longer exists in their sources. MIRROR deletes
-# everything that no longer exists in the staged directory. Removed scenes or assets therefore never linger in the
-# build or the APK.
+# STAGE copies assets/ to <dir>/ and every <SCENE_SOURCE_ROOT>/<scene dir> to <dir>/models/<scene dir>, and deletes
+# staged entries whose source is gone or whose scene is no longer configured (shaders/ belongs to PRUNE_SHADERS). MIRROR
+# deletes everything no longer staged. Removed assets therefore never linger in the build or the APK.
 
 # Script mode starts without policies, if(IN_LIST) needs CMP0057.
 cmake_minimum_required(VERSION 3.22)
 
-# MEnginePruneShaders(<dir> <file names to keep>)
 function(MEnginePruneShaders SHADER_DIR KEEP_NAMES)
     file(GLOB STAGED_SHADERS "${SHADER_DIR}/*.spv")
     foreach(STAGED_SHADER IN LISTS STAGED_SHADERS)
@@ -25,7 +22,7 @@ function(MEnginePruneShaders SHADER_DIR KEEP_NAMES)
     endforeach()
 endfunction()
 
-# MEnginePruneMissing(<source dir> <destination dir> [top level names to keep...])
+# ARGN: top level entries of the destination that are never pruned.
 function(MEnginePruneMissing SOURCE DESTINATION)
     set(KEEP_TOP_LEVEL ${ARGN})
     file(GLOB_RECURSE DESTINATION_ENTRIES LIST_DIRECTORIES true RELATIVE "${DESTINATION}" "${DESTINATION}/*")
@@ -43,8 +40,7 @@ function(MEnginePruneMissing SOURCE DESTINATION)
     endforeach()
 endfunction()
 
-# MEnginePruneModels(<models dir> <scene source root> <scene dirs>): keeps the parents of each scene directory and the
-# entries inside one that still exist in its source; removes everything else.
+# Keeps the parents of each scene directory and the entries inside one that still exist in its source.
 function(MEnginePruneModels MODELS_DIR SOURCE_ROOT SCENE_DIRS)
     if(NOT EXISTS "${MODELS_DIR}")
         return()

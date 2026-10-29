@@ -1,10 +1,7 @@
-// MEngine: copied from NVIDIA Donut, src/engine/dds.h
+// Copied from NVIDIA Donut, src/engine/dds.h
 //   https://github.com/NVIDIA-RTX/Donut/blob/2c1077673edb0e0d814c202e6ce8e502d245c2da/src/engine/dds.h
-// Changes against the original:
-//   - namespace donut::engine::dds -> mengine::render::dds;
-//   - the DDSPF_* pixel format constants and DECLSPEC_SELECTANY are removed (unused by DdsFile.cpp);
-//   - <cstdint> is included explicitly.
-// Only DdsFile.cpp includes this header: the DDS_* macros below must not leak into other files.
+// Namespace changed to mengine::render::dds; the unused DDSPF_* constants and DECLSPEC_SELECTANY are removed.
+// Include only from DdsFile.cpp: the DDS_* macros below must not leak into other files.
 
 // This file is based on dds.h from Microsoft DirectXTK library,
 
@@ -221,8 +218,6 @@ struct DDS_PIXELFORMAT
 #define DDS_PAL8        0x00000020  // DDPF_PALETTEINDEXED8
 #define DDS_PAL8A       0x00000021  // DDPF_PALETTEINDEXED8 | DDPF_ALPHAPIXELS
 #define DDS_BUMPDUDV    0x00080000  // DDPF_BUMPDUDV
-
-// MEngine: the DDSPF_* constants of the original (DDSPF_DXT1 ... DDSPF_DX10) are omitted here.
 
 #define DDS_HEADER_FLAGS_TEXTURE        0x00001007  // DDSD_CAPS | DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT
 #define DDS_HEADER_FLAGS_MIPMAP         0x00020000  // DDSD_MIPMAPCOUNT

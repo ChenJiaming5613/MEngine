@@ -151,7 +151,7 @@ VkAccessFlags ToVkAccessFlags(ResourceStates states)
     {
         access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     }
-    // Raptor leaves DEPTH_READ without an access mask; a read-only depth attachment still reads it.
+    // A read-only depth attachment still reads (Raptor gives DEPTH_READ no access mask).
     if (states & kResourceStateDepthRead) access |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
     if (states & kResourceStateShaderResource) access |= VK_ACCESS_SHADER_READ_BIT;
     // Presentation needs no access mask; the semaphore handed to vkQueuePresentKHR orders it.

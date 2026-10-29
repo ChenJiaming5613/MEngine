@@ -12,8 +12,7 @@
 
 namespace mengine::rhi {
 
-// Handles and Creation descriptions follow Raptor (Mastering Graphics Programming with Vulkan, chapter 1):
-// a Creation struct describes the resource, GpuDevice turns it into pooled Vulkan objects addressed by handle.
+// Handles and Creation descriptions follow Raptor (Mastering Graphics Programming with Vulkan, chapter 1).
 
 struct BufferTag;
 struct TextureTag;
@@ -39,9 +38,6 @@ constexpr uint32_t kMaxVertexStreams = 8;
 constexpr uint32_t kMaxVertexAttributes = 8;
 constexpr uint32_t kMaxSpecializationConstants = 8;
 constexpr uint32_t kMaxBarriersPerBatch = 8;
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Creation descriptions
 
 struct BufferCreation
 {
@@ -82,7 +78,7 @@ struct SamplerCreation
     float maxLod = VK_LOD_CLAMP_NONE;
     // 0 disables anisotropic filtering; larger values are clamped to the device limit.
     float maxAnisotropy = 0.0f;
-    // Depth comparison (shadow maps): sampling returns compareOp(reference, texel) instead of the texel.
+    // Shadow maps: sampling returns compareOp(reference, texel) instead of the texel.
     bool compareEnable = false;
     VkCompareOp compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     VkBorderColor borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
@@ -277,10 +273,6 @@ struct PipelineCreation
     PipelineCreation& AddSpecializationConstant(uint32_t id, uint32_t value);
 };
 
-// ---------------------------------------------------------------------------------------------------------------------
-// Barriers, after Raptor's ExecutionBarrier / ImageBarrier / MemoryBarrier. One ExecutionBarrier is recorded as a single
-// vkCmdPipelineBarrier whose stage masks are the union of its entries.
-
 struct ImageBarrier
 {
     TextureHandle texture;
@@ -310,6 +302,7 @@ struct GlobalBarrier
     ResourceStates newState = kResourceStateUndefined;
 };
 
+// After Raptor's ExecutionBarrier: recorded as one vkCmdPipelineBarrier whose stage masks are the union of its entries.
 struct ExecutionBarrier
 {
     std::array<ImageBarrier, kMaxBarriersPerBatch> images{};
@@ -327,9 +320,6 @@ struct ExecutionBarrier
     ExecutionBarrier& SetGlobal(ResourceStates oldState, ResourceStates newState);
     bool IsEmpty() const { return imageCount == 0 && bufferCount == 0 && !global.has_value(); }
 };
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Pooled resources
 
 struct Buffer
 {
@@ -355,9 +345,8 @@ struct Texture
     uint32_t layerCount = 1;
     TextureType type = TextureType::Texture2D;
     uint8_t flags = kTextureFlagNone;
-    // State of every subresource as of the last recorded command, as Raptor's Texture::state. Kept by uploads, render
-    // passes (BindPass/EndPass) and CommandBuffer barriers; uploaded and plain textures start as kResourceStateShaderResource,
-    // render targets as kResourceStateUndefined.
+    // State of every subresource as of the last recorded command. Uploaded and plain textures start as
+    // kResourceStateShaderResource, render targets as kResourceStateUndefined.
     ResourceStates state = kResourceStateUndefined;
     SamplerHandle sampler;
     std::string name;

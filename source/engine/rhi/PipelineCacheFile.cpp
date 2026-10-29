@@ -50,7 +50,7 @@ void WriteU64(uint8_t* bytes, uint64_t value)
     WriteU32(bytes + 4, static_cast<uint32_t>(value >> 32));
 }
 
-// The driver header is little endian too on every platform MEngine targets.
+// The spec writes VkPipelineCacheHeaderVersionOne least significant byte first, regardless of host byte order.
 const char* CheckDriverHeader(std::span<const uint8_t> data, const VkPhysicalDeviceProperties& properties)
 {
     if (data.size() < kDriverHeaderSize)

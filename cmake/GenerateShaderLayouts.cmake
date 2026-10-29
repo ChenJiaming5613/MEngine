@@ -1,7 +1,6 @@
-# Build time check that the C++ mirrors of shader constant structs (render/RenderTypes.hpp) have the layout slangc gives
-# the Slang structs of the same name. slangc -reflection-json reports every member's offset and size under the layout
-# rules the SPIR-V actually uses (std140 for ConstantBuffer, std430 for push constants); a generated header turns them
-# into static_asserts against offsetof / sizeof.
+# Build time check that the C++ mirrors of shader constant structs (render/RenderTypes.hpp) match the Slang layout.
+# slangc -reflection-json reports member offsets and sizes under the rules the SPIR-V uses (std140 for ConstantBuffer,
+# std430 for push constants); a generated header turns them into static_asserts against offsetof / sizeof.
 
 set(MENGINE_SHADER_LAYOUTS_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/ShaderLayoutsScript.cmake")
 

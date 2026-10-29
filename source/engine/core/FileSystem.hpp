@@ -28,8 +28,8 @@ bool WriteFileAtomic(const std::string& path, std::span<const uint8_t> data);
 std::string_view ParentPath(std::string_view path);
 std::string JoinPath(std::string_view base, std::string_view relative);
 
-// The rule shared by config.json validation at configure time and at runtime:
-// non-empty, not absolute (no leading slash, no drive letter) and no ".." segment.
+// Same rule as the configure-time config.json check: non-empty, not absolute (no leading slash or drive letter),
+// no ".." segment.
 bool IsSafeRelativePath(std::string_view path);
 
 } // namespace mengine

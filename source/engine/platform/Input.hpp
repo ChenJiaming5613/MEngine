@@ -27,7 +27,7 @@ public:
         bool startedOverUi = false;
     };
 
-    // Returns true when (x, y) lies on UI; presses that start there are not forwarded as camera input.
+    // Returns true when (x, y) lies on UI; presses that start there are ignored.
     using UiHitTest = std::function<bool(float x, float y)>;
 
     void SetUiHitTest(UiHitTest hitTest) { m_uiHitTest = std::move(hitTest); }

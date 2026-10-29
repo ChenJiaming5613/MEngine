@@ -29,7 +29,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 实现规则：
 
 - 只链接 1.0 符号的约束不变：`vkGetPhysicalDeviceFeatures2`、`vkGetPhysicalDeviceProperties2`（1.1 入口）和所有扩展函数都经 `vkGetInstanceProcAddr` / `vkGetDeviceProcAddr` 运行时获取。
-- `GpuDevice` 汇总成一个能力结构（`DeviceCapabilities`），渲染层只查询能力，不直接判断扩展名。ImGui 面板显示当前档位与各开关。**已完成**（`99eb18a`）：查询 1.0/1.1 核心与 T1/T2 扩展的特性和限制、队列族、内存堆、格式支持，按本节的表判定档位并列出每项要求；只查询，不启用任何新能力。Device Capabilities 窗口从 MEngine 面板的 Device 分组打开，默认关闭。
+- `GpuDevice` 汇总成一个能力结构（`DeviceCapabilities`），渲染层只查询能力，不直接判断扩展名。ImGui 面板显示当前档位与各开关。**已完成**（`99eb18a`，只查询，尚未按能力启用特性）。
 - 不引入 dynamic rendering：Raptor 第 4 章起在有扩展时使用 `VK_KHR_dynamic_rendering`，MEngine 一律走 `VkRenderPass`。
 
 ## 2. 各章新增内容
@@ -41,7 +41,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 - **新增**：基础库（分配器、容器、文件、日志、服务，`raptor/foundation`）；窗口、输入、相机（`raptor/application`）；RHI：`GpuDevice`、`CommandBuffer`、`GpuResources`（Creation 描述 + 句柄 + 资源池、延迟销毁）；`GpuProfiler`（timestamp query）；ImGui 服务；带资源缓存的 `Renderer`；`main.cpp` 中的 glTF 加载与绘制。
 - **能力**：T0。
 - **MEngine 现状**：已完成（阶段 0）。RHI 按此章蓝本实现，并提前吸收了后续章节的 `ResourceState`、`ExecutionBarrier`、compute、indirect draw（`02d7c32`）。阶段 0 的收尾（设备能力分级、CPU 视锥剔除）也已完成。
-- **阶段 0 收尾的设计决定**（CPU 视锥剔除，细节见 `Architecture.md` 5.10）：
+- **阶段 0 收尾的设计决定**（CPU 视锥剔除，细节见 `Architecture.md` 5.1）：
 
   | 编号 | 决定 |
   | --- | --- |
@@ -61,7 +61,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
   - 着色器反射：运行时调用 `glslangValidator` 编译 GLSL，`spirv_parser.cpp` 解析 SPIR-V，自动生成 descriptor set layout。
 - **能力**：pipeline cache、反射为 T0；bindless 为 T1。
 - **MEngine 现状**：已完成 pipeline cache 与反射（阶段 1）；bindless 未做，每材质一个 set。
-- **集成**（已实现，细节见 `Architecture.md` 4.12、5.2）：
+- **集成**（已实现，细节见 `Architecture.md` 4.7、5.2）：
   - Pipeline cache（T0）：存到 `SDL_GetPrefPath`，带自定义头和校验和，并检查驱动头的 vendorID / deviceID / pipelineCacheUUID；在退出、场景加载预热之后、Android 退到后台时写回；场景加载后按需预热变体。
   - 反射（T0）：着色器保持 Slang 离线编译。运行时用 Khronos SPIRV-Reflect 解析 `.spv`（取代移植 `spirv_parser`），读取绑定、push constant、特化常量 id（对应第 9 章新增的 `SpecId` 解析）；`CreatePipeline` 据此校验手写 layout，pass 私有 layout 由反射生成。另外在构建时用 `slangc -reflection-json` 生成 `static_assert`，校验 C++ 与 Slang 常量结构的布局。
   - Bindless（T1）：推迟到阶段 8（GPU 驱动渲染）再引入，因为只有合批的 indirect 绘制才真正需要它；T0 保留每材质 set。
@@ -102,7 +102,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
   - 新 pass：depth pre-pass、G-buffer、延迟 PBR 光照（`pbr_lighting`）、透明、景深（`dof.glsl`）、全屏三角形。
 - **能力**：T0。
 - **MEngine 现状**：已完成（阶段 2）。Shadow、Forward、Skybox、DebugDraw、Tonemap、ImGui 都是图节点，`Renderer::Render` 不再手写 pass 顺序、resize 和阴影重绘判断。
-- **集成**（已实现，细节见 `Architecture.md` 5.1、5.8）：
+- **集成**（已实现，细节见 `Architecture.md` 5.1、5.5）：
   - Frame Graph（T0）：C++ `FrameGraphPass` 子类声明资源（不用 JSON，开关在查看器面板里），构建在现有 `RenderPassOutput` 缓存、`Texture::state` 跟踪和 `ExecutionBarrier` 之上。图负责剔除、`enabled` 开关、compute 节点（第 5 章的 `type: compute`）、纹理和 buffer barrier、load/store 推导、render pass 合并，swapchain 尺寸变化时自动重新编译。
   - 跨帧资源（history）：**推迟到阶段 4**，与 TAA 一起做，到时有真实的使用者来验证设计。
   - 资源别名：只在描述完全相同、生命周期不重叠的纹理之间复用，可以关闭；内存级别名（VMA aliasing image）作为后续优化。图内瞬时 buffer（由图创建的 storage / indirect buffer）推迟到阶段 8，GPU 驱动渲染才是它的第一个使用者；在此之前 buffer 只能导入。

@@ -1,8 +1,7 @@
 #include "common/Bindings.slang"
 
-// Debug lines (render/DebugDraw.hpp) drawn into the HDR target after the skybox: depth tested against the scene, no
-// depth writes. The color is pre-compensated for exposure and the Tonemap.slang curve, so the line shows its sRGB color
-// on screen (exact below the curve's white point, which saturates).
+// Debug lines (render/DebugDraw.hpp), depth tested without depth writes. The color is pre-compensated for exposure and
+// the Tonemap.slang curve so the line shows its sRGB color on screen (exact below the curve's white point).
 
 struct DebugLineConstants
 {

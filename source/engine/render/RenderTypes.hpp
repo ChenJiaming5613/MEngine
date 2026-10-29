@@ -85,7 +85,7 @@ enum class AlphaMode : uint8_t
     Blend,
 };
 
-// Forward pipeline variants: {cull mode, alpha mode} plus the vertex layout and winding the draw needs.
+// Pipeline variant of a draw; ShadowPass ignores kPipelineKeyTangents.
 enum PipelineKeyBits : uint32_t
 {
     kPipelineKeyAlphaMask = 1u << 0,
@@ -118,23 +118,22 @@ struct RenderSettings
     // Vulkan-glTF-PBR's default for its Uncharted 2 curve.
     float exposure = 4.5f;
     float iblIntensity = 1.0f;
-    // Roughness of the prefiltered specular cube the skybox samples. Vulkan-glTF-PBR samples lod 1.5 of a 10 mip
-    // cube, i.e. Roughness 1.5 / 9; 0 shows the sharp source environment.
+    // Prefiltered specular cube roughness the skybox samples. Vulkan-glTF-PBR samples lod 1.5 of a 10 mip cube, i.e.
+    // roughness 1.5 / 9; 0 shows the sharp source environment.
     float skyboxBlur = 1.5f / 9.0f;
     PointLight light;
     DirectionalLight directional;
-    // CPU view frustum culling of the forward draws against each draw's world AABB (render/Culling.hpp).
+    // CPU frustum culling of the forward draws (render/Culling.hpp).
     bool frustumCulling = true;
     // Keeps culling with the camera of the frame it was frozen in, so the culled draws can be inspected from outside.
     bool freezeCulling = false;
-    // Debug lines the renderer adds itself (render/DebugDraw.hpp).
+    // Debug lines the renderer adds itself.
     bool debugSceneBounds = false;
     bool debugShadowFrustum = false;
     // Every draw's world AABB: visible ones green, culled ones red; plus the culling frustum while it is frozen.
     bool debugDrawBounds = false;
 };
 
-// What the last Render culled, for debug UI.
 struct CullingStats
 {
     uint32_t draws = 0;

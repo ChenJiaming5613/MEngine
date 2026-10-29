@@ -29,11 +29,8 @@ namespace mengine::render {
 
 class Camera;
 
-// Builds the frame graph once and runs it every frame. The forward draws are culled on the CPU against the camera
-// frustum first (render/Culling.hpp); shadow casters are not culled. Then:
-//   Shadow (only when the light, the scene or the shadow toggle changes) -> Forward (opaque, then alpha mask) -> Skybox
-//   -> DebugDraw (lines, when any) into an RGBA16F target -> Tonemap -> ImGui into the backbuffer.
-// The graph merges Forward + Skybox + DebugDraw and Tonemap + ImGui into one render pass each.
+// Owns the scene, the environment and the passes, and runs the frame graph every frame:
+// Shadow (on demand) -> Forward -> Skybox -> DebugDraw into HDR -> Tonemap -> ImGui into the backbuffer.
 class Renderer
 {
 public:
@@ -87,7 +84,7 @@ private:
     Environment m_environment;
     uint64_t m_sceneVersion = 0;
 
-    // Draws inside the camera (or frozen) frustum this frame; RenderView::visibleDraws points here.
+    // Storage behind RenderView::visibleDraws.
     std::vector<uint32_t> m_visibleDraws;
     glm::mat4 m_frozenViewProjection{1.0f};
     bool m_cullingFrozen = false;

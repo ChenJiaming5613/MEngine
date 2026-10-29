@@ -1,10 +1,5 @@
-// IblBaker: bakes the image based lighting inputs of MEngine from an equirectangular HDR image or a KTX 1 cube map,
-// following the split sum of Brian Karis, "Real Shading in Unreal Engine 4" (SIGGRAPH 2013 course notes). See README.md
-// and docs/UE4-RealShading-2013.md, section 6.
-//
-//   IblBaker <in.hdr|in.ktx> <out_dir> [--cube-size 512] [--specular-mips 6] [--irradiance-size 32] [--lut-size 256]
-//            [--samples 1024] [--flip-y]
-//   IblBaker --self-test [--samples 1024] [--lut-size 256]
+// Bakes MEngine's IBL inputs from an equirectangular HDR image or a KTX 1 cube map, following the split sum of Brian
+// Karis, "Real Shading in Unreal Engine 4" (SIGGRAPH 2013 course notes; docs/UE4-RealShading-2013.md, section 6).
 //
 // --flip-y mirrors the input along y, for cube maps authored in a Y down world such as Vulkan-glTF-PBR's papermill.ktx.
 //

@@ -55,9 +55,6 @@ bool IsRenderPassCompatible(const rhi::RenderPassOutput& a, const rhi::RenderPas
     return true;
 }
 
-// =====================================================================================================================
-// FrameGraphBuilder
-
 FrameGraphResourceId FrameGraphBuilder::CreateTexture(std::string_view name, const FrameGraphTextureDesc& desc)
 {
     const uint32_t index = m_graph.FindOrAddResource(name);
@@ -174,9 +171,6 @@ void FrameGraphBuilder::SetSideEffect()
     m_graph.m_nodes[m_node].sideEffect = true;
 }
 
-// =====================================================================================================================
-// FrameGraphResources
-
 rhi::TextureHandle FrameGraphResources::GetTexture(FrameGraphResourceId id) const
 {
     return id.index < m_graph.m_resources.size() ? m_graph.TextureOf(id.index) : rhi::TextureHandle{};
@@ -197,9 +191,6 @@ const rhi::RenderPassOutput& FrameGraphResources::GetRenderPassOutput() const
     const uint32_t group = m_graph.m_nodes[m_node].renderPass;
     return group < m_graph.m_groups.size() ? m_graph.m_groups[group].output : kNoOutput;
 }
-
-// =====================================================================================================================
-// FrameGraph: declaration
 
 void FrameGraph::Init(rhi::GpuDevice& device)
 {
@@ -331,9 +322,6 @@ rhi::TextureHandle FrameGraph::TextureOf(uint32_t resource) const
         return {};
     }
 }
-
-// =====================================================================================================================
-// FrameGraph: compile
 
 void FrameGraph::ReleaseResources()
 {
@@ -723,8 +711,8 @@ void FrameGraph::CullAndSchedule()
         }
     }
 
-    // Adjacent graphics passes with the same attachments, all loaded, that do not sample what the group writes share
-    // one render pass.
+    // Adjacent graphics passes share one render pass when they have the same attachments, the later ones load all of
+    // them, none uses an attachment otherwise, and their other accesses do not conflict (only read-read).
     auto attachmentsOf = [](const Node& node, std::vector<uint32_t>& colors, uint32_t& depth) {
         colors.clear();
         depth = kNone;
@@ -959,7 +947,7 @@ void FrameGraph::BuildRenderPasses()
         if (group.depth != kNone)
         {
             creation.SetDepthStencilTexture(TextureOf(group.depth));
-            // Depth is only stored for a later reader (sampled: shader read only layout) or when it outlives the frame.
+            // Stored only for a later reader (sampled: shader read only layout) or when the depth outlives the frame.
             const Resource& depth = m_resources[group.depth];
             creation.storeDepth = depth.kind == ResourceKind::Texture;
             const auto groupEnd = std::find(m_order.begin(), m_order.end(), group.nodes.back());
@@ -1002,9 +990,9 @@ void FrameGraph::BuildDebugInfo()
         });
     }
 
-    // Pins and links, with the read / write classification of CullAndSchedule. Links run to the last earlier writer of
-    // any state so disabled passes stay connected; when that writer is inactive, the last active writer, which really
-    // provides the data, gets a link as well.
+    // Same read / write classification as CullAndSchedule. Links go to the last earlier writer of any state so disabled
+    // passes stay connected; when that writer is inactive, the last active writer, which really provides the data, gets
+    // a link too.
     std::vector<uint32_t> lastWriter(m_resources.size(), kNone);
     std::vector<uint32_t> lastActiveWriter(m_resources.size(), kNone);
     auto addLink = [&](uint32_t from, uint32_t to, uint32_t resource) {
@@ -1140,9 +1128,6 @@ void FrameGraph::BuildDebugInfo()
     }
     m_debugInfo = std::move(info);
 }
-
-// =====================================================================================================================
-// FrameGraph: execution
 
 void FrameGraph::RecordBarriers(rhi::CommandBuffer& commandBuffer, const Node& node)
 {

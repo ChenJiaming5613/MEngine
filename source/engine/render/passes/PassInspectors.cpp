@@ -1,6 +1,5 @@
-// Frame graph viewer descriptions and parameter panels of the renderer's passes, kept apart from the passes' GPU code so
-// only this file depends on Dear ImGui. Every panel edits the RenderSettings fields its pass consumes, the same data the
-// viewer's Lighting / Debug panels edit, so both stay in sync.
+// Viewer descriptions and parameter panels of the passes, kept apart from their GPU code so only this file depends on
+// Dear ImGui. Panels edit the same RenderSettings fields as the viewer's Lighting / Debug panels.
 
 #include "render/RenderTypes.hpp"
 #include "render/passes/DebugDrawPass.hpp"
@@ -44,9 +43,6 @@ void EditDirection(const char* label, glm::vec3& direction)
 
 } // namespace
 
-// ---------------------------------------------------------------------------------------------------------------------
-// TonemapPass
-
 const char* TonemapPass::Description() const
 {
     return "Applies exposure and tone-maps the HDR color into the backbuffer.";
@@ -58,9 +54,6 @@ bool TonemapPass::DrawInspector(RenderSettings& settings)
     return true;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// SkyboxPass
-
 const char* SkyboxPass::Description() const
 {
     return "Draws the environment behind the scene as a far plane full screen triangle.";
@@ -71,9 +64,6 @@ bool SkyboxPass::DrawInspector(RenderSettings& settings)
     ImGui::SliderFloat("Skybox Blur", &settings.skyboxBlur, 0.0f, 1.0f, "%.3f");
     return true;
 }
-
-// ---------------------------------------------------------------------------------------------------------------------
-// ForwardPbrPass
 
 const char* ForwardPbrPass::Description() const
 {
@@ -107,9 +97,6 @@ bool ForwardPbrPass::DrawInspector(RenderSettings& settings)
     return true;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// ShadowPass
-
 const char* ShadowPass::Description() const
 {
     return "Renders the directional light's depth-only shadow map; re-rendered only when the light or scene changes.";
@@ -128,9 +115,6 @@ bool ShadowPass::DrawInspector(RenderSettings& settings)
     ImGui::Text("Content: %s", !m_rendered ? "not rendered yet" : m_castersDrawn ? "scene casters" : "cleared (shadows off)");
     return true;
 }
-
-// ---------------------------------------------------------------------------------------------------------------------
-// DebugDrawPass
 
 const char* DebugDrawPass::Description() const
 {

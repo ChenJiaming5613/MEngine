@@ -23,8 +23,8 @@ public:
     glm::vec3& At(uint32_t face, uint32_t x, uint32_t y) { return m_faces[face][static_cast<size_t>(y) * m_size + x]; }
     const glm::vec3& At(uint32_t face, uint32_t x, uint32_t y) const { return m_faces[face][static_cast<size_t>(y) * m_size + x]; }
 
-    // Bilinear filtering inside the selected face, clamped at its edges (level 0 only, as textureCube(EnvMap, L) in the
-    // notes' sample code).
+    // Bilinear filtering inside the selected face, clamped at its edges; level 0 only, like textureCube(EnvMap, L) in
+    // the notes.
     glm::vec3 Sample(const glm::vec3& direction) const;
 
 private:
@@ -44,14 +44,12 @@ Cubemap ConstantCube(uint32_t size, const glm::vec3& value);
 // positions and normals) to MEngine's Y up glTF world. Exact texel remap: +Y and -Y swap, every face flips its rows.
 Cubemap MirrorY(const Cubemap& source);
 
-// Bilinear resample to another face size.
 Cubemap ResampleCube(const Cubemap& source, uint32_t size, uint32_t threads);
 
-// Calls rowFunction(face, y) for every row of a size x size cube on `threads` workers. Every texel is computed
-// independently, so the result does not depend on the thread count.
+// Calls rowFunction(face, y) for every row on `threads` workers. Texels are independent, so the result does not
+// depend on the thread count.
 void ForEachCubeRow(uint32_t size, uint32_t threads, const std::function<void(uint32_t face, uint32_t y)>& rowFunction);
 
-// Calls function(index) for index in [0, count) on `threads` workers.
 void ParallelFor(uint32_t count, uint32_t threads, const std::function<void(uint32_t index)>& function);
 
 } // namespace iblbaker

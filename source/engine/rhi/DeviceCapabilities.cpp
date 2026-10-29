@@ -103,9 +103,6 @@ constexpr std::array<std::pair<VkFormat, const char*>, 24> kReportedFormats = {{
 
 } // namespace
 
-// =====================================================================================================================
-// Names
-
 const char* DeviceTierName(DeviceTier tier)
 {
     switch (tier)
@@ -197,9 +194,6 @@ void MarkEnabledExtensions(std::vector<ExtensionInfo>& extensions, const std::ve
     }
 }
 
-// =====================================================================================================================
-// DeviceCapabilities
-
 bool DeviceCapabilities::HasDeviceExtension(std::string_view name) const
 {
     // Sorted by name in QueryDeviceCapabilities.
@@ -276,9 +270,6 @@ std::vector<CapabilityCheck> DeviceCapabilities::BaselineChecks() const
     return checks;
 }
 
-// =====================================================================================================================
-// Query
-
 DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice physicalDevice, uint32_t instanceVersion,
     uint32_t graphicsQueueFamily, VkSurfaceKHR surface)
 {
@@ -292,7 +283,6 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
     caps.instanceExtensions = ToExtensionInfos(EnumerateInstanceExtensions());
     const auto has = [&caps](const char* name) { return caps.HasDeviceExtension(name); };
 
-    // -- Queues --------------------------------------------------------------------------------------------------------
     uint32_t familyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, nullptr);
     std::vector<VkQueueFamilyProperties> families(familyCount);
@@ -321,14 +311,12 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
     caps.graphicsQueueCompute = graphicsQueueFamily < familyCount
         && (families[graphicsQueueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
 
-    // -- Features2 / Properties2 ---------------------------------------------------------------------------------------
     // Vulkan 1.1 entry points; the Android API 24 loader stub does not export them.
     auto getFeatures2 = reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(
         vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceFeatures2"));
     auto getProperties2 = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(
         vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties2"));
 
-    // Vulkan 1.1 core.
     VkPhysicalDeviceMultiviewFeatures multiviewFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES};
     VkPhysicalDeviceShaderDrawParametersFeatures drawParameters{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES};
@@ -339,7 +327,7 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
     VkPhysicalDeviceMultiviewProperties multiviewProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES};
     VkPhysicalDeviceMaintenance3Properties maintenance3{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES};
 
-    // Extensions, chained only when listed.
+    // Extension structs: chained only when the device lists the extension.
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexingFeatures{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT};
     VkPhysicalDeviceDescriptorIndexingPropertiesEXT indexingProperties{
@@ -482,7 +470,6 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
         getProperties2(physicalDevice, &properties2);
     }
 
-    // -- Vulkan 1.1 core -----------------------------------------------------------------------------------------------
     caps.subgroupSize = subgroup.subgroupSize;
     caps.subgroupStages = subgroup.supportedStages;
     caps.subgroupOperations = subgroup.supportedOperations;
@@ -496,7 +483,6 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
     caps.maxPerSetDescriptors = maintenance3.maxPerSetDescriptors;
     caps.maxMemoryAllocationSize = maintenance3.maxMemoryAllocationSize;
 
-    // -- T1 ------------------------------------------------------------------------------------------------------------
     DeviceCapabilities::DescriptorIndexing& indexing = caps.descriptorIndexing;
     indexing.extension = hasIndexing;
     indexing.runtimeDescriptorArray = True(indexingFeatures.runtimeDescriptorArray);
@@ -515,7 +501,6 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
     caps.filterMinmaxSingleComponentFormats = True(minmaxProperties.filterMinmaxSingleComponentFormats);
     caps.createRenderPass2 = has(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME);
 
-    // -- T2 ------------------------------------------------------------------------------------------------------------
     caps.meshShading.extTask = True(meshFeatures.taskShader);
     caps.meshShading.extMesh = True(meshFeatures.meshShader);
     caps.meshShading.nvExtension = has(VK_NV_MESH_SHADER_EXTENSION_NAME);
@@ -533,7 +518,6 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
     caps.shaderGroupHandleSize = rayTracingProperties.shaderGroupHandleSize;
     caps.maxRayRecursionDepth = rayTracingProperties.maxRayRecursionDepth;
 
-    // -- Others --------------------------------------------------------------------------------------------------------
     caps.memoryBudget = has(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
     caps.synchronization2 = True(sync2Features.synchronization2);
     caps.dynamicRendering = True(dynamicRenderingFeatures.dynamicRendering);
@@ -550,7 +534,6 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
         caps.conformanceVersion = driverProperties.conformanceVersion;
     }
 
-    // -- Formats -------------------------------------------------------------------------------------------------------
     for (const auto& [format, name] : kReportedFormats)
     {
         VkFormatProperties formatProperties{};
@@ -558,7 +541,6 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
         caps.formats.push_back({.format = format, .name = name, .optimalTiling = formatProperties.optimalTilingFeatures});
     }
 
-    // -- Tier ----------------------------------------------------------------------------------------------------------
     const auto allMet = [](const std::vector<CapabilityCheck>& checks) {
         return std::all_of(checks.begin(), checks.end(), [](const CapabilityCheck& check) { return check.met; });
     };

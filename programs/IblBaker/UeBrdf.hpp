@@ -1,10 +1,8 @@
 #pragma once
 
 // Brian Karis, "Real Shading in Unreal Engine 4", SIGGRAPH 2013 course notes, pages 4-7 (docs/UE4-RealShading-2013.md).
-// Literal C++ ports of the notes' HLSL: Hammersley, ImportanceSampleGgx (ImportanceSampleGGX), SpecularIbl (SpecularIBL),
-// PrefilterEnvMap and IntegrateBrdf (IntegrateBRDF).
-// Only the syntax changes (HLSL -> C++/glm); the formulas, sample sequence and k = alpha / 2 are the notes'.
-// Function names match source/shaders/common/Brdf.slang.
+// Literal C++ ports of the notes' HLSL: only the syntax changes, the formulas, sample sequence and k = alpha / 2 are the
+// notes'. Function names match source/shaders/common/Brdf.slang.
 
 #include "Cubemap.hpp"
 
@@ -25,7 +23,7 @@ inline float saturate(float x)
     return std::clamp(x, 0.0f, 1.0f);
 }
 
-// Van der Corput radical inverse in base 2 (bit reversal).
+// Van der Corput radical inverse in base 2.
 inline float RadicalInverseVdC(uint32_t bits)
 {
     bits = (bits << 16u) | (bits >> 16u);
@@ -36,7 +34,6 @@ inline float RadicalInverseVdC(uint32_t bits)
     return static_cast<float>(bits) * 2.3283064365386963e-10f; // / 0x100000000
 }
 
-// Hammersley point i of n: (i / n, radical inverse of i).
 inline glm::vec2 Hammersley(uint32_t i, uint32_t n)
 {
     return glm::vec2(static_cast<float>(i) / static_cast<float>(n), RadicalInverseVdC(i));
@@ -56,11 +53,10 @@ inline glm::vec3 ImportanceSampleGgx(glm::vec2 Xi, float Roughness, glm::vec3 N)
     glm::vec3 UpVector = std::abs(N.z) < 0.999f ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
     glm::vec3 TangentX = glm::normalize(glm::cross(UpVector, N));
     glm::vec3 TangentY = glm::cross(N, TangentX);
-    // Tangent to world space
     return TangentX * H.x + TangentY * H.y + N * H.z;
 }
 
-// Eq. 4, Schlick: G1(x) = (n.x) / ((n.x)(1 - k) + k).
+// Eq. 4
 inline float G1Schlick(float NoX, float k)
 {
     return NoX / (NoX * (1 - k) + k);

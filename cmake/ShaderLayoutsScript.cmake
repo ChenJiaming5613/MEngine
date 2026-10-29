@@ -1,7 +1,5 @@
-# cmake -P script run by MEngineGenerateShaderLayoutChecks.
-# Inputs: JSON_FILES and STRUCTS ("|" separated), NAMESPACE, OUTPUT.
-# For each struct, the first constant buffer parameter (uniform or push constant) of that element type found in the
-# slangc reflection JSON provides the layout.
+# cmake -P script run by MEngineGenerateShaderLayoutChecks. Inputs: JSON_FILES and STRUCTS ("|" separated), NAMESPACE,
+# OUTPUT. Each struct's layout comes from the first constant buffer or push constant of that element type found.
 
 cmake_minimum_required(VERSION 3.22)
 

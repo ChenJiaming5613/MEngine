@@ -2,7 +2,7 @@
 #include "common/Brdf.slang"
 #include "common/ShadowSampling.slang"
 
-// 0 = OPAQUE, 1 = MASK (alpha test against material.alphaCutoff).
+// Nonzero for alphaMode MASK (alpha test against material.alphaCutoff).
 [vk::constant_id(0)] const uint kAlphaMask = 0;
 
 struct VertexInput
@@ -54,8 +54,8 @@ VertexOutput VertexMainTangent(VertexInputTangent input)
     return TransformVertex(input.position, input.normal, input.tangent, input.texCoord);
 }
 
-// glTF: bitangent = cross(normal, tangent.xyz) * tangent.w. Without tangents the frame follows the UV gradients
-// (the construction used by the glTF sample viewer); this is MEngine's addition, the notes do not cover it.
+// glTF: bitangent = cross(normal, tangent.xyz) * tangent.w. Without tangents the frame follows the UV gradients, as in
+// the glTF sample viewer (MEngine's addition, not in the notes).
 float3 ApplyNormalMap(VertexOutput input, float3 N, bool frontFacing)
 {
     float3 tangentNormal = normalTexture.Sample(input.texCoord).xyz * 2.0 - 1.0;
@@ -92,7 +92,7 @@ float3 ApplyNormalMap(VertexOutput input, float3 N, bool frontFacing)
     return normalize(T * tangentNormal.x + B * tangentNormal.y + N * tangentNormal.z);
 }
 
-// Eq. 1-5 for one light: Lo = (f_d + f_s) * radiance * (n.l), with radiance = color * intensity * falloff * shadow.
+// Eq. 1-5 for one light: Lo = (f_d + f_s) * radiance * NoL.
 float3 EvaluateDirectLight(float3 N, float3 V, float3 L, float3 radiance, float3 diffuseColor, float3 specularColor,
                            float roughness, float NoV)
 {
@@ -124,15 +124,14 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
         discard;
     }
 
-    // glTF: roughness in G, metallic in B, both multiplied by their factors.
     float4 metallicRoughness = metallicRoughnessTexture.Sample(input.texCoord);
     float3 specularColor;
     float3 diffuseColor;
     float roughness;
     if ((material.flags & kMaterialFlagSpecularGlossiness) != 0)
     {
-        // KHR_materials_pbrSpecularGlossiness: specular is F0 directly, roughness = 1 - glossiness, and the
-        // extension's reference model scales diffuse by 1 - max(specular) to conserve energy.
+        // KHR_materials_pbrSpecularGlossiness: specular is F0 and roughness = 1 - glossiness; the extension's
+        // reference model scales diffuse by 1 - max(specular) to conserve energy.
         float4 specularGlossiness = material.specularGlossinessFactor * metallicRoughness;
         specularColor = saturate(specularGlossiness.rgb);
         roughness = saturate(1.0 - specularGlossiness.a);
@@ -161,7 +160,7 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
     float3 V = normalize(frame.cameraPosition.xyz - input.worldPosition);
     float NoV = saturate(dot(N, V));
 
-    // Direct light, no occlusion: one point light (eq. 9 falloff) plus one shadowed directional light (no falloff).
+    // One point light (eq. 9 falloff) and one shadowed directional light.
     float3 direct = float3(0.0);
     float3 toLight = frame.lightPositionRadius.xyz - input.worldPosition;
     float distance = length(toLight);
@@ -183,7 +182,7 @@ float4 FragmentMain(VertexOutput input, bool frontFacing : SV_IsFrontFace) : SV_
         }
     }
 
-    // Image based lighting: split sum specular (p7) plus the diffuse irradiance cube (eq. 6 applied to eq. 1).
+    // Split sum specular (p7) plus the irradiance cube (eq. 6 applied to eq. 1).
     float3 specularIbl = ApproximateSpecularIbl(specularMap, brdfLut, frame.iblParams.y, specularColor, roughness, N, V);
     float3 diffuseIbl = diffuseColor * irradianceMap.SampleLevel(N, 0.0).rgb;
     // glTF: occlusion = 1 + strength * (texture.r - 1), applied to indirect light only.

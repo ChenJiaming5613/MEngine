@@ -60,7 +60,7 @@ void Renderer::Init(rhi::GpuDevice& device)
     m_debugDrawPass.Init(device, m_frameLayout, m_debugDraw);
     m_tonemap.Init(device);
 
-    // Execution order; the graph culls, merges render passes and derives load / store operations and barriers.
+    // Registration order is execution order.
     m_graph.Init(device);
     m_graph.AddPass(kShadowPassName, FrameGraphNodeType::Graphics, m_shadow);
     m_graph.AddPass("Forward", FrameGraphNodeType::Graphics, m_forwardPbr);
@@ -170,7 +170,6 @@ void Renderer::UpdateFrameSet()
 void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui)
 {
     rhi::GpuDevice& device = *m_device;
-    // A new swapchain size or format, or a toggled pass, rebuilds the graph's textures and render passes.
     device.ConsumeSwapchainResized();
     if (m_graph.NeedsCompile())
     {
@@ -208,8 +207,8 @@ void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGu
     const rhi::DynamicAllocation allocation = device.DynamicAllocate(sizeof(FrameConstants));
     std::memcpy(allocation.data, &constants, sizeof(constants));
 
-    // Frustum culling of the forward draws. Shadow casters are not culled: the light frustum encloses the scene bounds,
-    // so every caster is inside it, and culling by the camera would re-render the cached map whenever the camera moves.
+    // Shadow casters are not culled: the light frustum encloses the whole scene, and culling them by the camera would
+    // re-render the cached map whenever the camera moves.
     if (settings.freezeCulling)
     {
         if (!m_cullingFrozen)

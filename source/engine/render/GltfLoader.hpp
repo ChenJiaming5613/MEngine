@@ -11,13 +11,10 @@ class GpuDevice;
 
 namespace mengine::render {
 
-// Loads a glTF 2.0 scene (.gltf with external or embedded resources, or .glb) from the asset root. URIs inside the file
-// resolve relative to its directory. Supports the node hierarchy, metallic-roughness materials with base color,
-// metallic-roughness, normal, occlusion and emissive textures, alpha MASK (BLEND falls back to MASK) and double sided
-// materials. Missing normals are computed (flat, as the spec requires); missing tangents are built in the shader.
-//
-// materialLayout is the set 1 layout of the forward pass. Returns false and leaves `scene` empty on failure;
-// every problem is logged together with the file path.
+// Loads a glTF 2.0 scene (.gltf or .glb) from the asset root; URIs resolve relative to the file. Missing normals are
+// computed flat (as the spec requires), missing tangents are built in the shader, alpha BLEND falls back to MASK.
+// materialLayout is the forward pass's set 1 layout. On failure returns false with `scene` empty; every problem is
+// logged with the file path.
 bool LoadGltfScene(rhi::GpuDevice& device, std::string_view assetPath, rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene);
 
 } // namespace mengine::render

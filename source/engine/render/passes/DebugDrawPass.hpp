@@ -14,9 +14,8 @@ namespace mengine::render {
 
 class DebugDraw;
 
-// Draws DebugDraw's lines into the HDR target after the skybox, so the far plane sky does not cover them (lines do not
-// write depth). Loads HdrColor and SceneDepth like the skybox, so it shares the forward render pass. Inactive in frames
-// without lines.
+// Draws DebugDraw's lines after the skybox, which would otherwise cover them (lines do not write depth). Loads HdrColor
+// and SceneDepth, so it shares the forward render pass. Inactive in frames without lines.
 class DebugDrawPass final : public FrameGraphPass
 {
 public:

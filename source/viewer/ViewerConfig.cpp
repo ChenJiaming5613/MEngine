@@ -14,6 +14,7 @@
 namespace mengine {
 namespace {
 
+// Read* helpers: absent gives nullopt with *ok unchanged; invalid logs and clears *ok.
 std::optional<float> ReadNumber(JsonValue value, const char* name, const std::string& path, bool* ok)
 {
     if (!value.IsValid())
@@ -30,7 +31,6 @@ std::optional<float> ReadNumber(JsonValue value, const char* name, const std::st
     return static_cast<float>(*number);
 }
 
-// Absent: nullopt with ok unchanged. Present but not three numbers: logs, clears ok and returns nullopt.
 std::optional<glm::vec3> ReadVec3(JsonValue value, const char* name, const std::string& path, bool* ok)
 {
     if (!value.IsValid())
@@ -57,6 +57,7 @@ std::optional<glm::vec3> ReadVec3(JsonValue value, const char* name, const std::
     return result;
 }
 
+// Required: absent counts as invalid.
 std::optional<std::string> ReadRelativePath(JsonValue value, const char* name, const std::string& path, bool* ok)
 {
     const std::optional<std::string_view> text = value.AsString();
@@ -69,7 +70,6 @@ std::optional<std::string> ReadRelativePath(JsonValue value, const char* name, c
     return std::string(*text);
 }
 
-// Absent: nullopt. Invalid: logs and clears ok.
 std::optional<CameraConfig> ReadCamera(JsonValue camera, const std::string& prefix, const std::string& path, bool* ok)
 {
     if (!camera.IsValid())

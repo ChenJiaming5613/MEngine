@@ -1,16 +1,16 @@
-// Descriptor layout shared with source/engine/render/RenderTypes.hpp. glm matrices are uploaded as-is; Slang's default
-// matrix layout plus mul(M, v) cancel out, so shaders see glm's matrices.
+// Mirrors source/engine/render/RenderTypes.hpp. glm matrices are uploaded as-is: Slang's default matrix layout and
+// mul(M, v) cancel out, so shaders see glm's matrices.
 
-// set 0: per frame -------------------------------------------------------------------------------------------------------
+// set 0: per frame
 
 struct FrameConstants
 {
     float4x4 view;
     float4x4 projection;
     float4x4 viewProjection;
-    // inverse(projection * rotation-only view), maps clip space to a world space direction for the skybox.
+    // inverse(projection * rotation-only view): clip space to world space direction.
     float4x4 skyboxInverseViewProjection;
-    // World space to the directional shadow map's clip space (orthographic, Y flipped like the camera).
+    // World space to shadow map clip space (orthographic, Y flipped like the camera).
     float4x4 lightViewProjection;
     float4 cameraPosition;            // xyz
     float4 lightPositionRadius;       // xyz position, w lightRadius of eq. 9
@@ -27,7 +27,7 @@ struct FrameConstants
 [[vk::binding(3, 0)]] Sampler2D brdfLut;         // IntegrateBRDF, u = NoV, v = Roughness
 [[vk::binding(4, 0)]] Sampler2DShadow shadowMap; // directional light depth, compare sampler (LESS_OR_EQUAL)
 
-// set 1: per material ----------------------------------------------------------------------------------------------------
+// set 1: per material
 
 static const uint kMaterialFlagNormalTexture = 1u;
 // KHR_materials_pbrSpecularGlossiness: baseColor* hold diffuse, metallicRoughnessTexture holds specular (RGB) and
@@ -55,7 +55,7 @@ struct MaterialData
 [[vk::binding(4, 1)]] Sampler2D occlusionTexture;         // R
 [[vk::binding(5, 1)]] Sampler2D emissiveTexture;          // sRGB
 
-// push constants ---------------------------------------------------------------------------------------------------------
+// push constants
 
 struct DrawConstants
 {

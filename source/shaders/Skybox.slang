@@ -1,6 +1,6 @@
 #include "common/Bindings.slang"
 
-// Drawn last in the forward pass as a full screen triangle on the far plane; depth test keeps it behind the scene.
+// Full screen triangle on the far plane, drawn last in the forward pass; the depth test keeps it behind the scene.
 
 struct VertexOutput
 {
@@ -23,7 +23,7 @@ VertexOutput VertexMain(uint vertexId : SV_VulkanVertexID)
 float4 FragmentMain(VertexOutput input) : SV_Target
 {
     float4 direction = mul(frame.skyboxInverseViewProjection, float4(input.clipPosition, 1.0, 1.0));
-    // Like Vulkan-glTF-PBR, show the prefiltered cube at a small roughness so the background is blurred.
+    // A small roughness blurs the background, like Vulkan-glTF-PBR.
     float lod = frame.iblParams.z * (frame.iblParams.y - 1.0);
     float3 radiance = specularMap.SampleLevel(normalize(direction.xyz / direction.w), lod).rgb;
     return float4(radiance * frame.iblParams.x, 1.0);

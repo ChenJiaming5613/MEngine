@@ -21,13 +21,12 @@ struct FrameGraphDebugInfo;
 struct RenderSettings;
 } // namespace render
 
-// A window showing the frame graph of the last compile as a node graph (imgui-node-editor): one node per pass in
-// AddPass order, inputs (resources it reads) on the left, outputs (resources it writes) on the right, links from each
-// writer to its readers. Passes that are not scheduled (culled, disabled, skipped, invalid) are drawn greyed out. The
-// inspector beside the canvas shows the selected pass, toggles it and draws its parameters (FrameGraphPass::DrawInspector).
-// Touch: two fingers that land on the canvas pan and zoom it around their midpoint. The editor itself only zooms with
-// the wheel and pans with the right button, and SDL turns only the first finger into a (left button) mouse, so the
-// gesture is recognized from the fingers and the emulated mouse is kept from ImGui while it runs.
+// The frame graph of the last compile as an imgui-node-editor graph: one node per pass in AddPass order, inputs on the
+// left, outputs on the right; unscheduled passes greyed out. The inspector toggles the selected pass and draws
+// FrameGraphPass::DrawInspector.
+// Touch: the editor only zooms with the wheel and pans with the right button, and SDL turns only the first finger into
+// a (left button) mouse, so a two finger pinch is recognized from the fingers and the emulated mouse is kept from ImGui
+// while it runs.
 //
 // Call Init after the ImGui context exists and Shutdown before it is destroyed; Draw between NewFrame and Render.
 class FrameGraphViewer
@@ -36,8 +35,8 @@ public:
     void Init();
     void Shutdown();
 
-    // Call for every event after Input has seen it and before ImGui does. Returns true when ImGui must not see the
-    // event (the touch emulated mouse during a pinch).
+    // Call for every event after Input has seen it and before ImGui does. True: hide the event from ImGui (the touch
+    // emulated mouse during a pinch).
     bool HandleEvent(const SDL_Event& event, const Input& input);
 
     // `lockedPass` names a pass that cannot be disabled (the one drawing the UI).
@@ -45,7 +44,7 @@ public:
 
     bool IsOpen() const { return m_open; }
     void SetOpen(bool open) { m_open = open; }
-    // Whether a point (in window pixels) lies on the window drawn this frame.
+    // In window pixels, against the window drawn this frame.
     bool Contains(float x, float y) const;
 
 private:
@@ -59,8 +58,7 @@ private:
     void ApplyAutoLayout(const render::FrameGraphDebugInfo& info);
     void SyncSelection(const render::FrameGraphDebugInfo& info);
     bool CanvasContains(const glm::vec2& point) const;
-    // Pans and zooms the view by the pinch fingers' movement since the last frame. Call with the editor current,
-    // before Begin.
+    // Applies the fingers' movement since the last frame. Call with the editor current, before ed::Begin.
     void UpdatePinch(const Input& input, float canvasX, float canvasY, float canvasWidth, float canvasHeight);
 
     struct Pinch
@@ -96,8 +94,8 @@ private:
     glm::vec2 m_canvasMax{-1.0f};
 
     Pinch m_pinch;
-    // Selection when the gesture's first finger landed. That finger is a mouse press for the editor until the second
-    // one lands, so it may have changed the selection; the pinch puts it back.
+    // Selection when the first finger landed: until the second lands it is a mouse press that may change the selection,
+    // so the pinch restores it.
     int m_gestureSelection = -1;
     bool m_restoreSelection = false;
 };

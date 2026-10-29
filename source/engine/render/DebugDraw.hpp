@@ -23,10 +23,9 @@ struct DebugVertex
 };
 static_assert(sizeof(DebugVertex) == 16);
 
-// CPU side debug lines (Raptor's DebugRenderer, without GPU line generation). Lines can be added any time; the
-// renderer uploads them into this frame slot's part of a dynamic vertex buffer, DebugDrawPass draws them into the HDR
-// target (depth tested, no depth writes), and the list is cleared for the next frame. Lines past kMaxLines are dropped
-// with a single warning.
+// CPU side debug lines (Raptor's DebugRenderer, without GPU line generation). Lines added any time before
+// Renderer::Render are uploaded, drawn into the HDR target and then cleared. Lines past kMaxLines are dropped with a
+// single warning.
 class DebugDraw
 {
 public:

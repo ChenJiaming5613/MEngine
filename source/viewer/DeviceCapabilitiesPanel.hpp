@@ -10,9 +10,7 @@ namespace rhi {
 class GpuDevice;
 } // namespace rhi
 
-// A window listing what the GPU supports (rhi::DeviceCapabilities): identity and tier with the requirements of each
-// tier, core and extension features (supported / enabled), extensions, limits, memory heaps with live budgets, queue
-// families and format support. Read only.
+// Read-only window listing rhi::DeviceCapabilities, with memory heaps' live budgets.
 class DeviceCapabilitiesPanel
 {
 public:
@@ -20,7 +18,7 @@ public:
 
     bool IsOpen() const { return m_open; }
     void SetOpen(bool open) { m_open = open; }
-    // Whether a point (in window pixels) lies on the window drawn this frame.
+    // (x, y) in window points, against the window drawn last frame.
     bool Contains(float x, float y) const;
 
 private:

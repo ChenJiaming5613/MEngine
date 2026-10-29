@@ -38,8 +38,8 @@ namespace {
 
 using Info = render::FrameGraphDebugInfo;
 
-// Pins encode node, resource and side so they need no table; links are numbered after their index. Node, pin and link
-// IDs are separate kinds for the editor, the bases only keep them apart in debuggers. 32 bit safe.
+// Pin ids encode node, resource and side, so they need no table. The editor keeps node, pin and link ids apart; the
+// bases only help in debuggers. 32 bit safe.
 constexpr uintptr_t kPinIdBase = 0x40000000u;
 constexpr uintptr_t kLinkIdBase = 0x20000000u;
 constexpr uint32_t kMaxPinResources = 1u << 15;
@@ -66,18 +66,15 @@ ed::LinkId LinkIdOf(size_t link)
     return ed::LinkId(kLinkIdBase + static_cast<uintptr_t>(link) + 1);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// Palette
-
 constexpr std::array<ImU32, 8> kHeaderPalette = {
-    IM_COL32(0x1F, 0x3A, 0x93, 255), // blue
-    IM_COL32(0x6A, 0x1B, 0x9A, 255), // purple
-    IM_COL32(0x1B, 0x5E, 0x20, 255), // green
-    IM_COL32(0x8B, 0x00, 0x00, 255), // red
-    IM_COL32(0x8C, 0x8C, 0x1A, 255), // olive
-    IM_COL32(0x00, 0x69, 0x5C, 255), // teal
-    IM_COL32(0xA0, 0x4A, 0x00, 255), // orange
-    IM_COL32(0x0D, 0x47, 0xA1, 255), // navy
+    IM_COL32(0x1F, 0x3A, 0x93, 255),
+    IM_COL32(0x6A, 0x1B, 0x9A, 255),
+    IM_COL32(0x1B, 0x5E, 0x20, 255),
+    IM_COL32(0x8B, 0x00, 0x00, 255),
+    IM_COL32(0x8C, 0x8C, 0x1A, 255),
+    IM_COL32(0x00, 0x69, 0x5C, 255),
+    IM_COL32(0xA0, 0x4A, 0x00, 255),
+    IM_COL32(0x0D, 0x47, 0xA1, 255),
 };
 constexpr ImU32 kHeaderDisabled = IM_COL32(0x5A, 0x5C, 0x61, 255);
 
@@ -152,7 +149,7 @@ void DrawPinIcon(ImDrawList* drawList, const ImVec2& center, float radius, ImU32
     }
 }
 
-// A filled down-pointing triangle, the "expanded" mark of the reference node headers.
+// The "expanded" mark of the node headers.
 void DrawHeaderArrow(ImDrawList* drawList, const ImVec2& center, float size, ImU32 color)
 {
     drawList->AddTriangleFilled(ImVec2(center.x - size, center.y - size * 0.55f), ImVec2(center.x + size, center.y - size * 0.55f),
@@ -166,7 +163,6 @@ void DrawHeaderGloss(ImDrawList* drawList, const ImVec2& min, const ImVec2& max,
         IM_COL32(0, 0, 0, 50), IM_COL32(0, 0, 0, 50));
 }
 
-// Draws a small color swatch followed by a label, on the current line.
 void LegendItem(ImU32 color, const char* label, bool circle)
 {
     const float size = ImGui::GetTextLineHeight() * 0.7f;
@@ -188,13 +184,10 @@ void LegendItem(ImU32 color, const char* label, bool circle)
     ImGui::TextUnformatted(label);
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// Node layout
-
 struct NodeLayout
 {
-    std::vector<uint32_t> inputs;  // resources
-    std::vector<uint32_t> outputs; // resources
+    std::vector<uint32_t> inputResources;
+    std::vector<uint32_t> outputResources;
     float contentWidth = 0.0f;
     float contentHeight = 0.0f;
     float headerHeight = 0.0f;
@@ -220,7 +213,7 @@ NodeLayout MeasureNode(const Info& info, const Info::Node& node)
         {
             continue;
         }
-        (pin.output ? layout.outputs : layout.inputs).push_back(pin.resource);
+        (pin.output ? layout.outputResources : layout.inputResources).push_back(pin.resource);
     }
 
     const float textHeight = ImGui::GetTextLineHeight();
@@ -237,12 +230,12 @@ NodeLayout MeasureNode(const Info& info, const Info::Node& node)
         + ImGui::CalcTextSize(tag).x;
 
     float inputWidth = 0.0f;
-    for (const uint32_t resource : layout.inputs)
+    for (const uint32_t resource : layout.inputResources)
     {
         inputWidth = std::max(inputWidth, layout.iconSize + layout.spacing + PinLabelWidth(info, resource));
     }
     float outputWidth = 0.0f;
-    for (const uint32_t resource : layout.outputs)
+    for (const uint32_t resource : layout.outputResources)
     {
         outputWidth = std::max(outputWidth, layout.iconSize + layout.spacing + PinLabelWidth(info, resource));
     }
@@ -256,7 +249,7 @@ NodeLayout MeasureNode(const Info& info, const Info::Node& node)
     }
 
     layout.contentWidth = std::max({ImGui::GetFontSize() * 9.0f, titleWidth, pinsWidth, statusWidth});
-    const size_t rows = std::max(layout.inputs.size(), layout.outputs.size());
+    const size_t rows = std::max(layout.inputResources.size(), layout.outputResources.size());
     layout.contentHeight = layout.headerHeight + layout.spacing + (layout.statusLine ? layout.rowHeight : 0.0f)
         + static_cast<float>(rows) * layout.rowHeight + 1.0f;
     return layout;
@@ -322,7 +315,7 @@ void DrawNode(const Info& info, uint32_t index)
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-    // Header: arrow, name, type tag. Its background is drawn behind the node once its size is known.
+    // The header background is drawn behind the node once its size is known.
     const float textHeight = ImGui::GetTextLineHeight();
     const float headerTextY = origin.y + (layout.headerHeight - textHeight) * 0.5f;
     const float arrowSize = textHeight * 0.3f;
@@ -346,17 +339,17 @@ void DrawNode(const Info& info, uint32_t index)
         y += layout.rowHeight;
     }
 
-    const size_t rows = std::max(layout.inputs.size(), layout.outputs.size());
+    const size_t rows = std::max(layout.inputResources.size(), layout.outputResources.size());
     for (size_t row = 0; row < rows; ++row)
     {
         const ImVec2 rowOrigin(origin.x, y);
-        if (row < layout.inputs.size())
+        if (row < layout.inputResources.size())
         {
-            DrawPin(info, layout, index, layout.inputs[row], false, live, rowOrigin);
+            DrawPin(info, layout, index, layout.inputResources[row], false, live, rowOrigin);
         }
-        if (row < layout.outputs.size())
+        if (row < layout.outputResources.size())
         {
-            DrawPin(info, layout, index, layout.outputs[row], true, live, rowOrigin);
+            DrawPin(info, layout, index, layout.outputResources[row], true, live, rowOrigin);
         }
         y += layout.rowHeight;
     }
@@ -395,9 +388,6 @@ ImVec2 NodeExtent(const Info& info, const Info::Node& node)
 
 } // namespace
 
-// =====================================================================================================================
-// FrameGraphViewer
-
 void FrameGraphViewer::Init()
 {
     if (m_editor != nullptr)
@@ -405,7 +395,7 @@ void FrameGraphViewer::Init()
         return;
     }
     ed::Config config;
-    // Layout comes from ApplyAutoLayout and lives for the session, like the ImGui windows (io.IniFilename is null).
+    // No settings file: the layout comes from ApplyAutoLayout and lives for the session, like the ImGui windows.
     config.SettingsName = nullptr;
     m_editor = ed::CreateEditor(&config);
 
@@ -431,7 +421,7 @@ void FrameGraphViewer::Init()
     style.Colors[ed::StyleColor_PinRectBorder] = ImVec4(1.0f, 1.0f, 1.0f, 0.25f);
     style.Colors[ed::StyleColor_Flow] = ImGui::ColorConvertU32ToFloat4(kSelected);
     style.Colors[ed::StyleColor_FlowMarker] = ImGui::ColorConvertU32ToFloat4(kSelected);
-    // The graph is read only: no delete, copy or paste shortcuts.
+    // Read only graph: no delete, copy or paste.
     ed::EnableShortcuts(false);
     ed::SetCurrentEditor(nullptr);
 }
@@ -473,8 +463,8 @@ bool FrameGraphViewer::HandleEvent(const SDL_Event& event, const Input& input)
             && CanvasContains(touches[1].position))
         {
             m_pinch = Pinch{.active = true, .first = touches[0].id, .second = touches[1].id};
-            // Ends the press of the first finger without a click: released with the mouse gone, nothing is hovered,
-            // so a node drag or box selection it started ends there and no click selects anything.
+            // Ends the first finger's press without a click: released with the mouse gone, nothing is hovered, so a
+            // node drag or box selection ends and nothing gets selected.
             ImGuiIO& io = ImGui::GetIO();
             io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
             io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
@@ -554,15 +544,14 @@ void FrameGraphViewer::UpdatePinch(const Input& input, float canvasX, float canv
         const glm::vec2 canvasSize(canvasWidth, canvasHeight);
         if (viewSize.x > 0.0f && viewSize.y > 0.0f)
         {
-            // The canvas point under the previous midpoint stays under the current one; the view shrinks by the
-            // distance ratio (fingers apart: zoom in).
+            // Keeps the canvas point under the previous midpoint under the current one; fingers apart zoom in.
             const glm::vec2 anchor = viewMin + (m_pinch.previousCenter - canvasOrigin) * (viewSize / canvasSize);
             const glm::vec2 newSize = viewSize * (m_pinch.previousDistance / distance);
             const glm::vec2 newMin = anchor - (center - canvasOrigin) * (newSize / canvasSize);
             ed::ViewState target;
             target.VisibleMin = ImVec2(newMin.x, newMin.y);
             target.VisibleMax = ImVec2(newMin.x + newSize.x, newMin.y + newSize.y);
-            // Clamped to the editor's zoom levels.
+            // The editor clamps this to its zoom levels.
             ed::SetViewState(target, 0.0f);
         }
     }
@@ -607,8 +596,7 @@ void FrameGraphViewer::Draw(render::FrameGraph& graph, render::RenderSettings& s
         m_selected = -1;
     }
 
-    // A different set of passes than the layout was made for: lay out again. Recompiles of the same passes (toggles,
-    // resizes) keep the positions the user dragged the nodes to.
+    // Only a different set of passes lays out again; recompiles (toggles, resizes) keep the user's node positions.
     if (m_layoutNames.size() != info.nodes.size()
         || !std::equal(m_layoutNames.begin(), m_layoutNames.end(), info.nodes.begin(),
             [](const std::string& name, const Info::Node& node) { return name == node.name; }))
@@ -637,7 +625,6 @@ void FrameGraphViewer::Draw(render::FrameGraph& graph, render::RenderSettings& s
 
     DrawCanvas(graph, info, lockedPass, input, canvasWidth, available.y);
 
-    // Splitter between canvas and inspector.
     ImGui::SameLine(0.0f, 0.0f);
     ImGui::InvisibleButton("##InspectorSplitter", ImVec2(splitterWidth, std::max(1.0f, available.y)));
     const bool splitterActive = ImGui::IsItemActive();
@@ -996,7 +983,6 @@ void FrameGraphViewer::DrawInspector(render::FrameGraph& graph, const Info& info
     const Info::Node& node = info.nodes[index];
     const ImGuiStyle& style = ImGui::GetStyle();
 
-    // Title bar in the node's header color.
     {
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         const ImVec2 min = ImGui::GetCursorScreenPos();

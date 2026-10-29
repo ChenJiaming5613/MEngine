@@ -17,8 +17,8 @@ target_include_directories(imgui PUBLIC
 
 target_link_libraries(imgui PUBLIC SDL3::SDL3 ${MENGINE_VULKAN_LIBRARIES})
 
-# IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING is defined by the backend itself and changes struct layout,
-# so it must never be forced off. Keeping UseDynamicRendering = false at runtime is what matters.
+# Never force IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING off: the backend defines it and it changes struct layout. Only
+# UseDynamicRendering = false at runtime matters.
 target_compile_definitions(imgui PUBLIC IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
 
 if(MSVC)

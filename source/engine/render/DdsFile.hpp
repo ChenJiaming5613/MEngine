@@ -1,7 +1,6 @@
 #pragma once
 
-// MEngine: port of NVIDIA Donut's DDS loader, see DdsFile.cpp for the source and the list of changes.
-// The types below replace the parts of donut/engine/TextureCache.h and nvrhi that the loader uses.
+// DDS parser ported from NVIDIA Donut (see DdsFile.cpp); these types stand in for Donut's TextureCache.h and nvrhi ones.
 
 #include <vulkan/vulkan.h>
 
@@ -12,7 +11,7 @@
 
 namespace mengine::render {
 
-// donut::engine::TextureAlphaMode (the DDS_ALPHA_MODE values of DirectXTK).
+// The DDS_ALPHA_MODE values of DirectXTK.
 enum class TextureAlphaMode
 {
     UNKNOWN = 0,
@@ -22,7 +21,7 @@ enum class TextureAlphaMode
     CUSTOM = 4,
 };
 
-// Subset of nvrhi::TextureDimension that a DDS file can describe.
+// The dimensions a DDS file can describe.
 enum class TextureDimension
 {
     Unknown,
@@ -35,7 +34,7 @@ enum class TextureDimension
     Texture3D,
 };
 
-// donut::engine::TextureSubresourceData: one mip level of one array slice inside TextureData::data.
+// One mip level of one array slice; dataOffset is relative to TextureData::data.
 struct TextureSubresourceData
 {
     size_t rowPitch = 0;
@@ -44,13 +43,13 @@ struct TextureSubresourceData
     size_t dataSize = 0;
 };
 
-// The members of donut::engine::TextureData that LoadDDSTextureFromMemory reads and writes.
+// Input (data, forceSRGB) and output of LoadDDSTextureFromMemory.
 struct TextureData
 {
-    std::span<const uint8_t> data; // MEngine: was std::shared_ptr<vfs::IBlob>; not owned, must outlive the TextureData
+    std::span<const uint8_t> data; // not owned, must outlive the TextureData
     bool forceSRGB = false;
 
-    VkFormat format = VK_FORMAT_UNDEFINED; // MEngine: was nvrhi::Format
+    VkFormat format = VK_FORMAT_UNDEFINED;
     uint32_t width = 1;
     uint32_t height = 1;
     uint32_t depth = 1;
@@ -62,7 +61,7 @@ struct TextureData
     std::vector<std::vector<TextureSubresourceData>> dataLayout; // [arraySlice][mipLevel]
 };
 
-// Initialized the TextureInfo from the 'data' array, which must be populated with DDS data
+// Parses the DDS file in textureInfo.data and fills in the rest; false for invalid or unsupported files.
 bool LoadDDSTextureFromMemory(TextureData& textureInfo);
 
 } // namespace mengine::render

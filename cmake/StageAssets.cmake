@@ -1,8 +1,8 @@
-# Builds the staged asset directory that is shipped with the application:
+# Staged directory shipped with the application; desktop mirrors it next to the executable, Android uses it as the
+# Gradle assets.srcDir:
 #   <staged>/                 contents of assets/ (config.json, textures, environments)
 #   <staged>/models/<dir>/    for every config.json "scenes" entry, the whole directory of its glTF file
 #   <staged>/shaders/*.spv    written by MEngineCompileShader
-# Desktop mirrors it next to the executable; Android uses it as the Gradle assets.srcDir.
 
 set(MENGINE_STAGED_ASSET_DIR "${CMAKE_BINARY_DIR}/staged_assets" CACHE PATH "Directory the runtime assets are staged into")
 set(MENGINE_ASSET_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
@@ -87,7 +87,7 @@ add_custom_target(MEngineStageAssets
     VERBATIM
 )
 
-# MEngineMirrorStagedAssets(<target>): copies the staged directory to <target dir>/assets after each build.
+# Mirrors the staged directory to <target dir>/assets as a POST_BUILD step of <target>.
 function(MEngineMirrorStagedAssets TARGET_NAME)
     add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND "${CMAKE_COMMAND}"

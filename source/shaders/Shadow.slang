@@ -1,5 +1,5 @@
-// Depth only pass of the directional light shadow map. Reuses the frame set (lightViewProjection), the material set
-// (alpha MASK) and the forward pass's DrawConstants. Shadows are MEngine's addition to the UE4 2013 notes.
+// Directional shadow map depth pass (MEngine's addition to the UE4 2013 notes). Shares set 0 (lightViewProjection),
+// set 1 (alpha MASK only) and DrawConstants with Pbr.slang.
 #include "common/Bindings.slang"
 
 struct MaskVertexInput

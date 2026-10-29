@@ -19,11 +19,9 @@ namespace mengine::render {
 
 struct Scene;
 
-// Depth only shadow map of the directional light (MEngine's addition to the UE4 2013 notes). One D16 map rendered
-// with FrameConstants::lightViewProjection, imported into the frame graph as kResourceShadowMap; the forward pass
-// samples it through a compare sampler, so it ends in SHADER_READ_ONLY. Alpha MASK materials are cut out, double sided
-// and mirrored draws keep the forward pass's culling. The map keeps its content across frames and is only re-rendered
-// when the light, the scene or the shadow toggle changes.
+// D16 depth only shadow map of the directional light, rendered with FrameConstants::lightViewProjection and imported
+// into the graph as kResourceShadowMap (Forward samples it through a compare sampler). The map persists across frames
+// and is re-rendered only when the light, the scene or the shadow toggle changes.
 class ShadowPass final : public FrameGraphPass
 {
 public:

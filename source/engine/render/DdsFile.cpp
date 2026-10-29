@@ -1,13 +1,8 @@
-// MEngine: copied from NVIDIA Donut, src/engine/DDSFile.cpp
+// Ported from NVIDIA Donut, src/engine/DDSFile.cpp
 //   https://github.com/NVIDIA-RTX/Donut/blob/2c1077673edb0e0d814c202e6ce8e502d245c2da/src/engine/DDSFile.cpp
-// Changes against the original (each one is also marked "MEngine:" in place):
-//   - nvrhi::Format -> VkFormat, using the format mapping of nvrhi's Vulkan backend; BitsPerPixel searches the table
-//     instead of indexing it with the nvrhi enum;
-//   - TextureData, TextureSubresourceData, TextureAlphaMode and TextureDimension come from DdsFile.hpp instead of
-//     donut/engine/TextureCache.h and nvrhi; TextureData::data is a std::span instead of a vfs::IBlob;
-//   - ConvertDDSFormat: the inverted forceSRGB conditions of the 32 bit RGBA / BGRA cases are fixed;
-//   - CreateDDSTextureFromMemory and SaveStagingTextureAsDDS are removed: GltfLoader creates the Vulkan texture from
-//     TextureData itself, and nothing writes DDS files.
+// Differences from upstream: VkFormat instead of nvrhi::Format (as nvrhi's Vulkan backend maps them); the Donut / nvrhi
+// types come from DdsFile.hpp and TextureData::data is a span; ConvertDDSFormat's inverted forceSRGB conditions for
+// 32 bit RGBA / BGRA are fixed; texture creation and DDS saving are dropped (GltfLoader creates the texture).
 
 /*
 * Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.
@@ -88,13 +83,12 @@ namespace mengine::render
 
     struct FormatMapping
     {
-        VkFormat vkFormat; // MEngine: was nvrhi::Format nvrhiFormat
+        VkFormat vkFormat;
         DXGI_FORMAT dxgiFormat;
         uint32_t bitsPerPixel;
     };
 
-    // MEngine: the nvrhi formats of the original are replaced by the VkFormat nvrhi's Vulkan backend uses for them
-    // (original nvrhi name in the comment). Lookups by DXGI format take the first match, as before.
+    // nvrhi name in the trailing comment. Lookups by DXGI format take the first match.
     const FormatMapping g_FormatMappings[] = {
         { VK_FORMAT_UNDEFINED,                DXGI_FORMAT_UNKNOWN,                0 },   // UNKNOWN
         { VK_FORMAT_R8_UINT,                  DXGI_FORMAT_R8_UINT,                8 },   // R8_UINT
@@ -179,7 +173,6 @@ namespace mengine::render
             switch (ddpf.RGBBitCount)
             {
             case 32:
-                // MEngine: the original returned the UNORM format when forceSRGB was set and the sRGB one otherwise.
                 if (ISBITMASK(0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000))
                 {
                     return forceSRGB ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
@@ -413,7 +406,6 @@ namespace mengine::render
 
     static uint32_t BitsPerPixel(VkFormat format)
     {
-        // MEngine: the original indexed g_FormatMappings with the nvrhi::Format value; VkFormat needs a search.
         const auto mapping = std::find_if(std::begin(g_FormatMappings), std::end(g_FormatMappings),
             [format](const FormatMapping& entry) { return entry.vkFormat == format; });
 
@@ -578,7 +570,6 @@ namespace mengine::render
 
     bool LoadDDSTextureFromMemory(TextureData& textureInfo)
     {
-        // MEngine: textureInfo.data->size() / ->data() of the IBlob are textureInfo.data.size() / .data() of the span.
         if (textureInfo.data.size() < sizeof(uint32_t) + sizeof(DDS_HEADER))
         {
             return false;
@@ -657,7 +648,7 @@ namespace mengine::render
                     textureInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
                     break;
 
-                case(VK_FORMAT_B8G8R8A8_UNORM): // MEngine: covers BGRX8_UNORM too, both map to B8G8R8A8_UNORM
+                case(VK_FORMAT_B8G8R8A8_UNORM): // BGRX8_UNORM maps here too
                     textureInfo.format = VK_FORMAT_B8G8R8A8_SRGB;
                     break;
 
@@ -760,6 +751,4 @@ namespace mengine::render
 
         return true;
     }
-
-    // MEngine: CreateDDSTextureInternal, CreateDDSTextureFromMemory and SaveStagingTextureAsDDS are not ported.
 }

@@ -72,7 +72,6 @@ target_compile_definitions(MEngineAsset
 )
 MEngineSetWarnings(MEngineAsset)
 
-# Engine: core, platform, rhi, render and the Application base.
 file(GLOB_RECURSE MENGINE_CORE_SOURCES CONFIGURE_DEPENDS
     "${MENGINE_ENGINE_DIR}/*.cpp"
     "${MENGINE_ENGINE_DIR}/*.hpp"
@@ -91,8 +90,8 @@ target_link_libraries(MEngineCore PUBLIC
 )
 target_link_libraries(MEngineCore PRIVATE spirv_reflect)
 
-# render/ShaderLayoutChecks.cpp includes the generated static_asserts, so a layout drift between RenderTypes.hpp and the
-# Slang structs fails the build.
+# render/ShaderLayoutChecks.cpp includes the generated static_asserts, so layout drift between RenderTypes.hpp and Slang
+# fails the build.
 set(MENGINE_SHADER_LAYOUT_CHECKS "${CMAKE_BINARY_DIR}/generated/ShaderLayoutChecks.generated.hpp")
 MEngineGenerateShaderLayoutChecks(
     OUTPUT "${MENGINE_SHADER_LAYOUT_CHECKS}"

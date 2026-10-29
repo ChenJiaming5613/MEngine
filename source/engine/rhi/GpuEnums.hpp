@@ -35,9 +35,8 @@ enum TextureFlags : uint8_t
     kTextureFlagStorage = 1 << 2,
 };
 
-// How a resource is about to be (or was last) accessed, after Raptor's ResourceState (itself D3D12's
-// D3D12_RESOURCE_STATES). Read-only states can be combined. A barrier turns a pair of states into layouts, access masks
-// and pipeline stages (VulkanUtils). Textures track their current state; buffer barriers name both ends.
+// After Raptor's ResourceState (itself D3D12_RESOURCE_STATES). Read-only states can be combined. Textures track their
+// current state; buffer barriers name both ends.
 enum ResourceState : uint32_t
 {
     kResourceStateUndefined = 0,
@@ -59,10 +58,9 @@ enum ResourceState : uint32_t
         | kResourceStateIndirectArgument | kResourceStateCopySource,
 };
 
-// A combination of ResourceState bits.
 using ResourceStates = uint32_t;
 
-// States that write. A barrier between two equal states is only needed when they write (write-after-write).
+// A barrier between two equal states is only needed when they write (write-after-write).
 constexpr ResourceStates kResourceStateWriteMask = kResourceStateRenderTarget | kResourceStateUnorderedAccess
     | kResourceStateDepthWrite | kResourceStateCopyDest | kResourceStateCommon;
 

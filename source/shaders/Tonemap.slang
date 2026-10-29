@@ -1,11 +1,10 @@
-// Resolves the HDR forward target into the swapchain: exposure, then John Hable's Uncharted 2 filmic curve normalized
-// by its value at the white point 11.2, with the same constants and default exposure (4.5) as Vulkan-glTF-PBR.
-// Tone mapping is not covered by the UE4 notes; it is MEngine's addition.
+// HDR target to swapchain: exposure, then John Hable's Uncharted 2 curve normalized at the white point 11.2, with
+// Vulkan-glTF-PBR's constants and default exposure (4.5). MEngine's addition; the UE4 notes do not cover tone mapping.
 
 struct TonemapConstants
 {
     float exposure;
-    // 1 when the swapchain is UNORM and the shader must apply the sRGB transfer function itself.
+    // 1 when the swapchain is UNORM and the shader must encode sRGB itself.
     uint encodeSrgb;
 };
 

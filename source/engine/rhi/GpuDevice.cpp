@@ -37,8 +37,7 @@ constexpr uint32_t kDescriptorsPerType = 4096;
 constexpr uint32_t kMaxDescriptorSets = 2048;
 constexpr uint32_t kRecreateRetryDelayMilliseconds = 16;
 constexpr VkDeviceSize kStagingLevelAlignment = 16;
-// An upload batch is submitted early once its staging buffers exceed this, so loading a multi-GB scene does not keep
-// all of it in host visible memory at once.
+// Larger upload batches are submitted early so a multi-GB scene is never all in host visible memory at once.
 constexpr VkDeviceSize kUploadStagingBudget = VkDeviceSize{256} << 20;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL OnValidationMessage(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -182,9 +181,6 @@ constexpr VkPipelineStageFlags kUploadConsumerStages = VK_PIPELINE_STAGE_DRAW_IN
     | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
 } // namespace
-
-// =====================================================================================================================
-// Initialization
 
 void GpuDevice::Init(const GpuDeviceCreation& creation)
 {
@@ -700,7 +696,6 @@ void GpuDevice::Shutdown()
     DestroyBuffer(m_dynamicBuffer);
     m_renderPasses.Release(m_swapchainPass);
 
-    // Anything the application forgot is reported and released.
     const auto reportLeaks = [](const char* kind, uint32_t count) {
         if (count > 0)
         {
@@ -804,9 +799,6 @@ void GpuDevice::WaitIdleAndReleaseDeferred()
     ProcessPendingDestructions(true);
 }
 
-// =====================================================================================================================
-// Deferred destruction
-
 void GpuDevice::Defer(std::function<void()> destroy)
 {
     m_pendingDestructions.push_back(PendingDestruction{.frame = m_absoluteFrame, .destroy = std::move(destroy)});
@@ -826,9 +818,6 @@ void GpuDevice::ProcessPendingDestructions(bool all)
     }
     std::erase_if(m_pendingDestructions, [](const PendingDestruction& entry) { return !entry.destroy; });
 }
-
-// =====================================================================================================================
-// Uploads
 
 void GpuDevice::BeginUploadBatch()
 {
@@ -930,9 +919,6 @@ VkCommandBuffer GpuDevice::UploadCommandBuffer() const
     return m_uploadCommandBuffer;
 }
 
-// =====================================================================================================================
-// Buffers
-
 BufferHandle GpuDevice::CreateBuffer(const BufferCreation& creation)
 {
     if (creation.size == 0)
@@ -1020,9 +1006,6 @@ void GpuDevice::FlushBuffer(BufferHandle handle, VkDeviceSize offset, VkDeviceSi
         vmaFlushAllocation(m_allocator, buffer->allocation, offset, size);
     }
 }
-
-// =====================================================================================================================
-// Textures
 
 bool GpuDevice::SupportsLinearBlit(VkFormat format) const
 {
@@ -1360,9 +1343,6 @@ void GpuDevice::SetTextureState(TextureHandle texture, ResourceStates state)
     }
 }
 
-// =====================================================================================================================
-// Samplers
-
 SamplerHandle GpuDevice::CreateSampler(const SamplerCreation& creation)
 {
     const bool anisotropy = m_samplerAnisotropy && creation.maxAnisotropy > 1.0f;
@@ -1408,9 +1388,6 @@ void GpuDevice::DestroySampler(SamplerHandle handle)
     Defer([device = m_device, vkSampler = sampler->sampler] { vkDestroySampler(device, vkSampler, nullptr); });
     m_samplers.Release(handle);
 }
-
-// =====================================================================================================================
-// Descriptor sets
 
 DescriptorSetLayoutHandle GpuDevice::CreateDescriptorSetLayout(const DescriptorSetLayoutCreation& creation)
 {
@@ -1617,9 +1594,6 @@ void GpuDevice::DestroyDescriptorSet(DescriptorSetHandle handle)
     Defer([device = m_device, pool = m_descriptorPool, vkSet = set->set] { vkFreeDescriptorSets(device, pool, 1, &vkSet); });
     m_descriptorSets.Release(handle);
 }
-
-// =====================================================================================================================
-// Render passes
 
 VkRenderPass GpuDevice::GetVulkanRenderPass(const RenderPassOutput& output)
 {
@@ -1853,14 +1827,11 @@ void GpuDevice::DestroyRenderPass(RenderPassHandle handle)
     m_renderPasses.Release(handle);
 }
 
-// =====================================================================================================================
-// Pipelines
-
 PipelineHandle GpuDevice::CreatePipeline(const PipelineCreation& creation)
 {
     const std::string name = creation.name ? creation.name : "<unnamed>";
 
-    // A lone compute stage makes a compute pipeline (Raptor tells them apart the same way, through its shader state).
+    // A lone compute stage makes a compute pipeline, as in Raptor.
     const ShaderStateCreation& shaders = creation.shaders;
     if (shaders.stageCount == 0)
     {
@@ -2252,9 +2223,6 @@ void GpuDevice::DestroyPipeline(PipelineHandle handle)
     m_pipelines.Release(handle);
 }
 
-// =====================================================================================================================
-// Frames
-
 bool GpuDevice::RecreateSwapchain()
 {
     int width = 0;
@@ -2424,9 +2392,6 @@ void GpuDevice::EndFrame()
         HandleSurfaceLost();
     }
 }
-
-// =====================================================================================================================
-// Debug utils
 
 void GpuDevice::SetResourceName(VkObjectType type, uint64_t handle, const char* name)
 {

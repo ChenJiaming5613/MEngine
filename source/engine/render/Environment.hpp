@@ -35,8 +35,8 @@ struct Environment
     void Destroy(rhi::GpuDevice& device);
 };
 
-// Loads environments/<name>/ (a directory under the asset root). nullopt, a missing directory or invalid files fall
-// back to a uniform environment of kFallbackRadiance; load failures are logged. Never throws on bad assets.
+// Loads the three files from `directory` (relative to the asset root). nullopt or any load failure (logged) falls back
+// to a uniform environment of kFallbackRadiance; never throws on bad assets.
 void LoadEnvironment(rhi::GpuDevice& device, std::optional<std::string_view> directory, Environment& environment);
 
 } // namespace mengine::render

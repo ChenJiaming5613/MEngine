@@ -17,16 +17,13 @@ class GpuDevice;
 
 namespace mengine::render {
 
-// Frame graph after Raptor's FrameGraph (chapters 4 and 5), declared in C++ and built on the RHI's render pass cache,
-// texture state tracking and ExecutionBarrier.
-//
-// - Passes run in AddPass order. Accesses to the same resource are ordered by it, so dependencies only point backwards
-//   and the graph cannot have cycles; a read of a transient texture before any write is a compile error instead.
-// - Passes that neither write the backbuffer nor declare a side effect, directly or through a reader, are culled.
-// - Transient textures with the same description and disjoint lifetimes share one texture (G9).
-// - Load / store operations come from the producers and consumers (G5), adjacent graphics passes with the same
-//   attachments share one render pass (G10), and barriers for non-attachment accesses are generated (G4).
-// - Compile() runs when the structure changes (start, resize, enabled flags); Execute() only walks the schedule.
+// - Passes run in AddPass order, so dependencies only point backwards and there are no cycles; reading a transient
+//   before any write is a declaration error.
+// - Passes that neither write the backbuffer nor have a side effect, directly or through a reader, are culled.
+// - Transients with the same description and disjoint lifetimes share one texture (G9).
+// - Load / store come from producers and consumers (G5), adjacent graphics passes with the same attachments share one
+//   render pass (G10), barriers for non-attachment accesses are generated (G4).
+// - Compile() runs on structural changes (start, resize, enabled flags); Execute() only walks the schedule.
 
 struct RenderView;
 struct RenderSettings;
@@ -66,7 +63,7 @@ struct FrameGraphContext
 // match, whatever the load / store operations and layouts.
 bool IsRenderPassCompatible(const rhi::RenderPassOutput& a, const rhi::RenderPassOutput& b);
 
-// A node of the graph. The graph does not own passes.
+// The graph does not own passes.
 class FrameGraphPass
 {
 public:
@@ -82,9 +79,9 @@ public:
     // Called after every Compile() that schedules the pass: textures and render passes may have been recreated.
     virtual void OnCompiled(const FrameGraphResources& resources) { (void)resources; }
 
-    // One line shown by the frame graph viewer; nullptr when there is none.
+    // Shown by the frame graph viewer; nullptr for none.
     virtual const char* Description() const { return nullptr; }
-    // Draws the pass's parameters with ImGui, editing the settings it consumes. Returns false when it has none.
+    // ImGui editor for the settings the pass consumes. Returns false when it has none.
     virtual bool DrawInspector(RenderSettings& settings)
     {
         (void)settings;
@@ -96,10 +93,9 @@ public:
 class FrameGraphBuilder
 {
 public:
-    // A texture owned by the graph, created by this pass. It is only available while this pass is scheduled.
+    // Owned by the graph; only available while the creating pass is enabled and valid.
     FrameGraphResourceId CreateTexture(std::string_view name, const FrameGraphTextureDesc& desc);
-    // Textures and buffers owned by someone else; their content persists across frames. Importing the same name again
-    // with the same handle is allowed.
+    // Owned by someone else; the content persists across frames. Re-importing a name with the same handle is allowed.
     FrameGraphResourceId ImportTexture(std::string_view name, rhi::TextureHandle texture);
     FrameGraphResourceId ImportBuffer(std::string_view name, rhi::BufferHandle buffer, rhi::ResourceStates initialState);
     // The current swapchain image. Passes writing it are the roots of the graph.
@@ -115,8 +111,7 @@ public:
     // Discards the previous content: the pass does not depend on earlier writers.
     FrameGraphResourceId Write(std::string_view name, rhi::ResourceStates state);
     FrameGraphResourceId ReadWrite(std::string_view name, rhi::ResourceStates state);
-    // Like Read, but the pass still runs when the producer is disabled; GetTexture / GetBuffer then return an invalid
-    // handle.
+    // The pass still runs when the producer is disabled; GetTexture / GetBuffer then return an invalid handle.
     FrameGraphResourceId ReadOptional(std::string_view name, rhi::ResourceStates state);
 
     // Keeps the pass even when nothing reads its output.
@@ -136,7 +131,7 @@ class FrameGraphResources
 public:
     rhi::TextureHandle GetTexture(FrameGraphResourceId id) const;
     rhi::BufferHandle GetBuffer(FrameGraphResourceId id) const;
-    // Output of the render pass the (graphics) pass runs in, for pipeline creation.
+    // For pipeline creation; empty for compute passes.
     const rhi::RenderPassOutput& GetRenderPassOutput() const;
 
 private:
@@ -150,15 +145,13 @@ private:
 // Snapshot of the last Compile() for the debug panel.
 struct FrameGraphDebugInfo
 {
-    // One resource a node accesses. A resource the pass reads and writes (ReadWrite, loaded attachments) has both an
-    // input and an output pin.
+    // A resource read and written (ReadWrite, loaded attachments) has both an input and an output pin.
     struct Pin
     {
         uint32_t resource = 0; // index into resources
-        bool output = false;   // false: input (read), true: output (written)
+        bool output = false;
     };
-    // The data flow from a writer to a later reader of the same resource, following the dependency rule of culling
-    // (the last earlier writer), over every node including disabled ones.
+    // From the last earlier writer to a reader (the culling dependency rule), over every node including disabled ones.
     struct Link
     {
         uint32_t fromNode = 0;
@@ -218,23 +211,22 @@ public:
 
     void SetEnabled(std::string_view name, bool enabled);
     bool IsEnabled(std::string_view name) const;
-    // Whether the last Compile scheduled the pass (enabled, valid, not skipped or culled). Imported resources the pass
-    // writes keep their old content while it is not scheduled, so readers that must not see stale data check this.
+    // Enabled, valid, not skipped or culled by the last Compile. Imported resources keep stale content while their
+    // writer is not scheduled; readers that must not see it check this.
     bool IsScheduled(std::string_view name) const;
     void SetAliasingEnabled(bool enabled);
     bool IsAliasingEnabled() const { return m_aliasingEnabled; }
     // A structural change, or a swapchain size or format other than the last compile's.
     bool NeedsCompile() const;
 
-    // Rebuilds the schedule, textures and render passes for the current swapchain size, then calls OnCompiled.
     // Declaration errors throw with MENGINE_ENABLE_VALIDATION_LAYERS; otherwise they are logged and the offending passes
-    // are skipped.
+    // are skipped. Calls OnCompiled on every scheduled pass.
     void Compile();
-    // Records the scheduled passes. Call outside a render pass.
+    // Call outside a render pass.
     void Execute(rhi::CommandBuffer& commandBuffer, const RenderView& view);
 
     const FrameGraphDebugInfo& GetDebugInfo() const { return m_debugInfo; }
-    // The pass of a node, in AddPass order (FrameGraphDebugInfo::nodes uses the same indices); nullptr when out of range.
+    // Indexed like FrameGraphDebugInfo::nodes (AddPass order); nullptr when out of range.
     FrameGraphPass* GetPass(uint32_t node) const { return node < m_nodes.size() ? m_nodes[node].pass : nullptr; }
 
 private:

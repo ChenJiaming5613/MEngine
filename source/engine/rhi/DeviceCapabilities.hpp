@@ -22,7 +22,6 @@ const char* DeviceTierName(DeviceTier tier);
 // "Baseline", "Extensions", "Desktop".
 const char* DeviceTierDescription(DeviceTier tier);
 
-// One requirement of a tier, with what the device has.
 struct CapabilityCheck
 {
     const char* name = "";
@@ -55,13 +54,11 @@ struct FormatSupport
     VkFormatFeatureFlags optimalTiling = 0;
 };
 
-// Everything MEngine wants to know about the physical device, queried once at startup. Only Vulkan 1.0 symbols are
-// linked: Features2 / Properties2 are fetched with vkGetInstanceProcAddr, and every extension struct is chained only
-// when the extension is listed by the device, because MEngine runs at API 1.1 and uses promoted functionality through
-// its extensions. Querying enables nothing; a supported capability still has to be enabled at device creation.
+// Queried once at startup; querying enables nothing. Only Vulkan 1.0 symbols are linked, so Features2 / Properties2
+// come from vkGetInstanceProcAddr, and since MEngine runs at API 1.1 an extension struct is chained only when the device
+// lists the extension.
 struct DeviceCapabilities
 {
-    // -- Identity ----------------------------------------------------------------------------------------------------
     VkPhysicalDeviceProperties properties{};
     uint32_t instanceVersion = 0; // loader
     // VK_KHR_driver_properties; empty / 0 without it.
@@ -70,11 +67,9 @@ struct DeviceCapabilities
     std::string driverInfo;
     VkConformanceVersion conformanceVersion{};
 
-    // -- Core features / memory ----------------------------------------------------------------------------------------
     VkPhysicalDeviceFeatures features{};
     VkPhysicalDeviceMemoryProperties memory{};
 
-    // -- Queues --------------------------------------------------------------------------------------------------------
     std::vector<QueueFamilyInfo> queueFamilies;
     uint32_t graphicsQueueFamily = 0; // the one MEngine uses
     bool graphicsQueueCompute = false;
@@ -163,7 +158,6 @@ struct DeviceCapabilities
     bool calibratedTimestamps = false;
     bool portabilitySubset = false;
 
-    // -- Lists ---------------------------------------------------------------------------------------------------------
     std::vector<ExtensionInfo> instanceExtensions;
     std::vector<ExtensionInfo> deviceExtensions;
     std::vector<FormatSupport> formats;
@@ -177,11 +171,11 @@ struct DeviceCapabilities
     std::vector<CapabilityCheck> BaselineChecks() const;
 };
 
-// Queries everything above; `graphicsQueueFamily` is the family MEngine renders on, `surface` the window surface.
+// `surface` may be VK_NULL_HANDLE; no family then reports present.
 DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice physicalDevice, uint32_t instanceVersion,
     uint32_t graphicsQueueFamily, VkSurfaceKHR surface);
 
-// Marks extensions that are enabled. Names not in the list are ignored.
+// Enabled names that are not in `extensions` are ignored.
 void MarkEnabledExtensions(std::vector<ExtensionInfo>& extensions, const std::vector<const char*>& enabled);
 
 const char* VendorName(uint32_t vendorId);
@@ -190,7 +184,6 @@ const char* DeviceTypeName(VkPhysicalDeviceType type);
 std::string DriverVersionString(uint32_t vendorId, uint32_t driverVersion);
 std::string ApiVersionString(uint32_t version);
 
-// One memory heap with the driver's current budget (VK_EXT_memory_budget) and what MEngine's allocator holds.
 struct HeapUsage
 {
     VkDeviceSize size = 0;

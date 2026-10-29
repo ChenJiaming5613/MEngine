@@ -51,7 +51,7 @@ constexpr double kStatsRefreshSeconds = 0.5;
 
 enum CameraMode : size_t
 {
-    kCameraModeFly = 0, // default
+    kCameraModeFly = 0,
     kCameraModeOrbit = 1,
     kCameraModeCount = 2,
 };
@@ -156,8 +156,7 @@ protected:
 
     SDL_AppResult OnEvent(const SDL_Event& event) override
     {
-        // The graph viewer recognizes two finger pinches on its canvas and keeps the touch emulated mouse from ImGui
-        // while one runs.
+        // The graph viewer keeps the touch emulated mouse from ImGui during a pinch on its canvas.
         if (!m_frameGraphViewer.HandleEvent(event, GetInput()))
         {
             m_imGui.ProcessEvent(event);
@@ -206,7 +205,7 @@ private:
         LoadSceneAt(0);
     }
 
-    // Loads config scene `index` (none without a config) and resets the camera and both lights for it.
+    // Also resets the camera and both lights; without a config only the reset runs.
     void LoadSceneAt(size_t index)
     {
         const SceneConfig* sceneConfig = m_config && index < m_config->scenes.size() ? &m_config->scenes[index] : nullptr;
@@ -372,7 +371,6 @@ private:
             glm::vec3 direction = directional.direction;
             if (ImGui::DragFloat3("Direction", &direction.x, 0.005f, -1.0f, 1.0f, "%.3f"))
             {
-                // Kept normalized; a zero vector keeps the previous direction.
                 const float length = glm::length(direction);
                 if (length > 1e-4f)
                 {
@@ -468,7 +466,6 @@ private:
         m_imGui.EndFrame();
     }
 
-    // Passes in execution order with their enabled flags, render pass groups and resource lifetimes of the last compile.
     // Toggles take effect at the next Render, which recompiles the graph.
     void BuildFrameGraphPanel()
     {
@@ -589,7 +586,6 @@ private:
 
     CameraController& ActiveCameraController() { return *m_cameraControllers[m_cameraMode]; }
 
-    // The new controller takes over the current view instead of jumping to its home view.
     void SetCameraMode(size_t mode)
     {
         if (mode == m_cameraMode || mode >= m_cameraControllers.size())

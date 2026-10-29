@@ -9,8 +9,7 @@
 
 namespace mengine {
 
-// Owns the window, input and frame clock, and drives the SDL main callbacks.
-// Handles suspension (Android background) and minimization; subclasses only see frames while visible.
+// Drives the SDL main callbacks. Subclasses get no OnFrame while suspended (Android background) or minimized.
 class Application
 {
 public:
