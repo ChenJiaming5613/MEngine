@@ -48,9 +48,10 @@ void GpuProfiler::Shutdown()
     m_slots = {};
     m_openScopes.clear();
     m_resolvedTimings.clear();
+    m_resolvedFrame = ~0ull;
 }
 
-void GpuProfiler::BeginFrame(VkCommandBuffer commandBuffer, uint32_t frameSlot)
+void GpuProfiler::BeginFrame(VkCommandBuffer commandBuffer, uint32_t frameSlot, uint64_t frame)
 {
     if (!IsSupported())
     {
@@ -63,6 +64,7 @@ void GpuProfiler::BeginFrame(VkCommandBuffer commandBuffer, uint32_t frameSlot)
     FrameSlot& slot = m_slots[frameSlot];
     slot.scopes.clear();
     slot.queryCount = 0;
+    slot.frame = frame;
     slot.hasResults = false;
     m_openScopes.clear();
 
@@ -137,12 +139,13 @@ void GpuProfiler::Resolve(uint32_t frameSlot)
         const uint64_t start = m_readback[scope.startQuery] & m_validMask;
         const uint64_t end = m_readback[scope.endQuery] & m_validMask;
         const uint64_t ticks = end >= start ? end - start : 0;
-        m_resolvedTimings.push_back(GpuTiming{
+        m_resolvedTimings.push_back(ScopeTiming{
             .name = scope.name,
             .depth = scope.depth,
-            .milliseconds = static_cast<double>(ticks) * m_nanosecondsPerTick * 1e-6,
+            .nanoseconds = static_cast<uint64_t>(static_cast<double>(ticks) * m_nanosecondsPerTick + 0.5),
         });
     }
+    m_resolvedFrame = slot.frame;
 }
 
 } // namespace mengine::rhi

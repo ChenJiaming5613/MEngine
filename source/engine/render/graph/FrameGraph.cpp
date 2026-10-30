@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 
 namespace mengine::render {
@@ -1201,9 +1202,46 @@ void FrameGraph::RecordBarriers(rhi::CommandBuffer& commandBuffer, const Node& n
     flush();
 }
 
+namespace {
+
+// CPU and GPU scopes share names and nesting so the two timings of a pass line up.
+class ProfileScope
+{
+public:
+    ProfileScope(rhi::CommandBuffer& commandBuffer, CpuProfiler& cpuProfiler, const char* name)
+        : m_commandBuffer(commandBuffer), m_cpuProfiler(cpuProfiler)
+    {
+        m_cpuProfiler.Push(name);
+        m_commandBuffer.PushTimestamp(name);
+    }
+    ~ProfileScope()
+    {
+        m_commandBuffer.PopTimestamp();
+        m_cpuProfiler.Pop();
+    }
+    ProfileScope(const ProfileScope&) = delete;
+    ProfileScope& operator=(const ProfileScope&) = delete;
+
+private:
+    rhi::CommandBuffer& m_commandBuffer;
+    CpuProfiler& m_cpuProfiler;
+};
+
+} // namespace
+
 void FrameGraph::Execute(rhi::CommandBuffer& commandBuffer, const RenderView& view)
 {
     MENGINE_ASSERT(!m_dirty);
+    m_cpuProfiler.BeginFrame(m_device->GetAbsoluteFrame());
+    {
+        const ProfileScope root(commandBuffer, m_cpuProfiler, kProfileRootName);
+        ExecuteSchedule(commandBuffer, view);
+    }
+    m_cpuProfiler.EndFrame();
+}
+
+void FrameGraph::ExecuteSchedule(rhi::CommandBuffer& commandBuffer, const RenderView& view)
+{
     for (const ScheduleEntry& entry : m_schedule)
     {
         if (entry.group == kNone)
@@ -1216,9 +1254,8 @@ void FrameGraph::Execute(rhi::CommandBuffer& commandBuffer, const RenderView& vi
             RecordBarriers(commandBuffer, node);
             const FrameGraphResources resources(*this, entry.node);
             FrameGraphContext context{.commandBuffer = commandBuffer, .resources = resources, .view = view};
-            commandBuffer.PushTimestamp(node.name.c_str());
+            const ProfileScope scope(commandBuffer, m_cpuProfiler, node.name.c_str());
             node.pass->Execute(context);
-            commandBuffer.PopTimestamp();
             continue;
         }
 
@@ -1247,7 +1284,7 @@ void FrameGraph::Execute(rhi::CommandBuffer& commandBuffer, const RenderView& vi
         commandBuffer.SetClearDepth(group.clearDepth);
 
         const bool nested = group.nodes.size() > 1;
-        commandBuffer.PushTimestamp(group.name.c_str());
+        const ProfileScope groupScope(commandBuffer, m_cpuProfiler, group.name.c_str());
         commandBuffer.BindPass(group.handle);
         for (size_t member = 0; member < group.nodes.size(); ++member)
         {
@@ -1258,18 +1295,14 @@ void FrameGraph::Execute(rhi::CommandBuffer& commandBuffer, const RenderView& vi
             Node& node = m_nodes[group.nodes[member]];
             const FrameGraphResources resources(*this, group.nodes[member]);
             FrameGraphContext context{.commandBuffer = commandBuffer, .resources = resources, .view = view};
+            std::optional<ProfileScope> memberScope;
             if (nested)
             {
-                commandBuffer.PushTimestamp(node.name.c_str());
+                memberScope.emplace(commandBuffer, m_cpuProfiler, node.name.c_str());
             }
             node.pass->Execute(context);
-            if (nested)
-            {
-                commandBuffer.PopTimestamp();
-            }
         }
         commandBuffer.EndPass();
-        commandBuffer.PopTimestamp();
     }
 }
 

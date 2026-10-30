@@ -151,6 +151,7 @@ public:
     SamplerHandle GetDefaultSampler() const { return m_defaultSampler; }
 
     GpuProfiler& GetProfiler() { return m_profiler; }
+    const GpuProfiler& GetProfiler() const { return m_profiler; }
     uint64_t GetAbsoluteFrame() const { return m_absoluteFrame; }
     uint32_t GetFrameSlot() const { return m_frameSlot; }
     const VkPhysicalDeviceProperties& GetProperties() const { return m_properties; }

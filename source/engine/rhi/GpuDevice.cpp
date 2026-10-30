@@ -2468,7 +2468,7 @@ bool GpuDevice::BeginFrame()
     CheckVk(vkBeginCommandBuffer(frame.commandBuffer, &beginInfo), "vkBeginCommandBuffer");
 
     m_commandBuffer.Init(this, frame.commandBuffer);
-    m_profiler.BeginFrame(frame.commandBuffer, m_frameSlot);
+    m_profiler.BeginFrame(frame.commandBuffer, m_frameSlot, m_absoluteFrame);
 
     m_dynamicFrameStart = m_frameSlot * m_dynamicBytesPerFrame;
     m_dynamicUsed = 0;

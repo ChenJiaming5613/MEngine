@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/CpuProfiler.hpp"
 #include "rhi/GpuResources.hpp"
 
 #include <glm/vec4.hpp>
@@ -222,8 +223,11 @@ public:
     // Declaration errors throw with MENGINE_ENABLE_VALIDATION_LAYERS; otherwise they are logged and the offending passes
     // are skipped. Calls OnCompiled on every scheduled pass.
     void Compile();
-    // Call outside a render pass.
+    // Call outside a render pass. Every pass and render pass group is timed on the CPU (recording) and the GPU, inside
+    // one root scope named kProfileRootName.
     void Execute(rhi::CommandBuffer& commandBuffer, const RenderView& view);
+    const CpuProfiler& GetCpuProfiler() const { return m_cpuProfiler; }
+    static constexpr const char* kProfileRootName = "Frame Graph";
 
     const FrameGraphDebugInfo& GetDebugInfo() const { return m_debugInfo; }
     // Indexed like FrameGraphDebugInfo::nodes (AddPass order); nullptr when out of range.
@@ -351,9 +355,11 @@ private:
     void BuildRenderPasses();
     void BuildDebugInfo();
 
+    void ExecuteSchedule(rhi::CommandBuffer& commandBuffer, const RenderView& view);
     void RecordBarriers(rhi::CommandBuffer& commandBuffer, const Node& node);
 
     rhi::GpuDevice* m_device = nullptr;
+    CpuProfiler m_cpuProfiler;
     std::vector<Node> m_nodes;
     std::vector<Resource> m_resources;
     std::unordered_map<std::string, uint32_t> m_resourceNames;

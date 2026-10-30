@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/CpuProfiler.hpp"
 #include "rhi/GpuEnums.hpp"
 #include "rhi/VulkanUtils.hpp"
 
@@ -9,13 +10,6 @@
 #include <vector>
 
 namespace mengine::rhi {
-
-struct GpuTiming
-{
-    std::string name;
-    uint32_t depth = 0;
-    double milliseconds = 0.0;
-};
 
 // Timestamp query pool split into one slot per frame in flight, as in Raptor's GPUTimestampManager.
 // A slot is read back right after its frame fence is waited on, so results never stall the CPU.
@@ -28,13 +22,16 @@ public:
     bool IsSupported() const { return m_queryPool != VK_NULL_HANDLE; }
 
     // Called at the start of a frame's command buffer, after its fence wait. Must be outside a render pass.
-    void BeginFrame(VkCommandBuffer commandBuffer, uint32_t frameSlot);
+    void BeginFrame(VkCommandBuffer commandBuffer, uint32_t frameSlot, uint64_t frame);
 
     void Push(VkCommandBuffer commandBuffer, const char* name);
     void Pop(VkCommandBuffer commandBuffer);
 
-    // Timings of the most recently resolved frame, in push order.
-    const std::vector<GpuTiming>& Timings() const { return m_resolvedTimings; }
+    // Timings of the most recently resolved frame (kMaxFramesInFlight behind the recording one), in push order.
+    const std::vector<ScopeTiming>& Timings() const { return m_resolvedTimings; }
+    // Frame number passed to the BeginFrame of Timings(); ~0 before the first resolve.
+    uint64_t TimingsFrame() const { return m_resolvedFrame; }
+    double TimestampPeriodNanoseconds() const { return m_nanosecondsPerTick; }
 
 private:
     struct Scope
@@ -49,6 +46,7 @@ private:
     {
         std::vector<Scope> scopes;
         uint32_t queryCount = 0;
+        uint64_t frame = 0;
         bool hasResults = false;
     };
 
@@ -64,7 +62,8 @@ private:
     uint32_t m_currentSlot = 0;
     std::vector<uint32_t> m_openScopes;
     std::vector<uint64_t> m_readback;
-    std::vector<GpuTiming> m_resolvedTimings;
+    std::vector<ScopeTiming> m_resolvedTimings;
+    uint64_t m_resolvedFrame = ~0ull;
 };
 
 } // namespace mengine::rhi

@@ -103,7 +103,7 @@ graph TB
 - `kMaxFramesInFlight = 2`。每个帧槽有自己的命令池、主命令缓冲、`imageAvailable` 信号量和 fence；`renderFinished` 按 swapchain 图像分配。
 - `BeginFrame` 等本槽 fence、执行到期的延迟销毁、acquire 图像、开始命令缓冲；返回 false 时（最小化、swapchain 过期、surface 丢失）调用方跳过这一帧。fence 只在 acquire 成功后才重置。
 - 每帧常量从动态 uniform 环分配（每帧槽 1 MiB，按 `minUniformBufferOffsetAlignment` 对齐），以动态偏移绑定。
-- `GpuProfiler` 的 timestamp 查询按帧槽切分，fence 等过之后读回，不阻塞 CPU。
+- `GpuProfiler` 的 timestamp 查询按帧槽切分，fence 等过之后读回，不阻塞 CPU；结果以纳秒记录，并带上所属帧号。
 
 ### 4.6 Swapchain
 
@@ -200,7 +200,7 @@ graph LR
   - 相邻图形节点附件集合相同、后加入者全部 `Load`、组内其他访问只有读-读、中间没有 compute 节点时，合并为一个 render pass，组名用 `+` 连接。
   - 描述相同、生命周期不重叠的瞬时纹理共用一个句柄（可关闭）。
   - 声明错误按构建类型抛异常或跳过出错节点；用户禁用的节点不算错误，依赖它的节点显示为 skipped。
-- **执行**：只遍历编译好的调度表，每帧不分配内存。非附件访问合成 `ExecutionBarrier`（每批最多 8 项）；导入 buffer 的状态由图跨帧跟踪；每个节点和合并组自动包一层同名 GPU 计时。
+- **执行**：只遍历编译好的调度表，每帧不分配内存。非附件访问合成 `ExecutionBarrier`（每批最多 8 项）；导入 buffer 的状态由图跨帧跟踪；每个节点和合并组自动包一层同名的 CPU（录制耗时，`core/CpuProfiler`）与 GPU 计时，外加根作用域 `Frame Graph`。查看器的 Profiler 窗口按帧号把两者配对（GPU 结果晚 `kMaxFramesInFlight` 帧到达），显示单帧值与滑动平均，精确到纳秒。
 - **调试**：`GetDebugInfo()` 返回编译快照，供查看器的 Frame Graph 面板与节点图使用。
 
 ## 6. 资源与着色器管线

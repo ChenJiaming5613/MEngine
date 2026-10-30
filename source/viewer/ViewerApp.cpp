@@ -5,6 +5,7 @@
 #include "FlyCameraController.hpp"
 #include "FrameGraphViewer.hpp"
 #include "OrbitCameraController.hpp"
+#include "ProfilerPanel.hpp"
 #include "ViewerConfig.hpp"
 #include "core/FileSystem.hpp"
 #include "core/Log.hpp"
@@ -291,7 +292,7 @@ private:
         {
             return true;
         }
-        if (m_frameGraphViewer.Contains(x, y) || m_capabilitiesPanel.Contains(x, y))
+        if (m_frameGraphViewer.Contains(x, y) || m_capabilitiesPanel.Contains(x, y) || m_profilerPanel.Contains(x, y))
         {
             return true;
         }
@@ -390,9 +391,10 @@ private:
             const rhi::PipelineStats& pipelineStats = m_device.GetPipelineStats();
             ImGui::Text("Pipelines: %u created, %.1f ms (cache loaded %zu KB)", pipelineStats.created,
                 pipelineStats.totalMilliseconds, pipelineStats.loadedCacheBytes / 1024);
-            for (const rhi::GpuTiming& timing : m_device.GetProfiler().Timings())
+            bool showProfiler = m_profilerPanel.IsOpen();
+            if (ImGui::Checkbox("Show Profiler", &showProfiler))
             {
-                ImGui::Text("%*sGPU %s: %.3f ms", static_cast<int>(timing.depth * 2), "", timing.name.c_str(), timing.milliseconds);
+                m_profilerPanel.SetOpen(showProfiler);
             }
         }
 
@@ -498,6 +500,8 @@ private:
 
         m_frameGraphViewer.Draw(m_renderer.GetFrameGraph(), m_settings, kImGuiPassName, GetInput());
         m_capabilitiesPanel.Draw(m_device);
+        m_profilerPanel.Update(m_renderer.GetFrameGraph().GetCpuProfiler(), m_device.GetProfiler());
+        m_profilerPanel.Draw();
         // After every window, so popups of the graph viewer count too.
         m_anyPopupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
@@ -641,6 +645,7 @@ private:
     render::ImGuiLayer m_imGui;
     FrameGraphViewer m_frameGraphViewer;
     DeviceCapabilitiesPanel m_capabilitiesPanel;
+    ProfilerPanel m_profilerPanel;
     render::Renderer m_renderer;
     render::Camera m_camera;
     render::RenderSettings m_settings;
