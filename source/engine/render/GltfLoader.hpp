@@ -69,6 +69,9 @@ public:
     // logs the load statistics.
     void Finish();
 
+    VkDeviceSize UploadedBufferBytes() const { return m_uploadedBufferBytes; }
+    VkDeviceSize TotalBufferBytes() const { return m_totalBufferBytes; }
+
 private:
     void CreateMaterial(size_t materialIndex, const std::vector<rhi::SamplerHandle>& samplers);
 
@@ -78,6 +81,8 @@ private:
     Scene& m_scene;
 
     size_t m_nextBuffer = 0;
+    VkDeviceSize m_uploadedBufferBytes = 0;
+    VkDeviceSize m_totalBufferBytes = 0;
     std::vector<rhi::TextureHandle> m_textures; // per texture request, invalid when it failed
     std::vector<bool> m_textureHandled;
     size_t m_handledTextureCount = 0;

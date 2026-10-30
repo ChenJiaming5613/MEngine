@@ -35,8 +35,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <string>
@@ -349,15 +351,7 @@ private:
         }
         else if (m_renderer.IsSceneLoading())
         {
-            const render::SceneLoadProgress progress = m_renderer.GetSceneLoadProgress();
-            if (progress.parsing)
-            {
-                ImGui::Text("Scene: parsing...");
-            }
-            else
-            {
-                ImGui::Text("Scene: loading textures %zu / %zu", progress.texturesUploaded, progress.textureCount);
-            }
+            ImGui::Text("Scene: loading %s...", CurrentSceneName());
         }
         else
         {
@@ -505,8 +499,66 @@ private:
         // After every window, so popups of the graph viewer count too.
         m_anyPopupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
+        DrawSceneLoadOverlay();
         ActiveCameraController().DrawOverlay();
         m_imGui.EndFrame();
+    }
+
+    const char* CurrentSceneName() const
+    {
+        return m_config && m_currentScene < m_config->scenes.size() ? m_config->scenes[m_currentScene].name.c_str() : "scene";
+    }
+
+    // Ignores input, so the camera and the panels keep working while a scene loads.
+    void DrawSceneLoadOverlay()
+    {
+        if (!m_renderer.IsSceneLoading())
+        {
+            return;
+        }
+        const render::SceneLoadProgress progress = m_renderer.GetSceneLoadProgress();
+        const ImGuiIO& io = ImGui::GetIO();
+        const float fontSize = ImGui::GetFontSize();
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - fontSize * 2.0f), ImGuiCond_Always,
+            ImVec2(0.5f, 1.0f));
+        // Height 0: fit the content.
+        ImGui::SetNextWindowSize(ImVec2(std::min(io.DisplaySize.x * 0.6f, fontSize * 32.0f), 0.0f));
+        ImGui::SetNextWindowBgAlpha(0.85f);
+        constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs
+            | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+        if (ImGui::Begin("##SceneLoad", nullptr, kFlags))
+        {
+            ImGui::Text("Loading %s", CurrentSceneName());
+            const float fraction = progress.Fraction();
+            char overlay[32];
+            if (fraction < 0.0f)
+            {
+                std::snprintf(overlay, sizeof(overlay), "Parsing");
+                // A negative, changing fraction animates an indeterminate bar.
+                ImGui::ProgressBar(-static_cast<float>(ImGui::GetTime()), ImVec2(-FLT_MIN, 0.0f), overlay);
+            }
+            else
+            {
+                std::snprintf(overlay, sizeof(overlay), "%.0f%%", fraction * 100.0f);
+                ImGui::ProgressBar(fraction, ImVec2(-FLT_MIN, 0.0f), overlay);
+            }
+
+            constexpr double kMegabyte = 1024.0 * 1024.0;
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            if (progress.stage == render::SceneLoadStage::Parsing)
+            {
+                ImGui::Text("Reading and parsing the glTF file   %.1f s", progress.elapsedSeconds);
+            }
+            else
+            {
+                ImGui::Text("Geometry %.0f / %.0f MB   Textures %zu / %zu   %.1f s",
+                    static_cast<double>(progress.geometryBytesUploaded) / kMegabyte,
+                    static_cast<double>(progress.geometryBytes) / kMegabyte, progress.texturesUploaded, progress.textureCount,
+                    progress.elapsedSeconds);
+            }
+            ImGui::PopStyleColor();
+        }
+        ImGui::End();
     }
 
     // Toggles take effect at the next Render, which recompiles the graph.

@@ -57,7 +57,7 @@
 | D8 | **计时项在计划阶段按调度顺序整帧预留**：GPU 和 CPU profiler 都新增“预留 scope / 写入开始 / 写入结束（或时长）”接口，录制线程只往预留好的 query 里写；Frame Graph 不再使用全局栈式的 `Push` / `Pop` | 全局 scope 栈在多个命令缓冲上会乱（Review P1-10）；整帧统一预留，结果顺序就与调度顺序一致，inline 组和 secondary 组之间也不会错位 |
 | D9 | 一个 pass 被分成多段时：GPU 时间取第一段开始到最后一段结束；CPU 时间取各段录制时间之和（即总工作量），组这一行的 CPU 取墙钟时间 | 两种 CPU 时间都有用：总工作量看负载，墙钟看实际帧开销 |
 | D10 | **上传改为提交后不等待**：批次轮流使用 3 个上传槽（命令池、fence、24 MB staging 段），只在复用仍在途的槽时等待；`SceneLoader` 每帧一个不跨槽的批次（`UploadBatchHasRoomFor`）。不需要 ticket，所有上传都走同一条路径 | 同一队列按提交顺序执行：批次末尾的 barrier 覆盖后续帧的读取，帧 fence 覆盖更早的批次，所以现有的按帧号延迟销毁仍然正确。上一个批次可能排在一个等待交换链图像的帧后面，复用它的槽就要等呈现，所以至少 3 个槽 |
-| D11 | **取消加载不等待**：解析和解码任务持有各自的数据；取消时把任务移进“孤儿”列表，`Update` 每帧回收已完成的任务，`Shutdown` 时才等待 | tinygltf 解析不可中断（Bistro 约 15 秒） |
+| D11 | **取消加载不等待**：取消时把在途的解析、解码任务连同它们读取的 `GltfSceneData` 移进“孤儿”列表，`Update` 每帧释放已完成的，`Shutdown` 时才等待 | tinygltf 解析不可中断，解码任务读取场景数据；等待它们会让切换场景卡住 |
 
 ## 4. 帧内流程（并行录制）
 
@@ -96,12 +96,13 @@ sequenceDiagram
 
   剩下的时间是 CPU 上的 memcpy 和命令录制。四个场景开同步校验运行无报错，加载结果不变；Sponza 上传中切到 Bistro、Bistro 上传中退出都正常。
 
-### A2 取消加载不等待（D11，Review P1-9 遗留）
+### A2 取消加载不等待（D11，Review P1-9 遗留）——**已完成**
 
-- `SceneLoader` 的解析、解码任务对象改为 `std::unique_ptr`，任务持有输入数据（路径、`GltfSceneData` 的共享所有权）。
-- `Cancel()`：把在途任务移进 `m_orphans`，立即返回；`Update()` 回收已完成的孤儿；`Shutdown()` 等待全部。
-- 加载任务设为低优先级（D7）。
-- **验证**：Bistro 解析中切到 Sponza，切换立即生效（Sponza 与 Bistro 的解析并行）；连续快速切换；解析中退出。
+- `SceneLoader::Cancel()`：先释放上传器，再把解析任务、解码任务和它们读取的 `GltfSceneData` 打包成 `OrphanedTasks` 放进 `m_orphans`，立即销毁部分加载的场景并返回；`Update()` 每帧（加载与否）释放已完成的孤儿；`Shutdown()` 等待全部。上传失败的路径也改为走 `Cancel()`。
+- 解析、解码任务设为 `TASK_PRIORITY_LOW`（D7）。
+- 加载进度：`SceneLoadProgress` 给出阶段（解析 / 上传）、耗时、几何字节与纹理数；`Fraction()` 解析阶段返回负值（tinygltf 不报告进度），上传阶段几何占前 25%、纹理占后 75%。查看器在画面底部居中显示进度条（解析时为不定进度动画），窗口不接收输入，加载期间相机和面板照常可用。
+- 更正：此前认为 Bistro 的 tinygltf 解析约 15 秒，实测 Release 约 0.4 秒，15 秒几乎全部是纹理解码；旧的取消要等的主要是在途的解码任务。
+- **验证**（Release 与 Debug 同步校验）：Bistro 解析中切 Sponza → Sponza 解析中切回 Bistro → Bistro 解码到第 41 张纹理时切 Sponza → Sponza 完成后再加载 Bistro → 解码中退出，全程无报错、无卡住；四个场景单独加载的结果不变。切换那一帧仍有 40–50 ms（`RequestScene` 的 `WaitIdle` 和销毁旧场景），之后的帧不受影响。
 
 ### B1 RHI：secondary command buffer 与每线程命令池（D5，Review P1-3）
 

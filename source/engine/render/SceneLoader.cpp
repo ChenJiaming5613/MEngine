@@ -14,8 +14,11 @@
 
 namespace mengine::render {
 
+// Loading yields to frame work: a thread waiting for high priority tasks (parallel recording) never picks these up.
 struct SceneLoader::ParseTask : enki::ITaskSet
 {
+    ParseTask() { m_Priority = enki::TASK_PRIORITY_LOW; }
+
     std::string path;
     GltfParseOptions options;
     std::unique_ptr<GltfSceneData> result;
@@ -25,12 +28,43 @@ struct SceneLoader::ParseTask : enki::ITaskSet
 
 struct SceneLoader::DecodeTask : enki::ITaskSet
 {
+    DecodeTask() { m_Priority = enki::TASK_PRIORITY_LOW; }
+
     const GltfSceneData* data = nullptr;
     size_t requestIndex = 0;
     PreparedTexture result;
 
     void ExecuteRange(enki::TaskSetPartition, uint32_t) override { result = PrepareGltfTexture(*data, requestIndex); }
 };
+
+struct SceneLoader::OrphanedTasks
+{
+    std::unique_ptr<ParseTask> parse;
+    std::unique_ptr<GltfSceneData> data;
+    std::deque<std::unique_ptr<DecodeTask>> decoding;
+
+    bool IsComplete() const
+    {
+        return (!parse || parse->GetIsComplete())
+            && std::all_of(decoding.begin(), decoding.end(), [](const auto& task) { return task->GetIsComplete(); });
+    }
+};
+
+float SceneLoadProgress::Fraction() const
+{
+    if (stage == SceneLoadStage::Parsing)
+    {
+        return -1.0f;
+    }
+    constexpr float kGeometryShare = 0.25f;
+    const float geometry = geometryBytes > 0 ? static_cast<float>(geometryBytesUploaded) / static_cast<float>(geometryBytes) : 1.0f;
+    if (textureCount == 0)
+    {
+        return geometry;
+    }
+    const float textures = static_cast<float>(texturesUploaded) / static_cast<float>(textureCount);
+    return kGeometryShare * geometry + (1.0f - kGeometryShare) * textures;
+}
 
 SceneLoader::SceneLoader() = default;
 SceneLoader::~SceneLoader() = default;
@@ -52,6 +86,18 @@ void SceneLoader::Shutdown()
     {
         Cancel();
     }
+    for (const std::unique_ptr<OrphanedTasks>& orphan : m_orphans)
+    {
+        if (orphan->parse)
+        {
+            m_tasks->WaitforTask(orphan->parse.get());
+        }
+        for (const std::unique_ptr<DecodeTask>& task : orphan->decoding)
+        {
+            m_tasks->WaitforTask(task.get());
+        }
+    }
+    m_orphans.clear();
     m_device = nullptr;
     m_tasks = nullptr;
 }
@@ -61,6 +107,7 @@ void SceneLoader::Start(std::string_view assetPath, Scene& scene)
     Cancel();
     m_scene = &scene;
     m_path = std::string(assetPath);
+    m_startTime = std::chrono::steady_clock::now();
     m_parse = std::make_unique<ParseTask>();
     m_parse->path = m_path;
     m_parse->options.bcSupported = m_device->SupportsTextureCompressionBc();
@@ -73,22 +120,28 @@ void SceneLoader::Cancel()
     {
         return;
     }
-    WaitForTasks();
     m_uploader.reset();
+    OrphanTasks();
     m_scene->Destroy(*m_device);
     Reset();
 }
 
-void SceneLoader::WaitForTasks()
+void SceneLoader::OrphanTasks()
 {
-    if (m_parse)
+    if (!m_parse && m_decoding.empty())
     {
-        m_tasks->WaitforTask(m_parse.get());
+        return;
     }
-    for (const std::unique_ptr<DecodeTask>& task : m_decoding)
-    {
-        m_tasks->WaitforTask(task.get());
-    }
+    auto orphan = std::make_unique<OrphanedTasks>();
+    orphan->parse = std::move(m_parse);
+    orphan->data = std::move(m_data);
+    orphan->decoding = std::move(m_decoding);
+    m_orphans.push_back(std::move(orphan));
+}
+
+void SceneLoader::FreeFinishedOrphans()
+{
+    std::erase_if(m_orphans, [](const std::unique_ptr<OrphanedTasks>& orphan) { return orphan->IsComplete(); });
 }
 
 void SceneLoader::Reset()
@@ -119,15 +172,9 @@ void SceneLoader::LaunchDecodes()
     }
 }
 
-SceneLoadStatus SceneLoader::Fail(const char* reason)
-{
-    MENGINE_LOG_ERROR("Failed to load scene %s: %s", m_path.c_str(), reason);
-    Cancel();
-    return SceneLoadStatus::Failed;
-}
-
 SceneLoadStatus SceneLoader::Update(VkDeviceSize uploadBudget)
 {
+    FreeFinishedOrphans();
     if (m_scene == nullptr)
     {
         return SceneLoadStatus::Idle;
@@ -191,11 +238,11 @@ SceneLoadStatus SceneLoader::Update(VkDeviceSize uploadBudget)
     }
     catch (const std::exception& exception)
     {
-        WaitForTasks();
-        m_uploader.reset();
-        m_scene->Destroy(*m_device);
+        const std::string path = m_path;
+        Cancel();
         rhi::RethrowIfDeviceUnusable(exception);
-        return Fail(exception.what());
+        MENGINE_LOG_ERROR("Failed to load scene %s: %s", path.c_str(), exception.what());
+        return SceneLoadStatus::Failed;
     }
 
     MENGINE_LOG_INFO("Uploaded %s over %u updates, longest %.1f ms", m_path.c_str(), m_updateCount, m_longestUpdateMilliseconds);
@@ -206,7 +253,10 @@ SceneLoadStatus SceneLoader::Update(VkDeviceSize uploadBudget)
 SceneLoadProgress SceneLoader::GetProgress() const
 {
     return SceneLoadProgress{
-        .parsing = m_parse != nullptr,
+        .stage = m_uploader ? SceneLoadStage::Uploading : SceneLoadStage::Parsing,
+        .elapsedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_startTime).count(),
+        .geometryBytesUploaded = m_uploader ? m_uploader->UploadedBufferBytes() : 0,
+        .geometryBytes = m_uploader ? m_uploader->TotalBufferBytes() : 0,
         .texturesUploaded = m_texturesUploaded,
         .textureCount = m_data ? m_data->textureRequests.size() : 0,
     };

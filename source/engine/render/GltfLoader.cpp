@@ -1583,6 +1583,10 @@ GltfSceneUploader::GltfSceneUploader(rhi::GpuDevice& device, const GltfSceneData
     , m_textureHandled(data.textureRequests.size(), false)
 {
     MENGINE_ASSERT(scene.buffers.empty() && scene.textures.empty() && scene.samplers.empty() && scene.materials.empty());
+    for (const GltfBufferData& buffer : data.buffers)
+    {
+        m_totalBufferBytes += buffer.Bytes().size();
+    }
 }
 
 bool GltfSceneUploader::UploadBuffers(VkDeviceSize byteBudget)
@@ -1609,6 +1613,7 @@ bool GltfSceneUploader::UploadBuffers(VkDeviceSize byteBudget)
         m_scene.buffers.push_back(m_device.CreateBuffer(creation));
         ++m_nextBuffer;
         uploaded += bytes.size();
+        m_uploadedBufferBytes += bytes.size();
     } while (m_nextBuffer < buffers.size() && uploaded < byteBudget &&
              buffers[m_nextBuffer].Bytes().size() <= byteBudget - uploaded &&
              m_device.UploadBatchHasRoomFor(buffers[m_nextBuffer].Bytes().size()));

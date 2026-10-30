@@ -180,7 +180,7 @@ graph LR
 - glTF 加载分两阶段（`GltfLoader.hpp`）：
   - CPU 阶段，任意线程、不接触 GPU：`ParseGltfScene` 做 tinygltf 解析（文件回调走资产文件系统，Android 可读 APK）、收集纹理请求、材质 → primitive（accessor 转换、平面法线）→ 展开节点并按（不透明在前、管线 key、材质）稳定排序，产出 `GltfSceneData`（`GltfSceneData.hpp`，持有解析后的模型）；`PrepareGltfTexture` 读取并解码单个纹理请求，可对不同请求并发调用。
   - GPU 阶段，只在主线程：`GltfSceneUploader` 按字节预算逐步 `UploadBuffers`、逐个 `UploadTexture`，最后 `Finish` 创建采样器、材质与 descriptor set 并填好 `Scene`。
-  - `SceneLoader`（`Renderer::RequestScene` / `UpdateSceneLoad`）把两个阶段跨帧组合：解析和解码是 enkiTS 任务，解码最多领先上传 `max(2, 工作线程数)` 个纹理（限制驻留的解码像素）；主线程每帧调用一次，在一个上传批次里传完已就绪的 buffer 和纹理（每次约 32 MB 预算），全部完成后 `Finish`、预热管线。加载期间场景没有 draw，画面继续刷新；查看器在完成时复位相机和灯光。
+  - `SceneLoader`（`Renderer::RequestScene` / `UpdateSceneLoad`）把两个阶段跨帧组合：解析和解码是 enkiTS 任务，解码最多领先上传 `max(2, 工作线程数)` 个纹理（限制驻留的解码像素）；主线程每帧调用一次，在一个上传批次里传完已就绪的 buffer 和纹理（每次约 32 MB 预算），全部完成后 `Finish`、预热管线。加载期间场景没有 draw，画面继续刷新；查看器在底部显示进度条，完成时复位相机和灯光。取消（切换场景）不等待：在途任务连同它读取的数据转为孤儿，跑完后由下一次 `Update` 释放，`Shutdown` 才等待。加载任务是低优先级。
   - 色彩空间由用途决定：base color、emissive、specular-glossiness 为 sRGB，其余线性。
   - `MSFT_texture_dds` 优先：设备支持 BC 就原样上传，否则 CPU 解码 BC7，从不大于 512² 的 mip 开始。
   - 一个 glTF buffer view 对应一个 GPU buffer；能直接引用的 accessor 直接引用，其他（交错、归一化整数、sparse、8 位索引）先在 CPU 上转换。
