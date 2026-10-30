@@ -153,7 +153,7 @@ SceneLoadStatus SceneLoader::Update(VkDeviceSize uploadBudget)
     const auto updateStart = std::chrono::steady_clock::now();
     try
     {
-        // One submission per update: each upload batch waits for its fence.
+        // One submission per update, sized to fit one upload slot: crossing into the next slot could wait for the GPU.
         rhi::UploadBatchScope batch(*m_device);
         VkDeviceSize uploaded = 0;
         if (!m_buffersUploaded)
@@ -163,6 +163,10 @@ SceneLoadStatus SceneLoader::Update(VkDeviceSize uploadBudget)
         }
         while (!m_decoding.empty() && m_decoding.front()->GetIsComplete() && uploaded < uploadBudget)
         {
+            if (uploaded > 0 && !m_device->UploadBatchHasRoomFor(m_decoding.front()->result.dataSize))
+            {
+                break;
+            }
             const std::unique_ptr<DecodeTask> task = std::move(m_decoding.front());
             m_decoding.pop_front();
             uploaded += task->result.dataSize;
@@ -170,13 +174,13 @@ SceneLoadStatus SceneLoader::Update(VkDeviceSize uploadBudget)
             ++m_texturesUploaded;
             LaunchDecodes();
         }
-        batch.End();
-
         const bool done = m_buffersUploaded && m_texturesUploaded == m_data->textureRequests.size();
         if (done)
         {
+            // In the same batch: material constants are tiny, and a second batch would reuse an older upload slot.
             m_uploader->Finish();
         }
+        batch.End();
         ++m_updateCount;
         m_longestUpdateMilliseconds = std::max(m_longestUpdateMilliseconds,
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - updateStart).count());

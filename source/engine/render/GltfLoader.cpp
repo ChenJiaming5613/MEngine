@@ -1610,7 +1610,8 @@ bool GltfSceneUploader::UploadBuffers(VkDeviceSize byteBudget)
         ++m_nextBuffer;
         uploaded += bytes.size();
     } while (m_nextBuffer < buffers.size() && uploaded < byteBudget &&
-             buffers[m_nextBuffer].Bytes().size() <= byteBudget - uploaded);
+             buffers[m_nextBuffer].Bytes().size() <= byteBudget - uploaded &&
+             m_device.UploadBatchHasRoomFor(buffers[m_nextBuffer].Bytes().size()));
     batch.End();
     return m_nextBuffer == buffers.size();
 }

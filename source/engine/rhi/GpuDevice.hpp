@@ -102,9 +102,14 @@ public:
     // Recreates the pass's output textures (same handles) and framebuffer. Descriptor sets sampling them must be updated.
     void ResizeOutputTextures(RenderPassHandle handle, uint32_t width, uint32_t height);
 
-    // Batches staging copies and mip generation into one submission; nestable. Prefer UploadBatchScope.
+    // Batches staging copies and mip generation into one submission; nestable. Prefer UploadBatchScope. The submission
+    // does not wait: the single queue runs it before every later frame, and its staging memory is recycled once its
+    // fence signals.
     void BeginUploadBatch();
     void EndUploadBatch();
+    // Whether the open batch can stage `dataBytes` more (plus per mip level alignment) without being submitted and
+    // continued in the next upload slot, which waits for the GPU when that slot is still in flight. True outside a batch.
+    bool UploadBatchHasRoomFor(VkDeviceSize dataBytes) const;
 
     // Waits for the frame slot, recreates the swapchain if needed and acquires an image.
     // Returns false when nothing can be rendered this iteration (minimized, out of date, surface lost).
@@ -200,19 +205,34 @@ private:
         VkFence inFlight = VK_NULL_HANDLE;
     };
 
-    struct PendingDestruction
-    {
-        uint64_t frame = 0;
-        std::function<void()> destroy;
-    };
-
-    // A range of the staging ring, or a dedicated buffer for uploads larger than the ring. mappedData points at offset.
+    // A range of the staging ring, or a dedicated buffer for uploads larger than a ring segment. mappedData points at
+    // offset.
     struct StagingBuffer
     {
         VkBuffer buffer = VK_NULL_HANDLE;
         VmaAllocation allocation = VK_NULL_HANDLE;
         void* mappedData = nullptr;
         VkDeviceSize offset = 0;
+    };
+
+    struct UploadSlot
+    {
+        VkCommandPool commandPool = VK_NULL_HANDLE;
+        VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+        bool inFlight = false;
+        VkDeviceSize stagingUsed = 0;
+        std::vector<StagingBuffer> dedicatedStaging;
+        VkDeviceSize dedicatedStagingBytes = 0;
+    };
+    // Batches are submitted between frames, so the previous batch may sit behind a frame still waiting for its swapchain
+    // image; reusing its slot would wait for presentation. With three slots the reused slot is two batches older.
+    static constexpr uint32_t kUploadSlotCount = 3;
+
+    struct PendingDestruction
+    {
+        uint64_t frame = 0;
+        std::function<void()> destroy;
     };
 
     void CreateInstance();
@@ -237,6 +257,9 @@ private:
     VkCommandBuffer UploadCommandBuffer() const;
     void BeginUploadCommands();
     void SubmitUploadCommands();
+    void RetireUploadSlot(UploadSlot& slot);
+    // Recycles the staging memory of batches the GPU has finished; never waits.
+    void RetireCompletedUploads();
 
     void CreateTextureObjects(Texture& texture);
     void DeferTextureObjects(Texture& texture);
@@ -306,16 +329,14 @@ private:
     uint32_t m_dynamicFrameStart = 0;
     uint32_t m_dynamicUsed = 0;
 
-    VkCommandPool m_uploadPool = VK_NULL_HANDLE;
-    VkCommandBuffer m_uploadCommandBuffer = VK_NULL_HANDLE;
-    VkFence m_uploadFence = VK_NULL_HANDLE;
+    // Batches rotate through the slots, so one records while the others are in flight; a slot is reused only after its
+    // fence signals.
+    std::array<UploadSlot, kUploadSlotCount> m_uploadSlots{};
+    uint32_t m_uploadSlot = 0;
     uint32_t m_uploadDepth = 0;
     bool m_uploadHasBufferCopies = false;
-    // Persistent and reused by every batch (each one waits for its fence), so uploads do not allocate memory.
+    // Persistent, so uploads do not allocate memory; slot i owns segment i.
     StagingBuffer m_stagingRing;
-    VkDeviceSize m_stagingRingUsed = 0;
-    std::vector<StagingBuffer> m_dedicatedStaging;
-    VkDeviceSize m_dedicatedStagingBytes = 0;
 
     ResourcePool<Buffer, BufferHandle> m_buffers;
     ResourcePool<Texture, TextureHandle> m_textures;

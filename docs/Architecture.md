@@ -95,8 +95,9 @@ graph TB
 
 ### 4.4 上传
 
-- 初始数据（buffer、纹理、mip 生成、布局转换）录进专用上传命令缓冲，提交后在 CPU 上等 fence：`CreateXxx` 返回时数据已在 GPU 上。这是同步上传，阶段 3 的异步加载会改造它。
-- `BeginUploadBatch / EndUploadBatch` 可嵌套，最外层结束时提交；一个批次的 staging 超过 256 MB 时先提交一次。`GltfLoader` 用 `UploadBatchScope` 把整个场景放进一个批次。
+- 初始数据（buffer、纹理、mip 生成、布局转换）录进上传命令缓冲，提交后**不等待**：只有一个队列，批次排在之后所有帧的前面，批次末尾的 barrier 覆盖后续帧对这些资源的读取。销毁照常走按帧号的延迟销毁：`vkQueueSubmit` 的 fence 也覆盖提交顺序更早的批次。
+- 批次轮流使用 3 个上传槽，每个槽有自己的命令池、fence 和 24 MB staging 段（常驻映射的 72 MB 环）；超过一段的上传用专用 staging buffer。槽要等它的 fence 才能复用，这是上传唯一的等待；`BeginFrame` 顺手回收已完成的槽。
+- `BeginUploadBatch / EndUploadBatch` 可嵌套，最外层结束时提交；段放不下时提交并在下一个槽继续。`UploadBatchHasRoomFor` 让调用方把一次提交控制在一个槽内：上一个批次可能还排在一个等待交换链图像的帧后面，跨槽可能要等呈现。`SceneLoader` 每帧一个批次，场景加载期间不在 CPU 上等 GPU。
 
 ### 4.5 帧
 

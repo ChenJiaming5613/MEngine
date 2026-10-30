@@ -40,10 +40,10 @@ constexpr uint32_t kRecreateRetryDelayMilliseconds = 16;
 constexpr VkDeviceSize kStagingLevelAlignment = 16;
 // Allocating and freeing staging memory per upload makes Windows page memory in and out, which stalls the queue for
 // hundreds of milliseconds; one persistent ring avoids it. A 2048^2 RGBA8 texture with its mips is about 22 MB.
-constexpr VkDeviceSize kStagingRingSize = VkDeviceSize{64} << 20;
-// Uploads larger than the ring get dedicated buffers; batches holding more are submitted early, so a multi-GB scene is
-// never all in host visible memory at once.
-constexpr VkDeviceSize kDedicatedStagingBudget = VkDeviceSize{256} << 20;
+constexpr VkDeviceSize kStagingSegmentSize = VkDeviceSize{24} << 20;
+// Uploads larger than a segment get dedicated buffers; batches holding more are submitted early, so a multi-GB scene
+// is never all in host visible memory at once.
+constexpr VkDeviceSize kDedicatedStagingBudget = VkDeviceSize{128} << 20;
 
 VKAPI_ATTR VkBool32 VKAPI_CALL OnValidationMessage(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
     VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void*)
@@ -624,16 +624,19 @@ void GpuDevice::CreateFrameData()
         .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
         .queueFamilyIndex = m_queueFamily,
     };
-    CheckVk(vkCreateCommandPool(m_device, &uploadPoolInfo, nullptr, &m_uploadPool), "vkCreateCommandPool");
-    const VkCommandBufferAllocateInfo uploadAllocateInfo{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = m_uploadPool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-    CheckVk(vkAllocateCommandBuffers(m_device, &uploadAllocateInfo, &m_uploadCommandBuffer), "vkAllocateCommandBuffers");
     const VkFenceCreateInfo uploadFenceInfo{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    CheckVk(vkCreateFence(m_device, &uploadFenceInfo, nullptr, &m_uploadFence), "vkCreateFence");
+    for (UploadSlot& slot : m_uploadSlots)
+    {
+        CheckVk(vkCreateCommandPool(m_device, &uploadPoolInfo, nullptr, &slot.commandPool), "vkCreateCommandPool");
+        const VkCommandBufferAllocateInfo uploadAllocateInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = slot.commandPool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+        CheckVk(vkAllocateCommandBuffers(m_device, &uploadAllocateInfo, &slot.commandBuffer), "vkAllocateCommandBuffers");
+        CheckVk(vkCreateFence(m_device, &uploadFenceInfo, nullptr, &slot.fence), "vkCreateFence");
+    }
 }
 
 void GpuDevice::CreateDescriptorPool()
@@ -761,16 +764,22 @@ void GpuDevice::Shutdown()
         vkDestroyCommandPool(m_device, frame.commandPool, nullptr);
         frame = {};
     }
-    vkDestroyFence(m_device, m_uploadFence, nullptr);
+    for (UploadSlot& slot : m_uploadSlots)
+    {
+        if (slot.inFlight)
+        {
+            vkWaitForFences(m_device, 1, &slot.fence, VK_TRUE, std::numeric_limits<uint64_t>::max());
+        }
+        RetireUploadSlot(slot);
+        vkDestroyFence(m_device, slot.fence, nullptr);
+        vkDestroyCommandPool(m_device, slot.commandPool, nullptr);
+        slot = {};
+    }
     if (m_stagingRing.buffer != VK_NULL_HANDLE)
     {
         vmaDestroyBuffer(m_allocator, m_stagingRing.buffer, m_stagingRing.allocation);
         m_stagingRing = {};
     }
-    vkDestroyCommandPool(m_device, m_uploadPool, nullptr);
-    m_uploadFence = VK_NULL_HANDLE;
-    m_uploadPool = VK_NULL_HANDLE;
-    m_uploadCommandBuffer = VK_NULL_HANDLE;
 
     m_swapchain.Destroy();
 
@@ -813,6 +822,7 @@ void GpuDevice::WaitIdle()
     if (m_device != VK_NULL_HANDLE)
     {
         CheckVk(vkDeviceWaitIdle(m_device), "vkDeviceWaitIdle");
+        RetireCompletedUploads();
     }
 }
 
@@ -856,12 +866,20 @@ void GpuDevice::BeginUploadBatch()
 
 void GpuDevice::BeginUploadCommands()
 {
-    CheckVk(vkResetCommandPool(m_device, m_uploadPool, 0), "vkResetCommandPool");
+    UploadSlot& slot = m_uploadSlots[m_uploadSlot];
+    if (slot.inFlight)
+    {
+        // Every slot is in flight: the only place an upload waits for the GPU.
+        CheckVk(vkWaitForFences(m_device, 1, &slot.fence, VK_TRUE, std::numeric_limits<uint64_t>::max()), "vkWaitForFences");
+        CheckVk(vkResetFences(m_device, 1, &slot.fence), "vkResetFences");
+        RetireUploadSlot(slot);
+    }
+    CheckVk(vkResetCommandPool(m_device, slot.commandPool, 0), "vkResetCommandPool");
     const VkCommandBufferBeginInfo beginInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
-    CheckVk(vkBeginCommandBuffer(m_uploadCommandBuffer, &beginInfo), "vkBeginCommandBuffer");
+    CheckVk(vkBeginCommandBuffer(slot.commandBuffer, &beginInfo), "vkBeginCommandBuffer");
     m_uploadHasBufferCopies = false;
 }
 
@@ -878,6 +896,22 @@ void GpuDevice::EndUploadBatch()
         return;
     }
     SubmitUploadCommands();
+}
+
+bool GpuDevice::UploadBatchHasRoomFor(VkDeviceSize dataBytes) const
+{
+    if (m_uploadDepth == 0)
+    {
+        return true;
+    }
+    constexpr uint32_t kMaxLevels = 16;
+    const VkDeviceSize stagingBytes = dataBytes + kStagingLevelAlignment * kMaxLevels;
+    const UploadSlot& slot = m_uploadSlots[m_uploadSlot];
+    if (dataBytes > kStagingSegmentSize)
+    {
+        return slot.dedicatedStaging.empty() || slot.dedicatedStagingBytes + stagingBytes <= kDedicatedStagingBudget;
+    }
+    return AlignUp(slot.stagingUsed, kStagingLevelAlignment) + stagingBytes <= kStagingSegmentSize;
 }
 
 UploadBatchScope::~UploadBatchScope()
@@ -904,6 +938,7 @@ void UploadBatchScope::End()
 
 void GpuDevice::SubmitUploadCommands()
 {
+    UploadSlot& slot = m_uploadSlots[m_uploadSlot];
     if (m_uploadHasBufferCopies)
     {
         const VkMemoryBarrier buffersReady{
@@ -912,58 +947,78 @@ void GpuDevice::SubmitUploadCommands()
             .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT
                 | VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT,
         };
-        vkCmdPipelineBarrier(m_uploadCommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages, 0, 1, &buffersReady, 0, nullptr,
+        vkCmdPipelineBarrier(slot.commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages, 0, 1, &buffersReady, 0, nullptr,
             0, nullptr);
     }
 
-    CheckVk(vkEndCommandBuffer(m_uploadCommandBuffer), "vkEndCommandBuffer");
+    CheckVk(vkEndCommandBuffer(slot.commandBuffer), "vkEndCommandBuffer");
     const VkSubmitInfo submitInfo{
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount = 1,
-        .pCommandBuffers = &m_uploadCommandBuffer,
+        .pCommandBuffers = &slot.commandBuffer,
     };
-    CheckVk(vkQueueSubmit(m_queue, 1, &submitInfo, m_uploadFence), "vkQueueSubmit");
-    CheckVk(vkWaitForFences(m_device, 1, &m_uploadFence, VK_TRUE, std::numeric_limits<uint64_t>::max()), "vkWaitForFences");
-    CheckVk(vkResetFences(m_device, 1, &m_uploadFence), "vkResetFences");
+    CheckVk(vkQueueSubmit(m_queue, 1, &submitInfo, slot.fence), "vkQueueSubmit");
+    slot.inFlight = true;
+    m_uploadSlot = (m_uploadSlot + 1) % kUploadSlotCount;
+}
 
-    m_stagingRingUsed = 0;
-    for (const StagingBuffer& staging : m_dedicatedStaging)
+void GpuDevice::RetireUploadSlot(UploadSlot& slot)
+{
+    for (const StagingBuffer& staging : slot.dedicatedStaging)
     {
         vmaDestroyBuffer(m_allocator, staging.buffer, staging.allocation);
     }
-    m_dedicatedStaging.clear();
-    m_dedicatedStagingBytes = 0;
+    slot.dedicatedStaging.clear();
+    slot.dedicatedStagingBytes = 0;
+    slot.stagingUsed = 0;
+    slot.inFlight = false;
+}
+
+void GpuDevice::RetireCompletedUploads()
+{
+    for (UploadSlot& slot : m_uploadSlots)
+    {
+        if (slot.inFlight && vkGetFenceStatus(m_device, slot.fence) == VK_SUCCESS)
+        {
+            CheckVk(vkResetFences(m_device, 1, &slot.fence), "vkResetFences");
+            RetireUploadSlot(slot);
+        }
+    }
 }
 
 GpuDevice::StagingBuffer GpuDevice::CreateStagingBuffer(VkDeviceSize size)
 {
     if (m_stagingRing.buffer == VK_NULL_HANDLE)
     {
-        m_stagingRing = AllocateStagingBuffer(kStagingRingSize, "StagingRing");
+        m_stagingRing = AllocateStagingBuffer(kStagingSegmentSize * kUploadSlotCount, "StagingRing");
     }
-    const bool fitsRing = size <= kStagingRingSize;
-    const bool ringFull = fitsRing && AlignUp(m_stagingRingUsed, kStagingLevelAlignment) + size > kStagingRingSize;
-    const bool dedicatedFull =
-        !fitsRing && !m_dedicatedStaging.empty() && m_dedicatedStagingBytes + size > kDedicatedStagingBudget;
-    if (ringFull || dedicatedFull)
+    const bool fitsSegment = size <= kStagingSegmentSize;
     {
-        // Every command recorded so far is complete, so the batch can be submitted here and continued in a new one.
-        SubmitUploadCommands();
-        BeginUploadCommands();
+        const UploadSlot& slot = m_uploadSlots[m_uploadSlot];
+        const bool segmentFull = fitsSegment && AlignUp(slot.stagingUsed, kStagingLevelAlignment) + size > kStagingSegmentSize;
+        const bool dedicatedFull =
+            !fitsSegment && !slot.dedicatedStaging.empty() && slot.dedicatedStagingBytes + size > kDedicatedStagingBudget;
+        if (segmentFull || dedicatedFull)
+        {
+            // Every command recorded so far is complete, so the batch can be submitted here and continued in the next slot.
+            SubmitUploadCommands();
+            BeginUploadCommands();
+        }
     }
 
-    if (fitsRing)
+    UploadSlot& slot = m_uploadSlots[m_uploadSlot];
+    if (fitsSegment)
     {
-        const VkDeviceSize offset = AlignUp(m_stagingRingUsed, kStagingLevelAlignment);
-        m_stagingRingUsed = offset + size;
+        const VkDeviceSize offset = kStagingSegmentSize * m_uploadSlot + AlignUp(slot.stagingUsed, kStagingLevelAlignment);
+        slot.stagingUsed = offset - kStagingSegmentSize * m_uploadSlot + size;
         StagingBuffer range = m_stagingRing;
         range.mappedData = static_cast<uint8_t*>(m_stagingRing.mappedData) + offset;
         range.offset = offset;
         return range;
     }
     const StagingBuffer staging = AllocateStagingBuffer(size, "DedicatedStaging");
-    m_dedicatedStaging.push_back(staging);
-    m_dedicatedStagingBytes += size;
+    slot.dedicatedStaging.push_back(staging);
+    slot.dedicatedStagingBytes += size;
     return staging;
 }
 
@@ -990,7 +1045,7 @@ GpuDevice::StagingBuffer GpuDevice::AllocateStagingBuffer(VkDeviceSize size, con
 VkCommandBuffer GpuDevice::UploadCommandBuffer() const
 {
     MENGINE_ASSERT(m_uploadDepth > 0);
-    return m_uploadCommandBuffer;
+    return m_uploadSlots[m_uploadSlot].commandBuffer;
 }
 
 BufferHandle GpuDevice::CreateBuffer(const BufferCreation& creation)
@@ -1294,8 +1349,9 @@ void GpuDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
     }
 
     UploadBatchScope batch(*this);
-    const VkCommandBuffer commandBuffer = UploadCommandBuffer();
     const StagingBuffer staging = CreateStagingBuffer(stagingSize);
+    // After CreateStagingBuffer, which may submit the batch and continue in the next upload slot.
+    const VkCommandBuffer commandBuffer = UploadCommandBuffer();
 
     std::vector<VkBufferImageCopy> copies;
     copies.reserve(size_t{providedLevels} * texture.layerCount);
@@ -2445,6 +2501,7 @@ bool GpuDevice::BeginFrame()
     FrameData& frame = m_frames[m_frameSlot];
     CheckVk(vkWaitForFences(m_device, 1, &frame.inFlight, VK_TRUE, std::numeric_limits<uint64_t>::max()), "vkWaitForFences");
     ProcessPendingDestructions(false);
+    RetireCompletedUploads();
 
     const SwapchainStatus acquireStatus = m_swapchain.Acquire(frame.imageAvailable, m_imageIndex);
     if (acquireStatus == SwapchainStatus::OutOfDate)

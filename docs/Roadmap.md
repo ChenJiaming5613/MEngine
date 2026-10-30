@@ -93,6 +93,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
   - 异步加载（T0）：文件读取、glTF 解析、纹理解码全在工作线程；GPU 上传仍在图形队列，每帧按 staging 预算提交一部分，靠帧 fence 判断完成，完成后原子替换 `Scene`。切换场景时不再卡住画面。
   - 并行录制（T0）：forward 与 shadow 的 draw 分段，用 secondary command buffer 录制，主命令缓冲 `vkCmdExecuteCommands`。注意同一 subpass 不能混用 inline 与 secondary 内容，skybox、ImGui 需要一起改成 secondary 或拆到独立 subpass / pass。
   - 管线描述 JSON：不采用，MEngine 用 C++ `PipelineCreation` + 反射。
+- **剩余工作的实现计划**：见 `Stage3-Plan.md`（异步上传、取消加载不等待、并行录制）。
 
 ### 第 4 章 Frame Graph
 
