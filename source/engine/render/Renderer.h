@@ -6,7 +6,7 @@
 #include "render/RenderTypes.h"
 #include "render/Scene.h"
 #include "render/SceneLoader.h"
-#include "render/graph/FrameGraph.h"
+#include "render/FrameGraph.h"
 #include "render/passes/DebugDrawPass.h"
 #include "render/passes/ForwardPbrPass.h"
 #include "render/passes/ShadowPass.h"

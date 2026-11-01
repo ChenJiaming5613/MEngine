@@ -1,7 +1,7 @@
 #pragma once
 
 #include "render/RenderTypes.h"
-#include "render/graph/FrameGraph.h"
+#include "render/FrameGraph.h"
 #include "rhi/GpuResources.h"
 
 #include <glm/vec3.hpp>

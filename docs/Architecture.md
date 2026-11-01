@@ -190,7 +190,7 @@ graph LR
 
 ### 5.5 Frame Graph
 
-`render/graph/FrameGraph.*` 参照 Raptor 第 4、5 章，建立在 `RenderPassOutput` 缓存、`Texture::state`、`ExecutionBarrier` 和延迟销毁之上。设计决定见 Roadmap G1–G13。
+`render/FrameGraph.*` 参照 Raptor 第 4、5 章，建立在 `RenderPassOutput` 缓存、`Texture::state`、`ExecutionBarrier` 和延迟销毁之上。设计决定见 Roadmap G1–G13。
 
 - **节点**：`FrameGraphPass` 子类，图不拥有它，注册顺序即执行顺序。`Setup` 只声明（每次编译都调用，禁用的节点也一样）；`Execute` 录制；`IsActive` 每帧判断，不活跃的节点连同 barrier 跳过，写过的导入纹理保留旧内容；`OnCompiled` 在纹理或 render pass 重建后回调。
 - **资源**：按名字引用。`CreateTexture` 为瞬时纹理（尺寸可跟随 swapchain）；`ImportTexture / ImportBuffer` 为跨帧保留的外部资源；`ImportBackbuffer` 映射到 swapchain pass。纹理用途由访问推导（附件 → render target，`UnorderedAccess` → storage 并检查格式）。

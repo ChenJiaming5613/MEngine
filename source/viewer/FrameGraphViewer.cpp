@@ -1,7 +1,7 @@
 #include "FrameGraphViewer.h"
 
 #include "render/RenderTypes.h"
-#include "render/graph/FrameGraph.h"
+#include "render/FrameGraph.h"
 
 #include <glm/geometric.hpp>
 

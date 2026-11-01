@@ -1,4 +1,4 @@
-#include "render/graph/FrameGraph.h"
+#include "render/FrameGraph.h"
 
 #include "core/Assert.h"
 #include "core/Log.h"

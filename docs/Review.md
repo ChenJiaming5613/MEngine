@@ -17,8 +17,8 @@
 | 7 | `viewer/ViewerApp.cpp:209-265` | 忽略 `Renderer::LoadScene` 的返回值：加载失败时 `m_currentScene` 照样切换，pipeline cache 照样保存，下拉框显示的是失败的场景。 | 按返回值处理失败分支<br>**已修复**：加载失败时不保存 cache，面板显示失败状态 |
 | 8 | `render/GltfLoader.cpp:877-902`、`DdsFile.cpp:538,613` | 工作线程里的解码异常在 `future.get()` 处重新抛出，导致整个场景加载失败，违背“纹理失败只告警”的约定；DDS 的 `mipMapCount` / `arraySize` 没有上限，一个畸形文件就可能 `bad_alloc`。 | lambda 内捕获异常写入 `prepared.error`；mip 数钳制到 `log2(max(w,h)) + 1`<br>**已修复**：工作线程捕获异常，只让该纹理回退；DDS 拒绝超过完整 mip 链的 mip 数和超过 2048 的数组 |
 | 9 | `render/Environment.cpp:176`、`GltfLoader.cpp:929,1693` | `catch (const std::exception&)` 会把 `CheckVk` 抛出的 OOM、device lost 也当成资源损坏，降级处理。 | RHI 抛专用的 `VulkanError`，资源路径只捕获资源类错误<br>**已修复**：`rhi::VulkanError`；降级路径调用 `RethrowIfDeviceUnusable`，只有内存不足类错误会被降级 |
-| 10 | `render/graph/FrameGraph.cpp:453,576` | 导入纹理被销毁时，只有第一个导入它的 pass 被标为无效，其他读取者仍被调度并拿到失效句柄。 | 把资源本身标为不可用，依赖它的 pass 一律跳过<br>**已修复**：导入的纹理和 buffer 失效时资源本身不可用，所有读取者 skipped |
-| 11 | `render/graph/FrameGraph.cpp:778,1214` | 合并组成员数没有上限，超过 64 时 `1ull << member` 是未定义行为（只有一个 assert）。 | 合并时限制组大小，或改用动态位集<br>**已修复**：合并组最多 `kMaxPassesPerGroup`（64）个节点 |
+| 10 | `render/FrameGraph.cpp:453,576` | 导入纹理被销毁时，只有第一个导入它的 pass 被标为无效，其他读取者仍被调度并拿到失效句柄。 | 把资源本身标为不可用，依赖它的 pass 一律跳过<br>**已修复**：导入的纹理和 buffer 失效时资源本身不可用，所有读取者 skipped |
+| 11 | `render/FrameGraph.cpp:778,1214` | 合并组成员数没有上限，超过 64 时 `1ull << member` 是未定义行为（只有一个 assert）。 | 合并时限制组大小，或改用动态位集<br>**已修复**：合并组最多 `kMaxPassesPerGroup`（64）个节点 |
 | 12 | `rhi/CommandBuffer.cpp:~385` | `FillBuffer` 只检查了 `offset`，没有检查 `offset + size <= size`，与错误信息不符。 | 补上这项检查<br>**已修复** |
 | 13 | `rhi/GfxDevice.cpp:~1601` | render pass 缓存只用 64 位哈希、不比较内容，哈希冲突时会静默返回错误的 `VkRenderPass`。 | 命中后比较 `RenderPassOutput`<br>**已修复**：缓存键改为 `RenderPassOutput` 本身（`operator==` + 哈希） |
 | 14 | `rhi/GpuEnums.h:~57` | `kResourceStateGenericRead` 没有使用，而且按 `ToVkImageLayout` 的优先级会被映射成 `TRANSFER_SRC` 布局，是个陷阱。 | 删除<br>**已修复**：删除 |

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "render/graph/FrameGraph.h"
+#include "render/FrameGraph.h"
 #include "rhi/GpuResources.h"
 
 #include <cstdint>

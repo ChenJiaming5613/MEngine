@@ -1,6 +1,6 @@
 #pragma once
 
-#include "render/graph/FrameGraph.h"
+#include "render/FrameGraph.h"
 
 #include <SDL3/SDL_events.h>
 
