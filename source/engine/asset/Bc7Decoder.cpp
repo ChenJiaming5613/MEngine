@@ -1,4 +1,4 @@
-#include "asset/Bc7Decoder.hpp"
+#include "asset/Bc7Decoder.h"
 
 #include <array>
 #include <cstring>

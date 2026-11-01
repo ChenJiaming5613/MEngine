@@ -1,8 +1,8 @@
-#include "FlyCameraController.hpp"
+#include "FlyCameraController.h"
 
-#include "platform/Input.hpp"
-#include "platform/Window.hpp"
-#include "render/Camera.hpp"
+#include "platform/Input.h"
+#include "platform/Window.h"
+#include "render/Camera.h"
 
 #include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_platform_defines.h>

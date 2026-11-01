@@ -1,6 +1,6 @@
-#include "rhi/GpuResources.hpp"
+#include "rhi/GpuResources.h"
 
-#include "core/Assert.hpp"
+#include "core/Assert.h"
 
 namespace mengine::rhi {
 

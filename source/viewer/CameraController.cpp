@@ -1,6 +1,6 @@
-#include "CameraController.hpp"
+#include "CameraController.h"
 
-#include "render/Camera.hpp"
+#include "render/Camera.h"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>

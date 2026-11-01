@@ -1,6 +1,6 @@
-#include "ProfilerPanel.hpp"
+#include "ProfilerPanel.h"
 
-#include "rhi/GpuProfiler.hpp"
+#include "rhi/GpuProfiler.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)

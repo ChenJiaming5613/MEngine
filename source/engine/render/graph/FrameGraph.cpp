@@ -1,10 +1,10 @@
-#include "render/graph/FrameGraph.hpp"
+#include "render/graph/FrameGraph.h"
 
-#include "core/Assert.hpp"
-#include "core/Log.hpp"
-#include "rhi/CommandBuffer.hpp"
-#include "rhi/GfxDevice.hpp"
-#include "rhi/VulkanUtils.hpp"
+#include "core/Assert.h"
+#include "core/Log.h"
+#include "rhi/CommandBuffer.h"
+#include "rhi/GfxDevice.h"
+#include "rhi/VulkanUtils.h"
 
 #include <algorithm>
 #include <cmath>

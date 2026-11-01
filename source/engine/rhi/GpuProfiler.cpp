@@ -1,6 +1,6 @@
-#include "rhi/GpuProfiler.hpp"
+#include "rhi/GpuProfiler.h"
 
-#include "core/Log.hpp"
+#include "core/Log.h"
 
 #include <vector>
 

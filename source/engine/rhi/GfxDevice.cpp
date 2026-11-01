@@ -1,8 +1,8 @@
-#include "rhi/GfxDevice.hpp"
+#include "rhi/GfxDevice.h"
 
-#include "core/Log.hpp"
-#include "rhi/PipelineCacheFile.hpp"
-#include "rhi/ShaderReflection.hpp"
+#include "core/Log.h"
+#include "rhi/PipelineCacheFile.h"
+#include "rhi/ShaderReflection.h"
 
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_video.h>

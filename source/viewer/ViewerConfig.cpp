@@ -1,8 +1,8 @@
-#include "ViewerConfig.hpp"
+#include "ViewerConfig.h"
 
-#include "core/FileSystem.hpp"
-#include "core/Json.hpp"
-#include "core/Log.hpp"
+#include "core/FileSystem.h"
+#include "core/Json.h"
+#include "core/Log.h"
 
 #include <glm/geometric.hpp>
 #include <glm/vector_relational.hpp>

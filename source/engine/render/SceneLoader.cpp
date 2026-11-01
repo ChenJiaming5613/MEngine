@@ -1,10 +1,10 @@
-#include "render/SceneLoader.hpp"
+#include "render/SceneLoader.h"
 
-#include "core/Log.hpp"
-#include "render/GltfSceneData.hpp"
-#include "render/Scene.hpp"
-#include "rhi/GfxDevice.hpp"
-#include "rhi/VulkanUtils.hpp"
+#include "core/Log.h"
+#include "render/GltfSceneData.h"
+#include "render/Scene.h"
+#include "rhi/GfxDevice.h"
+#include "rhi/VulkanUtils.h"
 
 #include <TaskScheduler.h>
 

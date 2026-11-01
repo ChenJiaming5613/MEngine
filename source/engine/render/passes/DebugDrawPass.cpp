@@ -1,11 +1,11 @@
-#include "render/passes/DebugDrawPass.hpp"
+#include "render/passes/DebugDrawPass.h"
 
-#include "render/DebugDraw.hpp"
-#include "render/RenderTypes.hpp"
-#include "render/RenderView.hpp"
-#include "rhi/CommandBuffer.hpp"
-#include "rhi/GfxDevice.hpp"
-#include "rhi/VulkanUtils.hpp"
+#include "render/DebugDraw.h"
+#include "render/RenderTypes.h"
+#include "render/RenderView.h"
+#include "rhi/CommandBuffer.h"
+#include "rhi/GfxDevice.h"
+#include "rhi/VulkanUtils.h"
 
 #include <algorithm>
 #include <cstddef>

@@ -1,7 +1,7 @@
-#include "rhi/PipelineCacheFile.hpp"
+#include "rhi/PipelineCacheFile.h"
 
-#include "core/FileSystem.hpp"
-#include "core/Log.hpp"
+#include "core/FileSystem.h"
+#include "core/Log.h"
 
 #include <cstring>
 

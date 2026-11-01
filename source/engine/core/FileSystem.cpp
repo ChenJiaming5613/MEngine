@@ -1,6 +1,6 @@
-#include "core/FileSystem.hpp"
+#include "core/FileSystem.h"
 
-#include "core/Log.hpp"
+#include "core/Log.h"
 
 #include <SDL3/SDL_filesystem.h>
 #include <SDL3/SDL_iostream.h>

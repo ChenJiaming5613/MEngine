@@ -1,10 +1,10 @@
-#include "render/ImGuiLayer.hpp"
+#include "render/ImGuiLayer.h"
 
-#include "core/Log.hpp"
-#include "platform/Window.hpp"
-#include "render/RenderView.hpp"
-#include "rhi/CommandBuffer.hpp"
-#include "rhi/GfxDevice.hpp"
+#include "core/Log.h"
+#include "platform/Window.h"
+#include "render/RenderView.h"
+#include "rhi/CommandBuffer.h"
+#include "rhi/GfxDevice.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)

@@ -1,4 +1,4 @@
-# Build time check that the C++ mirrors of shader constant structs (render/RenderTypes.hpp) match the Slang layout.
+# Build time check that the C++ mirrors of shader constant structs (render/RenderTypes.h) match the Slang layout.
 # slangc -reflection-json reports member offsets and sizes under the rules the SPIR-V uses (std140 for ConstantBuffer,
 # std430 for push constants); a generated header turns them into static_asserts against offsetof / sizeof.
 

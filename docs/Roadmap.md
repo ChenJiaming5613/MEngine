@@ -299,7 +299,7 @@ graph LR
 ## 4. 每个阶段的通用流程
 
 1. **对照**：在 Raptor 中找到该特性首次启用的章节（见第 0 节的表），用 `git diff --no-index chapter(N-1) chapterN` 定位相关改动。
-2. **适配**：GLSL 改写为 Slang，bindless 访问改写为 MEngine 的 set/binding；`RenderTypes.hpp` 与 `Bindings.slang` 同步并更新 `static_assert`；扩展函数运行时获取；为 T0 准备退化路径。
+2. **适配**：GLSL 改写为 Slang，bindless 访问改写为 MEngine 的 set/binding；`RenderTypes.h` 与 `Bindings.slang` 同步并更新 `static_assert`；扩展函数运行时获取；为 T0 准备退化路径。
 3. **验证**：
    - 桌面 Debug 下校验层无报错；RenderDoc 检查新 pass 的输入输出与 barrier。
    - Android 真机运行（Sponza、Bistro），对比 `GpuProfiler` 的各 pass 耗时。

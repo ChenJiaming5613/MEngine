@@ -1,9 +1,9 @@
-#include "render/Environment.hpp"
+#include "render/Environment.h"
 
-#include "asset/Ktx2.hpp"
-#include "core/FileSystem.hpp"
-#include "core/Log.hpp"
-#include "rhi/GfxDevice.hpp"
+#include "asset/Ktx2.h"
+#include "core/FileSystem.h"
+#include "core/Log.h"
+#include "rhi/GfxDevice.h"
 
 #include <glm/gtc/packing.hpp>
 

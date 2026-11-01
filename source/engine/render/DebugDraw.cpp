@@ -1,7 +1,7 @@
-#include "render/DebugDraw.hpp"
+#include "render/DebugDraw.h"
 
-#include "core/Log.hpp"
-#include "rhi/GfxDevice.hpp"
+#include "core/Log.h"
+#include "rhi/GfxDevice.h"
 
 #include <glm/common.hpp>
 #include <glm/matrix.hpp>

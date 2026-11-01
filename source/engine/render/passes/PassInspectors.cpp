@@ -1,12 +1,12 @@
 // Viewer descriptions and parameter panels of the passes, kept apart from their GPU code so only this file depends on
 // Dear ImGui. Panels edit the same RenderSettings fields as the viewer's Lighting / Debug panels.
 
-#include "render/RenderTypes.hpp"
-#include "render/passes/DebugDrawPass.hpp"
-#include "render/passes/ForwardPbrPass.hpp"
-#include "render/passes/ShadowPass.hpp"
-#include "render/passes/SkyboxPass.hpp"
-#include "render/passes/TonemapPass.hpp"
+#include "render/RenderTypes.h"
+#include "render/passes/DebugDrawPass.h"
+#include "render/passes/ForwardPbrPass.h"
+#include "render/passes/ShadowPass.h"
+#include "render/passes/SkyboxPass.h"
+#include "render/passes/TonemapPass.h"
 
 #include <glm/geometric.hpp>
 

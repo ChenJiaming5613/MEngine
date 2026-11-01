@@ -1,6 +1,6 @@
-#include "rhi/VulkanUtils.hpp"
+#include "rhi/VulkanUtils.h"
 
-#include "core/FileSystem.hpp"
+#include "core/FileSystem.h"
 
 #include <algorithm>
 #include <bit>

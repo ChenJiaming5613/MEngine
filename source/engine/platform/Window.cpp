@@ -1,6 +1,6 @@
-#include "platform/Window.hpp"
+#include "platform/Window.h"
 
-#include "core/Log.hpp"
+#include "core/Log.h"
 
 #include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_video.h>

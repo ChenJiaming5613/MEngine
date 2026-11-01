@@ -1,4 +1,4 @@
 // Compile time check of the C++ constant structs against the Slang ones (see cmake/GenerateShaderLayouts.cmake).
-#include "render/RenderTypes.hpp"
+#include "render/RenderTypes.h"
 
-#include <ShaderLayoutChecks.generated.hpp>
+#include <ShaderLayoutChecks.generated.h>

@@ -1,4 +1,4 @@
-#include "asset/Ktx2.hpp"
+#include "asset/Ktx2.h"
 
 #include <algorithm>
 #include <array>

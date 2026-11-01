@@ -385,12 +385,12 @@ LineNormalization = \frac{\alpha}{\alpha'} \quad(20)
 | Cook-Torrance 组合 | 式 2 | `Brdf.slang` |
 | GGX D，\(\alpha = R^2\) | 式 3 | `DGgx`（Slang 和 C++ 同名） |
 | Schlick-Smith G，解析光 \(k=(R+1)^2/8\) | 式 4 | `GSmithAnalytic` |
-| Schlick-Smith G，IBL \(k=\alpha/2\) | 式 4 + p3 注释 | `GSmithIbl`（IblBaker 的 `UeBrdf.hpp`） |
+| Schlick-Smith G，IBL \(k=\alpha/2\) | 式 4 + p3 注释 | `GSmithIbl`（IblBaker 的 `UeBrdf.h`） |
 | 球面高斯 Fresnel | 式 5 | `FSchlickSg`（只用于解析光） |
-| Hammersley + `ImportanceSampleGGX` | p4 | `Hammersley` / `ImportanceSampleGgx`（IblBaker 的 `UeBrdf.hpp`） |
-| `SpecularIBL`（逐样本参考积分） | p4–5 | `SpecularIbl`（`UeBrdf.hpp`，只用于 `--self-test`） |
-| `PrefilterEnvMap`（N=V=R，NoL 加权，从 mip0 采样，1024 样本） | p5–6 | `PrefilterEnvMap`（`UeBrdf.hpp`），由 `Prefilter.cpp` 烘焙 → `specular.ktx2` |
-| `IntegrateBRDF`（R16G16） | 式 8，p6 | `IntegrateBrdf`（`UeBrdf.hpp`），由 `BrdfLut.cpp` 烘焙 → `brdf_lut.ktx2` |
+| Hammersley + `ImportanceSampleGGX` | p4 | `Hammersley` / `ImportanceSampleGgx`（IblBaker 的 `UeBrdf.h`） |
+| `SpecularIBL`（逐样本参考积分） | p4–5 | `SpecularIbl`（`UeBrdf.h`，只用于 `--self-test`） |
+| `PrefilterEnvMap`（N=V=R，NoL 加权，从 mip0 采样，1024 样本） | p5–6 | `PrefilterEnvMap`（`UeBrdf.h`），由 `Prefilter.cpp` 烘焙 → `specular.ktx2` |
+| `IntegrateBRDF`（R16G16） | 式 8，p6 | `IntegrateBrdf`（`UeBrdf.h`），由 `BrdfLut.cpp` 烘焙 → `brdf_lut.ktx2` |
 | `ApproximateSpecularIBL` | p7 | `ApproximateSpecularIbl`（`Brdf.slang`），在 `Pbr.slang` 中调用 |
 | 非金属 F0 = 0.04，Metallic 工作流 | p9 | `SpecularColorFromMetallic` / `DiffuseColorFromMetallic`（`Brdf.slang`） |
 | 窗口化平方反比衰减 | 式 9 | `LightFalloff`，`lightRadius` 可在 ImGui 调节 |

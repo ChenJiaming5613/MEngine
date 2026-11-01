@@ -1,0 +1,56 @@
+#pragma once
+
+#include "render/RenderTypes.h"
+#include "render/graph/FrameGraph.h"
+#include "rhi/GpuResources.h"
+
+#include <array>
+#include <cstdint>
+#include <vector>
+
+namespace mengine::rhi {
+class CommandBuffer;
+class GfxDevice;
+} // namespace mengine::rhi
+
+namespace mengine::render {
+
+struct Scene;
+
+// Shades RenderView::visibleDraws with the point light, the shadowed directional light and IBL into kResourceHdrColor.
+// Pipeline variants (PipelineKeyBits) are created on first use.
+class ForwardPbrPass final : public FrameGraphPass
+{
+public:
+    void Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout);
+    void Shutdown();
+
+    // Creates the variants the scene's draws use, so the first frame does not stall on pipeline creation.
+    void WarmPipelines(const Scene& scene);
+
+    void Setup(FrameGraphBuilder& builder) override;
+    void Execute(FrameGraphContext& context) override;
+    void OnCompiled(const FrameGraphResources& resources) override;
+    // PassInspectors.cpp.
+    const char* Description() const override;
+    bool DrawInspector(RenderSettings& settings) override;
+
+private:
+    rhi::PipelineHandle GetOrCreatePipeline(uint32_t key);
+    void DestroyPipelines();
+
+    rhi::GfxDevice* m_device = nullptr;
+    rhi::RenderPassOutput m_output;
+    rhi::DescriptorSetLayoutHandle m_frameLayout;
+    rhi::DescriptorSetLayoutHandle m_materialLayout;
+    std::vector<uint32_t> m_vertexCode;
+    std::vector<uint32_t> m_vertexTangentCode;
+    std::vector<uint32_t> m_fragmentCode;
+    std::array<rhi::PipelineHandle, kPipelineKeyCount> m_pipelines{};
+    bool m_missingPipelineReported = false;
+    // Last Execute's recorded / total draws, for the inspector.
+    uint32_t m_drawCount = 0;
+    uint32_t m_sceneDrawCount = 0;
+};
+
+} // namespace mengine::render

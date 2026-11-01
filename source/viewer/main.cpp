@@ -2,7 +2,7 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_hints.h>
 
-#include "ViewerApp.hpp"
+#include "ViewerApp.h"
 
 SDL_AppResult SDL_AppInit(void** appState, int, char*[])
 {

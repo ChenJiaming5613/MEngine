@@ -1,6 +1,6 @@
-#include "DeviceCapabilitiesPanel.hpp"
+#include "DeviceCapabilitiesPanel.h"
 
-#include "rhi/GfxDevice.hpp"
+#include "rhi/GfxDevice.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)

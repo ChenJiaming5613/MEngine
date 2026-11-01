@@ -1,4 +1,4 @@
-#include "Ktx1Cube.hpp"
+#include "Ktx1Cube.h"
 
 #include <glm/gtc/packing.hpp>
 

@@ -1,16 +1,16 @@
 add_executable(IblBaker
     main.cpp
-    Bake.hpp
+    Bake.h
     BrdfLut.cpp
     Cubemap.cpp
-    Cubemap.hpp
+    Cubemap.h
     Irradiance.cpp
     Ktx1Cube.cpp
-    Ktx1Cube.hpp
+    Ktx1Cube.h
     Prefilter.cpp
     SelfTest.cpp
-    SelfTest.hpp
-    UeBrdf.hpp
+    SelfTest.h
+    UeBrdf.h
 )
 target_link_libraries(IblBaker PRIVATE MEngineAsset)
 MEngineSetWarnings(IblBaker)

@@ -57,7 +57,7 @@ endfunction()
 set(MENGINE_ENGINE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source/engine")
 
 # Pure CPU asset code (image decoding, KTX2), shared by the runtime and programs/IblBaker.
-file(GLOB_RECURSE MENGINE_ASSET_SOURCES CONFIGURE_DEPENDS "${MENGINE_ENGINE_DIR}/asset/*.cpp" "${MENGINE_ENGINE_DIR}/asset/*.hpp")
+file(GLOB_RECURSE MENGINE_ASSET_SOURCES CONFIGURE_DEPENDS "${MENGINE_ENGINE_DIR}/asset/*.cpp" "${MENGINE_ENGINE_DIR}/asset/*.h")
 add_library(MEngineAsset STATIC ${MENGINE_ASSET_SOURCES})
 target_include_directories(MEngineAsset PUBLIC "${MENGINE_ENGINE_DIR}")
 target_link_libraries(MEngineAsset PUBLIC glm::glm PRIVATE stb)
@@ -75,7 +75,7 @@ MEngineSetWarnings(MEngineAsset)
 
 file(GLOB_RECURSE MENGINE_CORE_SOURCES CONFIGURE_DEPENDS
     "${MENGINE_ENGINE_DIR}/*.cpp"
-    "${MENGINE_ENGINE_DIR}/*.hpp"
+    "${MENGINE_ENGINE_DIR}/*.h"
 )
 list(FILTER MENGINE_CORE_SOURCES EXCLUDE REGEX "/engine/asset/")
 add_library(MEngineCore STATIC ${MENGINE_CORE_SOURCES})
@@ -91,9 +91,9 @@ target_link_libraries(MEngineCore PUBLIC
 )
 target_link_libraries(MEngineCore PUBLIC enkiTS PRIVATE spirv_reflect)
 
-# render/ShaderLayoutChecks.cpp includes the generated static_asserts, so layout drift between RenderTypes.hpp and Slang
+# render/ShaderLayoutChecks.cpp includes the generated static_asserts, so layout drift between RenderTypes.h and Slang
 # fails the build.
-set(MENGINE_SHADER_LAYOUT_CHECKS "${CMAKE_BINARY_DIR}/generated/ShaderLayoutChecks.generated.hpp")
+set(MENGINE_SHADER_LAYOUT_CHECKS "${CMAKE_BINARY_DIR}/generated/ShaderLayoutChecks.generated.h")
 MEngineGenerateShaderLayoutChecks(
     OUTPUT "${MENGINE_SHADER_LAYOUT_CHECKS}"
     NAMESPACE mengine::render
@@ -116,7 +116,7 @@ MEngineSetWarnings(MEngineCore)
 
 file(GLOB MENGINE_VIEWER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/source/viewer/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/source/viewer/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/source/viewer/*.h"
 )
 
 # SDLActivity loads libmain.so.

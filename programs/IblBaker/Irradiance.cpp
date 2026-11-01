@@ -1,5 +1,5 @@
-#include "Bake.hpp"
-#include "UeBrdf.hpp"
+#include "Bake.h"
+#include "UeBrdf.h"
 
 #include <cmath>
 

@@ -131,7 +131,7 @@ sequenceDiagram
   - `bool RecordsOnMainThread() const`（默认 false；`ImGuiPass` 为 true）；
   - `void OnExecuted(const RenderView&)`：主线程，在本帧录制全部完成后调用。
 - 契约：`Execute` / `ExecuteRange` 可能在任意线程上并发运行，只读场景和自身成员，不能读其他 pass 在同一帧 `Execute` 中写入的状态。
-- 新增 `passes/SceneDrawing.hpp`：`DrawSceneItems(commandBuffer, scene, drawIndices, pipelines, keyMask, materialPolicy)`，Forward 与 Shadow 共用。每次调用都从“无绑定”状态开始（secondary 本来就不继承绑定）。
+- 新增 `passes/SceneDrawing.h`：`DrawSceneItems(commandBuffer, scene, drawIndices, pipelines, keyMask, materialPolicy)`，Forward 与 Shadow 共用。每次调用都从“无绑定”状态开始（secondary 本来就不继承绑定）。
 - `ShadowPass`：`m_dirty` / `m_rendered` 等状态更新移到 `OnExecuted`；两个 pass 的“缺失变体只报告一次”标志改为 `std::atomic<bool>`。
 - **验证**：纯重构，inline 路径下画面、Profiler 数值不变。
 

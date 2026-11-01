@@ -1,4 +1,4 @@
-#include "asset/ImageLoader.hpp"
+#include "asset/ImageLoader.h"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)

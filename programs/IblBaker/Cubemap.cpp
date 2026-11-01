@@ -1,4 +1,4 @@
-#include "Cubemap.hpp"
+#include "Cubemap.h"
 
 #include <glm/geometric.hpp>
 

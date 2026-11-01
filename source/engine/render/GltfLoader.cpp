@@ -1,14 +1,14 @@
-#include "render/GltfLoader.hpp"
+#include "render/GltfLoader.h"
 
-#include "asset/Bc7Decoder.hpp"
-#include "asset/ImageLoader.hpp"
-#include "asset/Ktx2.hpp"
-#include "core/Assert.hpp"
-#include "core/FileSystem.hpp"
-#include "core/Log.hpp"
-#include "render/DdsFile.hpp"
-#include "render/GltfSceneData.hpp"
-#include "rhi/GfxDevice.hpp"
+#include "asset/Bc7Decoder.h"
+#include "asset/ImageLoader.h"
+#include "asset/Ktx2.h"
+#include "core/Assert.h"
+#include "core/FileSystem.h"
+#include "core/Log.h"
+#include "render/DdsFile.h"
+#include "render/GltfSceneData.h"
+#include "rhi/GfxDevice.h"
 
 #include <tiny_gltf_v3.h>
 

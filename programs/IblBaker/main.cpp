@@ -6,13 +6,13 @@
 // Writes <out_dir>/specular.ktx2 (RGBA16F cube, PrefilterEnvMap per mip), irradiance.ktx2 (RGBA16F cube, E / pi) and
 // brdf_lut.ktx2 (RG16F, IntegrateBrdf).
 
-#include "Bake.hpp"
-#include "Cubemap.hpp"
-#include "Ktx1Cube.hpp"
-#include "SelfTest.hpp"
+#include "Bake.h"
+#include "Cubemap.h"
+#include "Ktx1Cube.h"
+#include "SelfTest.h"
 
-#include "asset/ImageLoader.hpp"
-#include "asset/Ktx2.hpp"
+#include "asset/ImageLoader.h"
+#include "asset/Ktx2.h"
 
 #include <glm/gtc/packing.hpp>
 

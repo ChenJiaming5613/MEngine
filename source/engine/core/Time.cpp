@@ -1,4 +1,4 @@
-#include "core/Time.hpp"
+#include "core/Time.h"
 
 #include <SDL3/SDL_timer.h>
 

@@ -1,4 +1,4 @@
-#include "core/CpuProfiler.hpp"
+#include "core/CpuProfiler.h"
 
 #include <SDL3/SDL_timer.h>
 

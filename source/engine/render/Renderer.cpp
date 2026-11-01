@@ -1,11 +1,11 @@
-#include "render/Renderer.hpp"
+#include "render/Renderer.h"
 
-#include "render/Camera.hpp"
-#include "render/Culling.hpp"
-#include "render/GltfLoader.hpp"
-#include "render/RenderView.hpp"
-#include "rhi/CommandBuffer.hpp"
-#include "rhi/GfxDevice.hpp"
+#include "render/Camera.h"
+#include "render/Culling.h"
+#include "render/GltfLoader.h"
+#include "render/RenderView.h"
+#include "rhi/CommandBuffer.h"
+#include "rhi/GfxDevice.h"
 
 #include <glm/common.hpp>
 #include <glm/gtc/matrix_transform.hpp>

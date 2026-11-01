@@ -1,4 +1,4 @@
-#include "rhi/ShaderReflection.hpp"
+#include "rhi/ShaderReflection.h"
 
 #include <spirv_reflect.h>
 

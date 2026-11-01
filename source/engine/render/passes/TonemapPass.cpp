@@ -1,11 +1,11 @@
-#include "render/passes/TonemapPass.hpp"
+#include "render/passes/TonemapPass.h"
 
-#include "render/RenderTypes.hpp"
-#include "render/RenderView.hpp"
-#include "rhi/CommandBuffer.hpp"
-#include "rhi/GfxDevice.hpp"
-#include "rhi/ShaderReflection.hpp"
-#include "rhi/VulkanUtils.hpp"
+#include "render/RenderTypes.h"
+#include "render/RenderView.h"
+#include "rhi/CommandBuffer.h"
+#include "rhi/GfxDevice.h"
+#include "rhi/ShaderReflection.h"
+#include "rhi/VulkanUtils.h"
 
 namespace mengine::render {
 

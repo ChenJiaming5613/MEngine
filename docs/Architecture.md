@@ -88,7 +88,7 @@ graph TB
 
 ### 4.3 同步模型
 
-- `ResourceState`（`GpuEnums.hpp`，来自 Raptor / D3D12）是位标志，只读状态可组合；`VulkanUtils` 把它翻译为布局、访问掩码和管线阶段。阶段直接由状态推导，所以片元读和 compute 读能区分。
+- `ResourceState`（`GpuEnums.h`，来自 Raptor / D3D12）是位标志，只读状态可组合；`VulkanUtils` 把它翻译为布局、访问掩码和管线阶段。阶段直接由状态推导，所以片元读和 compute 读能区分。
 - 每个 `Texture` 记录录制到当前为止的状态。前提是每帧只有一个按顺序录制的命令缓冲，录制顺序即执行顺序。Buffer 不跟踪状态，barrier 由调用方给出新旧两端。
 - `ExecutionBarrier` 把若干纹理、buffer 和全局 barrier 合成一次 `vkCmdPipelineBarrier`：新状态是旧只读状态的子集时丢弃；只读到只读但多了读者时仍录制并合并状态；只覆盖部分子资源的 barrier 必须显式给出旧状态。render pass 内调用 barrier 会报错。
 - `BindPass` 在附件上次访问超出 subpass dependency 覆盖范围或布局不对时先插 barrier；`EndPass` 按最终布局更新附件状态。因此纯图形路径不需要手写 barrier。
@@ -146,7 +146,7 @@ graph LR
 ```
 
 - **阴影**：方向光的正交投影贴合场景包围盒，Y 翻转与相机一致，所以沿用前向的绕序规则。阴影图由 `ShadowPass` 持有并导入图，只在光源方向、场景或开关变化时重绘。Shadow 节点被禁用时 `Renderer` 关闭阴影采样，避免显示不再跟随光源的旧阴影。
-- **视锥剔除**（`Culling.hpp`）：每个 draw 在加载时存世界空间 AABB；每帧从相机 view-projection 提取 6 个平面做保守测试，得到按原顺序排列的可见下标，经 `RenderView::visibleDraws` 交给 Forward。阴影投射者不剔除：光源视锥覆盖整个场景，按相机剔除会让缓存的阴影图随相机移动重绘。剔除可关闭、可冻结视锥，并能画出每个 draw 的包围盒。
+- **视锥剔除**（`Culling.h`）：每个 draw 在加载时存世界空间 AABB；每帧从相机 view-projection 提取 6 个平面做保守测试，得到按原顺序排列的可见下标，经 `RenderView::visibleDraws` 交给 Forward。阴影投射者不剔除：光源视锥覆盖整个场景，按相机剔除会让缓存的阴影图随相机移动重绘。剔除可关闭、可冻结视锥，并能画出每个 draw 的包围盒。
 - **Forward render pass**：先不透明后 MASK，然后天空盒（只填远平面像素），最后调试线。调试线放在天空盒之后，因为线不写深度，先画会被天空覆盖。
 - **Tonemap**：曝光 + Uncharted 2 曲线；表面不是 sRGB 格式时在着色器里编码。调试线的片元着色器反解这条曲线，使显示颜色等于给定颜色。
 
@@ -160,7 +160,7 @@ graph LR
 | push constant | `DrawConstants`：model 与 normal 矩阵（128 字节） | 每次绘制 |
 | 特化常量 0 | alpha MASK 变体 | 每个管线变体 |
 
-`RenderTypes.hpp` 与 `shaders/common/Bindings.slang` 的结构同名同成员。构建时 `slangc -reflection-json` 生成 `static_assert`，任何一边改了布局而另一边没跟上都会编译失败。
+`RenderTypes.h` 与 `shaders/common/Bindings.slang` 的结构同名同成员。构建时 `slangc -reflection-json` 生成 `static_assert`，任何一边改了布局而另一边没跟上都会编译失败。
 
 ### 5.3 Pass
 
@@ -177,8 +177,8 @@ graph LR
 ### 5.4 场景与加载
 
 - `Scene` 只含 GPU 句柄与绘制数据：场景拥有的 buffer / 纹理 / 采样器；每个 primitive 4 个分离的顶点流、索引（存 `Scene::buffers` 的下标，CPU 阶段与 GPU 阶段共用同一个 primitive 结构）和局部包围盒；材质 uniform 与 descriptor set；draw 列表（primitive、材质、管线 key、`DrawConstants`、世界 AABB）。节点层级在加载时展开，渲染时不遍历场景图。
-- glTF 加载分两阶段（`GltfLoader.hpp`）：
-  - CPU 阶段，任意线程、不接触 GPU：`ParseGltfScene` 做 tinygltf 解析（文件回调走资产文件系统，Android 可读 APK）、收集纹理请求、材质 → primitive（accessor 转换、平面法线）→ 展开节点并按（不透明在前、管线 key、材质）稳定排序，产出 `GltfSceneData`（`GltfSceneData.hpp`，持有解析后的模型）；`PrepareGltfTexture` 读取并解码单个纹理请求，可对不同请求并发调用。
+- glTF 加载分两阶段（`GltfLoader.h`）：
+  - CPU 阶段，任意线程、不接触 GPU：`ParseGltfScene` 做 tinygltf 解析（文件回调走资产文件系统，Android 可读 APK）、收集纹理请求、材质 → primitive（accessor 转换、平面法线）→ 展开节点并按（不透明在前、管线 key、材质）稳定排序，产出 `GltfSceneData`（`GltfSceneData.h`，持有解析后的模型）；`PrepareGltfTexture` 读取并解码单个纹理请求，可对不同请求并发调用。
   - GPU 阶段，只在主线程：`GltfSceneUploader` 按字节预算逐步 `UploadBuffers`、逐个 `UploadTexture`，最后 `Finish` 创建采样器、材质与 descriptor set 并填好 `Scene`。
   - `SceneLoader`（`Renderer::RequestScene` / `UpdateSceneLoad`）把两个阶段跨帧组合：解析和解码是 enkiTS 任务，解码最多领先上传 `max(2, 工作线程数)` 个纹理（限制驻留的解码像素）；主线程每帧调用一次，在一个上传批次里传完已就绪的 buffer 和纹理（每次约 32 MB 预算），全部完成后 `Finish`、预热管线。加载期间场景没有 draw，画面继续刷新；查看器在底部显示进度条，完成时复位相机和灯光。取消（切换场景）不等待：在途任务连同它读取的数据转为孤儿，跑完后由下一次 `Update` 释放，`Shutdown` 才等待。加载任务是低优先级。
   - 色彩空间由用途决定：base color、emissive、specular-glossiness 为 sRGB，其余线性。
@@ -218,7 +218,7 @@ graph LR
 - 场景列表在 CMake **配置阶段**读取，修改后需要重新配置；暂存和镜像会删除源中已不存在的文件。
 - 运行时资产路径相对暂存根目录（桌面 `<exe>/assets/`，Android 为 APK assets），读取都经 `SDL_LoadFile`。
 - 着色器每个入口点编译为 `shaders/<文件>.<入口>.spv`，在 `CMakeLists.txt` 用 `MEngineCompileShader` 注册；新增需要镜像的常量结构时，加进 `MEngineGenerateShaderLayoutChecks` 的 `STRUCTS`。
-- IblBaker 逐行移植讲义的 HLSL（`UeBrdf.hpp`），输入 `.hdr` 或 KTX1 立方体，输出 5.4 的三个 KTX2，只链接 `MEngineAsset`。
+- IblBaker 逐行移植讲义的 HLSL（`UeBrdf.h`），输入 `.hdr` 或 KTX1 立方体，输出 5.4 的三个 KTX2，只链接 `MEngineAsset`。
 
 ## 7. 平台差异
 
@@ -250,9 +250,9 @@ graph LR
 **新增图形 pass**：
 
 1. 写 Slang 文件，在 `CMakeLists.txt` 注册入口。
-2. 在 `render/passes/` 继承 `FrameGraphPass`：`Init` 加载 SPIR-V、建 layout；`Setup` 声明附件和读取（资源名放 `RenderView.hpp`）；`OnCompiled` 按 `GetRenderPassOutput()` 建管线、更新描述符；`Execute` 录制。按帧决定是否执行的 pass 覆写 `IsActive`，多变体的 pass 提供 `WarmPipelines`。
+2. 在 `render/passes/` 继承 `FrameGraphPass`：`Init` 加载 SPIR-V、建 layout；`Setup` 声明附件和读取（资源名放 `RenderView.h`）；`OnCompiled` 按 `GetRenderPassOutput()` 建管线、更新描述符；`Execute` 录制。按帧决定是否执行的 pass 覆写 `IsActive`，多变体的 pass 提供 `WarmPipelines`。
 3. 在 `Renderer::Init` 中按执行顺序 `AddPass`。resize 和 render pass 合并由图处理。
-4. 新的每帧数据同时改 `RenderTypes.hpp` 和 `Bindings.slang`，布局校验会发现不一致。
+4. 新的每帧数据同时改 `RenderTypes.h` 和 `Bindings.slang`，布局校验会发现不一致。
 
 **新增 compute pass**：入口标注 `[shader("compute")]`，storage image 声明 `[[vk::image_format(...)]]`；layout 阶段写 `COMPUTE_BIT`；以 `FrameGraphNodeType::Compute` 注册并用 `Read / Write / ReadWrite` 声明访问，barrier 由图生成。
 

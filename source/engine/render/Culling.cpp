@@ -1,6 +1,6 @@
-#include "render/Culling.hpp"
+#include "render/Culling.h"
 
-#include "render/Scene.hpp"
+#include "render/Scene.h"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>

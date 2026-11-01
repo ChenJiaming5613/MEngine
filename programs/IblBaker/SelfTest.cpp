@@ -1,7 +1,7 @@
-#include "SelfTest.hpp"
+#include "SelfTest.h"
 
-#include "Bake.hpp"
-#include "UeBrdf.hpp"
+#include "Bake.h"
+#include "UeBrdf.h"
 
 #include <algorithm>
 #include <array>

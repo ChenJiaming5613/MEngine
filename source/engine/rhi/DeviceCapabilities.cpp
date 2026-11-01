@@ -1,4 +1,4 @@
-#include "rhi/DeviceCapabilities.hpp"
+#include "rhi/DeviceCapabilities.h"
 
 #include <algorithm>
 #include <cstdio>

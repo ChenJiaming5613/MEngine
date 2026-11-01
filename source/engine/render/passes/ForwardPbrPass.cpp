@@ -1,12 +1,12 @@
-#include "render/passes/ForwardPbrPass.hpp"
+#include "render/passes/ForwardPbrPass.h"
 
-#include "core/Assert.hpp"
-#include "render/RenderView.hpp"
-#include "render/passes/PipelineVariants.hpp"
-#include "render/Scene.hpp"
-#include "rhi/CommandBuffer.hpp"
-#include "rhi/GfxDevice.hpp"
-#include "rhi/VulkanUtils.hpp"
+#include "core/Assert.h"
+#include "render/RenderView.h"
+#include "render/passes/PipelineVariants.h"
+#include "render/Scene.h"
+#include "rhi/CommandBuffer.h"
+#include "rhi/GfxDevice.h"
+#include "rhi/VulkanUtils.h"
 
 #include <string>
 

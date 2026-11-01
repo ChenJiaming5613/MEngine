@@ -1,6 +1,6 @@
-#include "platform/Input.hpp"
+#include "platform/Input.h"
 
-#include "platform/Window.hpp"
+#include "platform/Window.h"
 
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_mouse.h>

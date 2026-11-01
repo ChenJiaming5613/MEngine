@@ -1,4 +1,4 @@
-#include "core/Json.hpp"
+#include "core/Json.h"
 
 #include <tinygltf_json_c.h>
 

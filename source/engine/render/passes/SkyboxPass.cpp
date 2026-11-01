@@ -1,9 +1,9 @@
-#include "render/passes/SkyboxPass.hpp"
+#include "render/passes/SkyboxPass.h"
 
-#include "render/RenderView.hpp"
-#include "rhi/CommandBuffer.hpp"
-#include "rhi/GfxDevice.hpp"
-#include "rhi/VulkanUtils.hpp"
+#include "render/RenderView.h"
+#include "rhi/CommandBuffer.h"
+#include "rhi/GfxDevice.h"
+#include "rhi/VulkanUtils.h"
 
 namespace mengine::render {
 

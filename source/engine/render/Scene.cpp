@@ -1,6 +1,6 @@
-#include "render/Scene.hpp"
+#include "render/Scene.h"
 
-#include "rhi/GfxDevice.hpp"
+#include "rhi/GfxDevice.h"
 
 namespace mengine::render {
 

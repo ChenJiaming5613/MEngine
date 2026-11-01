@@ -1,8 +1,8 @@
-#include "rhi/CommandBuffer.hpp"
+#include "rhi/CommandBuffer.h"
 
-#include "core/Assert.hpp"
-#include "core/Log.hpp"
-#include "rhi/GfxDevice.hpp"
+#include "core/Assert.h"
+#include "core/Log.h"
+#include "rhi/GfxDevice.h"
 
 namespace mengine::rhi {
 
