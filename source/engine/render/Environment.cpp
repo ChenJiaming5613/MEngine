@@ -53,16 +53,16 @@ rhi::TextureHandle CreateEnvironmentTexture(rhi::GfxDevice& device, const asset:
     const std::string& name)
 {
     const std::vector<uint8_t> data = Concatenate(image);
-    rhi::TextureCreation creation;
-    creation.width = image.width;
-    creation.height = image.height;
-    creation.mipLevels = static_cast<uint32_t>(image.levels.size());
-    creation.type = image.faceCount == 6 ? rhi::TextureType::TextureCube : rhi::TextureType::Texture2D;
-    creation.format = format;
-    creation.initialData = data.data();
-    creation.initialDataSize = data.size();
-    creation.name = name.c_str();
-    return device.CreateTexture(creation);
+    rhi::TextureCreateInfo createInfo;
+    createInfo.width = image.width;
+    createInfo.height = image.height;
+    createInfo.mipLevels = static_cast<uint32_t>(image.levels.size());
+    createInfo.type = image.faceCount == 6 ? rhi::TextureType::TextureCube : rhi::TextureType::Texture2D;
+    createInfo.format = format;
+    createInfo.initialData = data.data();
+    createInfo.initialDataSize = data.size();
+    createInfo.name = name.c_str();
+    return device.CreateTexture(createInfo);
 }
 
 asset::Ktx2Image SolidImage(uint32_t vkFormat, uint32_t faceCount, std::span<const float> texel)
@@ -106,7 +106,7 @@ void CreateFallback(rhi::GfxDevice& device, Environment& environment)
 
 void CreateSamplers(rhi::GfxDevice& device, Environment& environment)
 {
-    rhi::SamplerCreation cube;
+    rhi::SamplerCreateInfo cube;
     cube.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     cube.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     cube.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -114,7 +114,7 @@ void CreateSamplers(rhi::GfxDevice& device, Environment& environment)
     environment.cubeSampler = device.CreateSampler(cube);
 
     // The LUT stores IntegrateBRDF at texel centers; bilinear filtering with clamping interpolates between them.
-    rhi::SamplerCreation lut = cube;
+    rhi::SamplerCreateInfo lut = cube;
     lut.maxLod = 0.0f;
     lut.name = "BrdfLutSampler";
     environment.lutSampler = device.CreateSampler(lut);

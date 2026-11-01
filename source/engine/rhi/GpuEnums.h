@@ -25,14 +25,14 @@ enum class RenderPassOperation : uint8_t
     Clear,
 };
 
-enum TextureFlags : uint8_t
+enum TextureUsageFlags : uint8_t
 {
-    kTextureFlagNone = 0,
-    kTextureFlagRenderTarget = 1 << 0,
+    kTextureUsageNone = 0,
+    kTextureUsageRenderTarget = 1 << 0,
     // Only level 0 is provided; the remaining levels are generated with linear blits.
-    kTextureFlagGenerateMips = 1 << 1,
+    kTextureUsageGenerateMips = 1 << 1,
     // Usable as a STORAGE_IMAGE (compute writes). The format must support VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT.
-    kTextureFlagStorage = 1 << 2,
+    kTextureUsageStorage = 1 << 2,
 };
 
 // After Raptor's ResourceState (itself D3D12_RESOURCE_STATES). Read-only states can be combined. Textures track their

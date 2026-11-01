@@ -39,7 +39,7 @@ constexpr uint32_t kMaxVertexAttributes = 8;
 constexpr uint32_t kMaxSpecializationConstants = 8;
 constexpr uint32_t kMaxBarriersPerBatch = 8;
 
-struct BufferCreation
+struct BufferCreateInfo
 {
     // Buffers written by the GPU need the usages of every later use: STORAGE_BUFFER for compute writes, INDIRECT_BUFFER
     // for indirect draws and dispatches, TRANSFER_DST for CommandBuffer::FillBuffer.
@@ -51,7 +51,7 @@ struct BufferCreation
     const char* name = nullptr;
 };
 
-struct TextureCreation
+struct TextureCreateInfo
 {
     uint32_t width = 1;
     uint32_t height = 1;
@@ -59,15 +59,15 @@ struct TextureCreation
     uint32_t mipLevels = 1;
     TextureType type = TextureType::Texture2D;
     VkFormat format = VK_FORMAT_UNDEFINED;
-    uint8_t flags = kTextureFlagNone;
+    uint8_t flags = kTextureUsageNone;
     // Level-major and tightly packed, faces back to back inside each level (the KTX2 level layout).
-    // Holds level 0 only with kTextureFlagGenerateMips, otherwise every level.
+    // Holds level 0 only with kTextureUsageGenerateMips, otherwise every level.
     const void* initialData = nullptr;
     size_t initialDataSize = 0;
     const char* name = nullptr;
 };
 
-struct SamplerCreation
+struct SamplerCreateInfo
 {
     VkFilter minFilter = VK_FILTER_LINEAR;
     VkFilter magFilter = VK_FILTER_LINEAR;
@@ -94,12 +94,12 @@ struct ShaderStage
     size_t codeSize = 0; // bytes
 };
 
-struct ShaderStateCreation
+struct ShaderStateCreateInfo
 {
     std::array<ShaderStage, kMaxShaderStages> stages{};
     uint32_t stageCount = 0;
 
-    ShaderStateCreation& AddStage(VkShaderStageFlagBits stage, const uint32_t* code, size_t codeSizeBytes);
+    ShaderStateCreateInfo& AddStage(VkShaderStageFlagBits stage, const uint32_t* code, size_t codeSizeBytes);
 };
 
 struct DescriptorBinding
@@ -113,14 +113,14 @@ struct DescriptorBinding
     TextureType textureType = TextureType::Texture2D;
 };
 
-struct DescriptorSetLayoutCreation
+struct DescriptorSetLayoutCreateInfo
 {
     std::array<DescriptorBinding, kMaxDescriptorsPerSet> bindings{};
     uint32_t bindingCount = 0;
     uint32_t setIndex = 0;
     const char* name = nullptr;
 
-    DescriptorSetLayoutCreation& AddBinding(const DescriptorBinding& binding);
+    DescriptorSetLayoutCreateInfo& AddBinding(const DescriptorBinding& binding);
     // nullptr when no binding has this index. Used to adjust layouts built from shader reflection.
     DescriptorBinding* FindBinding(uint32_t index);
 };
@@ -136,7 +136,7 @@ struct DescriptorResource
     SamplerHandle sampler;
 };
 
-struct DescriptorSetCreation
+struct DescriptorSetCreateInfo
 {
     DescriptorSetLayoutHandle layout;
     std::array<DescriptorResource, kMaxDescriptorsPerSet> resources{};
@@ -145,9 +145,9 @@ struct DescriptorSetCreation
 
     // For UNIFORM_BUFFER_DYNAMIC bindings range must be the size of one element of the dynamic buffer.
     // Every element of an arrayed binding must be written.
-    DescriptorSetCreation& AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range = VK_WHOLE_SIZE,
+    DescriptorSetCreateInfo& AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range = VK_WHOLE_SIZE,
         uint32_t arrayElement = 0);
-    DescriptorSetCreation& AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler = {}, uint32_t arrayElement = 0);
+    DescriptorSetCreateInfo& AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler = {}, uint32_t arrayElement = 0);
 };
 
 struct VertexStream
@@ -165,18 +165,18 @@ struct VertexAttribute
     VkFormat format = VK_FORMAT_R32G32B32_SFLOAT;
 };
 
-struct VertexInputCreation
+struct VertexInputCreateInfo
 {
     std::array<VertexStream, kMaxVertexStreams> streams{};
     uint32_t streamCount = 0;
     std::array<VertexAttribute, kMaxVertexAttributes> attributes{};
     uint32_t attributeCount = 0;
 
-    VertexInputCreation& AddStream(const VertexStream& stream);
-    VertexInputCreation& AddAttribute(const VertexAttribute& attribute);
+    VertexInputCreateInfo& AddStream(const VertexStream& stream);
+    VertexInputCreateInfo& AddAttribute(const VertexAttribute& attribute);
 };
 
-struct RasterizationCreation
+struct RasterizationCreateInfo
 {
     VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
     VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -187,7 +187,7 @@ struct RasterizationCreation
     float depthBiasSlopeFactor = 0.0f;
 };
 
-struct DepthStencilCreation
+struct DepthStencilCreateInfo
 {
     bool depthTestEnable = false;
     bool depthWriteEnable = false;
@@ -195,7 +195,7 @@ struct DepthStencilCreation
 };
 
 // Applied to every color output of the pipeline.
-struct BlendStateCreation
+struct BlendStateCreateInfo
 {
     bool blendEnable = false;
     VkBlendFactor sourceColor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -236,7 +236,7 @@ struct RenderPassOutputHash
     size_t operator()(const RenderPassOutput& output) const { return static_cast<size_t>(output.Hash()); }
 };
 
-struct RenderPassCreation
+struct RenderPassCreateInfo
 {
     std::array<TextureHandle, kMaxImageOutputs> outputTextures{};
     uint32_t renderTargetCount = 0;
@@ -247,9 +247,9 @@ struct RenderPassCreation
     bool sampleDepth = false;
     const char* name = nullptr;
 
-    RenderPassCreation& AddRenderTexture(TextureHandle texture);
-    RenderPassCreation& SetDepthStencilTexture(TextureHandle texture);
-    RenderPassCreation& SetOperations(RenderPassOperation color, RenderPassOperation depth);
+    RenderPassCreateInfo& AddRenderTexture(TextureHandle texture);
+    RenderPassCreateInfo& SetDepthStencilTexture(TextureHandle texture);
+    RenderPassCreateInfo& SetOperations(RenderPassOperation color, RenderPassOperation depth);
 };
 
 struct SpecializationConstant
@@ -258,13 +258,13 @@ struct SpecializationConstant
     uint32_t value = 0;
 };
 
-struct PipelineCreation
+struct PipelineCreateInfo
 {
-    ShaderStateCreation shaders;
-    VertexInputCreation vertexInput;
-    RasterizationCreation rasterization;
-    DepthStencilCreation depthStencil;
-    BlendStateCreation blend;
+    ShaderStateCreateInfo shaders;
+    VertexInputCreateInfo vertexInput;
+    RasterizationCreateInfo rasterization;
+    DepthStencilCreateInfo depthStencil;
+    BlendStateCreateInfo blend;
     RenderPassOutput renderPass;
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
@@ -280,8 +280,8 @@ struct PipelineCreation
 
     const char* name = nullptr;
 
-    PipelineCreation& AddDescriptorSetLayout(DescriptorSetLayoutHandle layout);
-    PipelineCreation& AddSpecializationConstant(uint32_t id, uint32_t value);
+    PipelineCreateInfo& AddDescriptorSetLayout(DescriptorSetLayoutHandle layout);
+    PipelineCreateInfo& AddSpecializationConstant(uint32_t id, uint32_t value);
 };
 
 struct ImageBarrier
@@ -355,7 +355,7 @@ struct Texture
     uint32_t mipLevels = 1;
     uint32_t layerCount = 1;
     TextureType type = TextureType::Texture2D;
-    uint8_t flags = kTextureFlagNone;
+    uint8_t flags = kTextureUsageNone;
     // State of every subresource as of the last recorded command. Uploaded and plain textures start as
     // kResourceStateShaderResource, render targets as kResourceStateUndefined.
     ResourceStates state = kResourceStateUndefined;

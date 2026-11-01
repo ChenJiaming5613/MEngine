@@ -132,7 +132,7 @@ class FrameGraphResources
 public:
     rhi::TextureHandle GetTexture(FrameGraphResourceId id) const;
     rhi::BufferHandle GetBuffer(FrameGraphResourceId id) const;
-    // For pipeline creation; empty for compute passes.
+    // For pipeline createInfo; empty for compute passes.
     const rhi::RenderPassOutput& GetRenderPassOutput() const;
 
 private:
@@ -285,7 +285,7 @@ private:
         bool available = false;
         uint32_t firstUse = kNone;
         uint32_t lastUse = kNone;
-        uint8_t textureFlags = rhi::kTextureFlagNone;
+        uint8_t textureFlags = rhi::kTextureUsageNone;
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t physical = kNone;
@@ -314,7 +314,7 @@ private:
         VkFormat format = VK_FORMAT_UNDEFINED;
         uint32_t width = 0;
         uint32_t height = 0;
-        uint8_t flags = rhi::kTextureFlagNone;
+        uint8_t flags = rhi::kTextureUsageNone;
         std::string name;
     };
 

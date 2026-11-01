@@ -842,11 +842,11 @@ void FrameGraph::ComputeLifetimes()
             resource.lastUse = resource.lastUse == kNone ? rangeEnd[position] : std::max(resource.lastUse, rangeEnd[position]);
             if (access.kind == AccessKind::ColorAttachment || access.kind == AccessKind::DepthAttachment)
             {
-                resource.textureFlags |= rhi::kTextureFlagRenderTarget;
+                resource.textureFlags |= rhi::kTextureUsageRenderTarget;
             }
             if ((access.state & rhi::kResourceStateUnorderedAccess) != 0)
             {
-                resource.textureFlags |= rhi::kTextureFlagStorage;
+                resource.textureFlags |= rhi::kTextureUsageStorage;
             }
         }
     }
@@ -931,8 +931,8 @@ void FrameGraph::BuildRenderPasses()
             continue;
         }
 
-        rhi::RenderPassCreation creation;
-        creation.name = group.name.c_str();
+        rhi::RenderPassCreateInfo createInfo;
+        createInfo.name = group.name.c_str();
         RenderPassOperation colorOperation = RenderPassOperation::DontCare;
         RenderPassOperation depthOperation = RenderPassOperation::DontCare;
         bool firstColor = true;
@@ -955,14 +955,14 @@ void FrameGraph::BuildRenderPasses()
         }
         for (const uint32_t color : group.colors)
         {
-            creation.AddRenderTexture(TextureOf(color));
+            createInfo.AddRenderTexture(TextureOf(color));
         }
         if (group.depth != kNone)
         {
-            creation.SetDepthStencilTexture(TextureOf(group.depth));
+            createInfo.SetDepthStencilTexture(TextureOf(group.depth));
             // Stored only for a later reader (sampled: shader read only layout) or when the depth outlives the frame.
             const Resource& depth = m_resources[group.depth];
-            creation.storeDepth = depth.kind == ResourceKind::Texture;
+            createInfo.storeDepth = depth.kind == ResourceKind::Texture;
             const auto groupEnd = std::find(m_order.begin(), m_order.end(), group.nodes.back());
             for (auto later = groupEnd + 1; later < m_order.end(); ++later)
             {
@@ -972,16 +972,16 @@ void FrameGraph::BuildRenderPasses()
                     {
                         continue;
                     }
-                    creation.storeDepth = true;
+                    createInfo.storeDepth = true;
                     if (access.kind != AccessKind::DepthAttachment && (access.state & rhi::kResourceStateShaderResource) != 0)
                     {
-                        creation.sampleDepth = true;
+                        createInfo.sampleDepth = true;
                     }
                 }
             }
         }
-        creation.SetOperations(colorOperation, depthOperation);
-        group.handle = m_device->CreateRenderPass(creation);
+        createInfo.SetOperations(colorOperation, depthOperation);
+        group.handle = m_device->CreateRenderPass(createInfo);
         group.output = m_device->AccessRenderPass(group.handle)->output;
     }
 }

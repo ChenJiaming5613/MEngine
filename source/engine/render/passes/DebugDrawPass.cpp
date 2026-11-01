@@ -51,22 +51,22 @@ void DebugDrawPass::OnCompiled(const FrameGraphResources& resources)
     m_device->DestroyPipeline(m_pipeline);
     m_output = output;
 
-    rhi::PipelineCreation creation;
-    creation.name = "DebugLine";
-    creation.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexCode.data(), m_vertexCode.size() * sizeof(uint32_t))
+    rhi::PipelineCreateInfo createInfo;
+    createInfo.name = "DebugLine";
+    createInfo.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexCode.data(), m_vertexCode.size() * sizeof(uint32_t))
         .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, m_fragmentCode.data(), m_fragmentCode.size() * sizeof(uint32_t));
-    creation.vertexInput.AddStream({.binding = 0, .stride = sizeof(DebugVertex)})
+    createInfo.vertexInput.AddStream({.binding = 0, .stride = sizeof(DebugVertex)})
         .AddAttribute({.location = 0, .binding = 0, .offset = offsetof(DebugVertex, position), .format = VK_FORMAT_R32G32B32_SFLOAT})
         .AddAttribute({.location = 1, .binding = 0, .offset = offsetof(DebugVertex, color), .format = VK_FORMAT_R8G8B8A8_UNORM});
-    creation.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-    creation.rasterization.cullMode = VK_CULL_MODE_NONE;
+    createInfo.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    createInfo.rasterization.cullMode = VK_CULL_MODE_NONE;
     // Hidden behind the scene, never occluding later lines.
-    creation.depthStencil = {.depthTestEnable = true, .depthWriteEnable = false, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
-    creation.renderPass = output;
-    creation.AddDescriptorSetLayout(m_frameLayout);
-    creation.pushConstantSize = sizeof(DebugLineConstants);
-    creation.pushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT;
-    m_pipeline = m_device->CreatePipeline(creation);
+    createInfo.depthStencil = {.depthTestEnable = true, .depthWriteEnable = false, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
+    createInfo.renderPass = output;
+    createInfo.AddDescriptorSetLayout(m_frameLayout);
+    createInfo.pushConstantSize = sizeof(DebugLineConstants);
+    createInfo.pushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT;
+    m_pipeline = m_device->CreatePipeline(createInfo);
 }
 
 void DebugDrawPass::Execute(FrameGraphContext& context)

@@ -25,7 +25,7 @@ public:
     void Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout);
     void Shutdown();
 
-    // Creates the variants the scene's draws use, so the first frame does not stall on pipeline creation.
+    // Creates the variants the scene's draws use, so the first frame does not stall on pipeline createInfo.
     void WarmPipelines(const Scene& scene);
 
     void Setup(FrameGraphBuilder& builder) override;

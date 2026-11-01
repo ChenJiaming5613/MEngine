@@ -259,29 +259,29 @@ bool MergeReflections(std::span<const ShaderReflection> stages, ShaderReflection
     return true;
 }
 
-DescriptorSetLayoutCreation BuildDescriptorSetLayout(const ShaderReflection& merged, uint32_t setIndex, const char* name)
+DescriptorSetLayoutCreateInfo BuildDescriptorSetLayout(const ShaderReflection& merged, uint32_t setIndex, const char* name)
 {
-    DescriptorSetLayoutCreation creation;
-    creation.setIndex = setIndex;
-    creation.name = name;
+    DescriptorSetLayoutCreateInfo createInfo;
+    createInfo.setIndex = setIndex;
+    createInfo.name = name;
     for (const ReflectedBinding& binding : merged.bindings)
     {
         if (binding.set != setIndex)
         {
             continue;
         }
-        if (creation.bindingCount >= kMaxDescriptorsPerSet)
+        if (createInfo.bindingCount >= kMaxDescriptorsPerSet)
         {
             throw std::runtime_error(std::string("BuildDescriptorSetLayout: more than ") + std::to_string(kMaxDescriptorsPerSet) +
                 " bindings in set " + std::to_string(setIndex) + " of " + (name != nullptr ? name : "<unnamed>"));
         }
-        creation.AddBinding({.type = binding.type, .index = binding.binding, .count = binding.count, .stages = binding.stages,
+        createInfo.AddBinding({.type = binding.type, .index = binding.binding, .count = binding.count, .stages = binding.stages,
             .textureType = binding.textureType});
     }
-    return creation;
+    return createInfo;
 }
 
-ShaderReflection ReflectShaderState(const ShaderStateCreation& shaders, const char* pipelineName)
+ShaderReflection ReflectShaderState(const ShaderStateCreateInfo& shaders, const char* pipelineName)
 {
     const std::string name = pipelineName != nullptr ? pipelineName : "<unnamed>";
     std::array<ShaderReflection, kMaxShaderStages> stages{};

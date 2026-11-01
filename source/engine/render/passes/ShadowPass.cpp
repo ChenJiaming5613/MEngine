@@ -27,7 +27,7 @@ void ShadowPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle fra
         .width = kSize,
         .height = kSize,
         .format = kFormat,
-        .flags = rhi::kTextureFlagRenderTarget,
+        .flags = rhi::kTextureUsageRenderTarget,
         .name = "ShadowMap",
     });
 
@@ -79,38 +79,38 @@ rhi::PipelineHandle ShadowPass::GetOrCreatePipeline(uint32_t key)
 
     const bool alphaMask = (key & kPipelineKeyAlphaMask) != 0;
     const std::string name = "Shadow#" + std::to_string(key);
-    rhi::PipelineCreation creation;
-    creation.name = name.c_str();
-    creation.vertexInput.AddStream({.binding = kVertexStreamPosition, .stride = 3 * sizeof(float)})
+    rhi::PipelineCreateInfo createInfo;
+    createInfo.name = name.c_str();
+    createInfo.vertexInput.AddStream({.binding = kVertexStreamPosition, .stride = 3 * sizeof(float)})
         .AddAttribute({.location = 0, .binding = kVertexStreamPosition, .format = VK_FORMAT_R32G32B32_SFLOAT});
     if (alphaMask)
     {
-        creation.shaders
+        createInfo.shaders
             .AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexMaskCode.data(), m_vertexMaskCode.size() * sizeof(uint32_t))
             .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, m_fragmentMaskCode.data(), m_fragmentMaskCode.size() * sizeof(uint32_t));
-        creation.vertexInput.AddStream({.binding = kVertexStreamTexCoord, .stride = 2 * sizeof(float)})
+        createInfo.vertexInput.AddStream({.binding = kVertexStreamTexCoord, .stride = 2 * sizeof(float)})
             .AddAttribute({.location = 2, .binding = kVertexStreamTexCoord, .format = VK_FORMAT_R32G32_SFLOAT});
     }
     else
     {
         // Depth only: no fragment shader keeps the fast early depth path.
-        creation.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexCode.data(), m_vertexCode.size() * sizeof(uint32_t));
+        createInfo.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexCode.data(), m_vertexCode.size() * sizeof(uint32_t));
     }
 
     // lightViewProjection flips Y like the camera, so the forward pass's winding rules apply unchanged.
-    creation.rasterization.cullMode = (key & kPipelineKeyDoubleSided) != 0 ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
-    creation.rasterization.frontFace =
+    createInfo.rasterization.cullMode = (key & kPipelineKeyDoubleSided) != 0 ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+    createInfo.rasterization.frontFace =
         (key & kPipelineKeyMirrored) != 0 ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    creation.rasterization.depthBiasEnable = true;
-    creation.rasterization.depthBiasConstantFactor = 1.25f;
-    creation.rasterization.depthBiasSlopeFactor = 1.75f;
-    creation.depthStencil = {.depthTestEnable = true, .depthWriteEnable = true, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
-    creation.renderPass = m_output;
-    creation.AddDescriptorSetLayout(m_frameLayout).AddDescriptorSetLayout(m_materialLayout);
-    creation.pushConstantSize = sizeof(DrawConstants);
-    creation.pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT;
+    createInfo.rasterization.depthBiasEnable = true;
+    createInfo.rasterization.depthBiasConstantFactor = 1.25f;
+    createInfo.rasterization.depthBiasSlopeFactor = 1.75f;
+    createInfo.depthStencil = {.depthTestEnable = true, .depthWriteEnable = true, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
+    createInfo.renderPass = m_output;
+    createInfo.AddDescriptorSetLayout(m_frameLayout).AddDescriptorSetLayout(m_materialLayout);
+    createInfo.pushConstantSize = sizeof(DrawConstants);
+    createInfo.pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT;
 
-    pipeline = m_device->CreatePipeline(creation);
+    pipeline = m_device->CreatePipeline(createInfo);
     return pipeline;
 }
 

@@ -74,12 +74,12 @@ rhi::PipelineHandle ForwardPbrPass::GetOrCreatePipeline(uint32_t key)
     const std::vector<uint32_t>& vertexCode = tangents ? m_vertexTangentCode : m_vertexCode;
     const std::string name = "ForwardPbr#" + std::to_string(key);
 
-    rhi::PipelineCreation creation;
-    creation.name = name.c_str();
-    creation.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, vertexCode.data(), vertexCode.size() * sizeof(uint32_t))
+    rhi::PipelineCreateInfo createInfo;
+    createInfo.name = name.c_str();
+    createInfo.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, vertexCode.data(), vertexCode.size() * sizeof(uint32_t))
         .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, m_fragmentCode.data(), m_fragmentCode.size() * sizeof(uint32_t));
 
-    creation.vertexInput.AddStream({.binding = kVertexStreamPosition, .stride = 3 * sizeof(float)})
+    createInfo.vertexInput.AddStream({.binding = kVertexStreamPosition, .stride = 3 * sizeof(float)})
         .AddStream({.binding = kVertexStreamNormal, .stride = 3 * sizeof(float)})
         .AddStream({.binding = kVertexStreamTexCoord, .stride = 2 * sizeof(float)})
         .AddAttribute({.location = 0, .binding = kVertexStreamPosition, .format = VK_FORMAT_R32G32B32_SFLOAT})
@@ -87,22 +87,22 @@ rhi::PipelineHandle ForwardPbrPass::GetOrCreatePipeline(uint32_t key)
         .AddAttribute({.location = 2, .binding = kVertexStreamTexCoord, .format = VK_FORMAT_R32G32_SFLOAT});
     if (tangents)
     {
-        creation.vertexInput.AddStream({.binding = kVertexStreamTangent, .stride = 4 * sizeof(float)})
+        createInfo.vertexInput.AddStream({.binding = kVertexStreamTangent, .stride = 4 * sizeof(float)})
             .AddAttribute({.location = 3, .binding = kVertexStreamTangent, .format = VK_FORMAT_R32G32B32A32_SFLOAT});
     }
 
     // The projection flips Y, which keeps glTF's counter-clockwise front faces counter-clockwise on screen.
-    creation.rasterization.cullMode = (key & kPipelineKeyDoubleSided) != 0 ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
-    creation.rasterization.frontFace =
+    createInfo.rasterization.cullMode = (key & kPipelineKeyDoubleSided) != 0 ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+    createInfo.rasterization.frontFace =
         (key & kPipelineKeyMirrored) != 0 ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    creation.depthStencil = {.depthTestEnable = true, .depthWriteEnable = true, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
-    creation.renderPass = m_output;
-    creation.AddDescriptorSetLayout(m_frameLayout).AddDescriptorSetLayout(m_materialLayout);
-    creation.pushConstantSize = sizeof(DrawConstants);
-    creation.pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT;
-    creation.AddSpecializationConstant(0, (key & kPipelineKeyAlphaMask) != 0 ? 1u : 0u);
+    createInfo.depthStencil = {.depthTestEnable = true, .depthWriteEnable = true, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
+    createInfo.renderPass = m_output;
+    createInfo.AddDescriptorSetLayout(m_frameLayout).AddDescriptorSetLayout(m_materialLayout);
+    createInfo.pushConstantSize = sizeof(DrawConstants);
+    createInfo.pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT;
+    createInfo.AddSpecializationConstant(0, (key & kPipelineKeyAlphaMask) != 0 ? 1u : 0u);
 
-    pipeline = m_device->CreatePipeline(creation);
+    pipeline = m_device->CreatePipeline(createInfo);
     return pipeline;
 }
 

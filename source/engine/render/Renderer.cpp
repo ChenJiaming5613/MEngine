@@ -29,7 +29,7 @@ void Renderer::Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks)
 {
     m_device = &device;
 
-    rhi::DescriptorSetLayoutCreation frameLayout;
+    rhi::DescriptorSetLayoutCreateInfo frameLayout;
     frameLayout.name = "FrameLayout";
     frameLayout.setIndex = 0;
     frameLayout
@@ -43,7 +43,7 @@ void Renderer::Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks)
         .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 4, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
     m_frameLayout = device.CreateDescriptorSetLayout(frameLayout);
 
-    rhi::DescriptorSetLayoutCreation materialLayout;
+    rhi::DescriptorSetLayoutCreateInfo materialLayout;
     materialLayout.name = "MaterialLayout";
     materialLayout.setIndex = 1;
     materialLayout.AddBinding(
@@ -162,19 +162,19 @@ Renderer::ShadowView Renderer::FitShadowView(const glm::vec3& direction) const
 
 void Renderer::UpdateFrameSet()
 {
-    rhi::DescriptorSetCreation creation{.layout = m_frameLayout, .name = "FrameSet"};
-    creation.AddBuffer(m_device->GetDynamicBuffer(), 0, sizeof(FrameConstants))
+    rhi::DescriptorSetCreateInfo createInfo{.layout = m_frameLayout, .name = "FrameSet"};
+    createInfo.AddBuffer(m_device->GetDynamicBuffer(), 0, sizeof(FrameConstants))
         .AddTexture(m_environment.irradiance, 1, m_environment.cubeSampler)
         .AddTexture(m_environment.specular, 2, m_environment.cubeSampler)
         .AddTexture(m_environment.brdfLut, 3, m_environment.lutSampler)
         .AddTexture(m_shadow.Texture(), 4, m_shadow.Sampler());
     if (m_frameSet.IsValid())
     {
-        m_device->UpdateDescriptorSet(m_frameSet, creation);
+        m_device->UpdateDescriptorSet(m_frameSet, createInfo);
     }
     else
     {
-        m_frameSet = m_device->CreateDescriptorSet(creation);
+        m_frameSet = m_device->CreateDescriptorSet(createInfo);
     }
 }
 

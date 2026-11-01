@@ -51,7 +51,7 @@ std::unique_ptr<GltfSceneData> ParseGltfScene(std::string_view assetPath, const 
 PreparedTexture PrepareGltfTexture(const GltfSceneData& data, size_t requestIndex);
 
 // Creates the GPU resources of a parsed scene. Main thread only. Resources go into `scene` as soon as they exist, so
-// when a method throws (device errors, a failed buffer creation) Scene::Destroy releases the partial scene; the caller
+// when a method throws (device errors, a failed buffer createInfo) Scene::Destroy releases the partial scene; the caller
 // must do so and treat the load as failed. `data` must outlive the uploader.
 class GltfSceneUploader
 {

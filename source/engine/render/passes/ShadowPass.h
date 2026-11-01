@@ -31,7 +31,7 @@ public:
     void Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout);
     void Shutdown();
 
-    // Creates the variants the scene's draws use, so the first frame does not stall on pipeline creation.
+    // Creates the variants the scene's draws use, so the first frame does not stall on pipeline createInfo.
     void WarmPipelines(const Scene& scene);
     // Called every frame before the graph runs; decides whether the map is re-rendered. Without casters the map is
     // only cleared (once), so it is always sampleable.

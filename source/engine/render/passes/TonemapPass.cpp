@@ -11,9 +11,9 @@ namespace mengine::render {
 
 namespace {
 
-rhi::ShaderStateCreation TonemapShaders(const std::vector<uint32_t>& vertexCode, const std::vector<uint32_t>& fragmentCode)
+rhi::ShaderStateCreateInfo TonemapShaders(const std::vector<uint32_t>& vertexCode, const std::vector<uint32_t>& fragmentCode)
 {
-    rhi::ShaderStateCreation shaders;
+    rhi::ShaderStateCreateInfo shaders;
     shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, vertexCode.data(), vertexCode.size() * sizeof(uint32_t))
         .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentCode.data(), fragmentCode.size() * sizeof(uint32_t));
     return shaders;
@@ -67,15 +67,15 @@ void TonemapPass::Setup(FrameGraphBuilder& builder)
 
 void TonemapPass::OnCompiled(const FrameGraphResources& resources)
 {
-    rhi::DescriptorSetCreation setCreation{.layout = m_layout, .name = "TonemapInput"};
-    setCreation.AddTexture(resources.GetTexture(m_input), 0, m_sampler);
+    rhi::DescriptorSetCreateInfo setCreateInfo{.layout = m_layout, .name = "TonemapInput"};
+    setCreateInfo.AddTexture(resources.GetTexture(m_input), 0, m_sampler);
     if (m_set.IsValid())
     {
-        m_device->UpdateDescriptorSet(m_set, setCreation);
+        m_device->UpdateDescriptorSet(m_set, setCreateInfo);
     }
     else
     {
-        m_set = m_device->CreateDescriptorSet(setCreation);
+        m_set = m_device->CreateDescriptorSet(setCreateInfo);
     }
 
     const rhi::RenderPassOutput& output = resources.GetRenderPassOutput();
@@ -86,15 +86,15 @@ void TonemapPass::OnCompiled(const FrameGraphResources& resources)
     m_device->DestroyPipeline(m_pipeline);
     m_output = output;
 
-    rhi::PipelineCreation creation;
-    creation.name = "Tonemap";
-    creation.shaders = TonemapShaders(m_vertexCode, m_fragmentCode);
-    creation.rasterization.cullMode = VK_CULL_MODE_NONE;
-    creation.renderPass = output;
-    creation.AddDescriptorSetLayout(m_layout);
-    creation.pushConstantSize = sizeof(TonemapConstants);
-    creation.pushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT;
-    m_pipeline = m_device->CreatePipeline(creation);
+    rhi::PipelineCreateInfo createInfo;
+    createInfo.name = "Tonemap";
+    createInfo.shaders = TonemapShaders(m_vertexCode, m_fragmentCode);
+    createInfo.rasterization.cullMode = VK_CULL_MODE_NONE;
+    createInfo.renderPass = output;
+    createInfo.AddDescriptorSetLayout(m_layout);
+    createInfo.pushConstantSize = sizeof(TonemapConstants);
+    createInfo.pushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT;
+    m_pipeline = m_device->CreatePipeline(createInfo);
 }
 
 void TonemapPass::Execute(FrameGraphContext& context)

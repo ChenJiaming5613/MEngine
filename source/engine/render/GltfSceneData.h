@@ -39,7 +39,7 @@ struct GltfBufferData
 
 struct GltfSamplerData
 {
-    rhi::SamplerCreation creation; // creation.name is set from `name` when the sampler is created
+    rhi::SamplerCreateInfo createInfo; // createInfo.name is set from `name` when the sampler is created
     std::string name;
 };
 

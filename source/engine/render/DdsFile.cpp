@@ -2,7 +2,7 @@
 //   https://github.com/NVIDIA-RTX/Donut/blob/2c1077673edb0e0d814c202e6ce8e502d245c2da/src/engine/DDSFile.cpp
 // Differences from upstream: VkFormat instead of nvrhi::Format (as nvrhi's Vulkan backend maps them); the Donut / nvrhi
 // types come from DdsFile.h and TextureData::data is a span; ConvertDDSFormat's inverted forceSRGB conditions for
-// 32 bit RGBA / BGRA are fixed; texture creation and DDS saving are dropped (GltfLoader creates the texture).
+// 32 bit RGBA / BGRA are fixed; texture createInfo and DDS saving are dropped (GltfLoader creates the texture).
 
 /*
 * Copyright (c) 2014-2021, NVIDIA CORPORATION. All rights reserved.

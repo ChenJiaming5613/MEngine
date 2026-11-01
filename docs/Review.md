@@ -71,7 +71,7 @@
 6. **`ViewerApplication` 是 600 行、放在匿名命名空间里的类**：配置、场景切换、相机模式、灯光复位、命中测试、全部面板都在一处；引擎的生命周期规则（初始化顺序、`WaitIdle`、`MarkSwapchainDirty`、后台时写回 cache）也写在这里，再写一个应用就得照抄。→ 引擎层加 `RenderApplication` 承担生命周期；查看器拆成 `SceneSession`、`CameraRig` 和各个面板类。
 7. **重复的 UI**：Lighting / Debug 面板与 `PassInspectors.cpp` 的控件写了两遍，已经出现分歧（"Freeze Culling" 对 "Freeze"，"Use Camera Direction" 只有一边有）；Frame Graph 面板与 `FrameGraphViewer` 的开关、生命周期表也重复。→ 公共的 `EditDirectionalLight` / `EditPointLight` 等控件函数；表格并入 FrameGraphViewer。
 8. **UI 命中测试靠手工拼窗口矩形**（`ViewerApplication.cpp:268-279`），新增窗口忘了加就会让相机误吃输入；矩形有 `float[2]`、`glm::vec2` 两种表示。→ `ImGuiLayer` 在 `EndFrame` 时记录所有窗口和弹窗的矩形，统一提供 `HitTest`。
-9. **CommandBuffer 的隐式状态**：graphics 和 compute 共用一个 `m_currentPipeline`，`BindPass` / `EndPass` 都会清空它；`BindDescriptorSet` 必须先绑管线，没法在命令缓冲开头一次绑好全局 set；set 编号写在三处（layout 的 `setIndex`、PipelineCreation 里的位置、Bind 的参数），没有一致性检查；`SetClearColor` 的值跨 pass 残留。→ 按绑定点分别跟踪；set 编号直接取 layout 的 `setIndex`；清屏值作为 `BindPass` 的参数。
+9. **CommandBuffer 的隐式状态**：graphics 和 compute 共用一个 `m_currentPipeline`，`BindPass` / `EndPass` 都会清空它；`BindDescriptorSet` 必须先绑管线，没法在命令缓冲开头一次绑好全局 set；set 编号写在三处（layout 的 `setIndex`、PipelineCreateInfo 里的位置、Bind 的参数），没有一致性检查；`SetClearColor` 的值跨 pass 残留。→ 按绑定点分别跟踪；set 编号直接取 layout 的 `setIndex`；清屏值作为 `BindPass` 的参数。
 10. **错误处理不一致**：抛异常、assert、记日志后跳过、返回 bool、返回 optional + `string*`、返回空 vector、BC7 输入不足时静默输出黑色，混用；Release 下 builder 超限静默丢弃，barrier 超过 8 条会悄悄丢掉同步；校验错误在 Debug 抛异常、Release 只记日志。→ 定一条规则：编程错误 assert + 日志 + 跳过；运行时错误（内存不足、池满、资产损坏）throw 或 `Result<T>`；builder 超限硬失败。
 11. **Frame Graph 的 Compile 难以单测**：纯算法（剔除、合并、生命周期、别名）与 `GfxDevice` 绑在一起；`CheckReadsBeforeWrites` 名为 Check，实际会改声明（Load → Clear），外层还要重试。→ 纯函数 `CompileGraph(declarations, caps) -> CompiledGraph`，再由 realize 步骤创建 GPU 对象。
 12. **Frame Graph 用字符串标识资源和节点**：`Read` / `ColorAttachment` 只接受名字，拼写错误要到 Compile 才暴露；`SetEnabled` / `IsScheduled` 每帧线性扫描比较字符串；调试快照的 `kind` / `status` 也是字符串，viewer 用 `strcmp` 或按前缀解析。→ Create / Import / AddPass 返回带类型的句柄，状态用枚举。
@@ -94,7 +94,7 @@
 | 格式名表 | `ViewerApplication.cpp:62-80`、`DeviceCapabilities.cpp:~91` |
 | 方向向量归一化 UI | `ViewerApplication.cpp:370-379`、`PassInspectors.cpp:32-43` |
 | 设备扩展枚举、队列族遍历 | `GfxDevice.cpp:89,99,337-386`、`DeviceCapabilities.cpp:28,290-312` |
-| `RenderPassCreation` 与 `RenderPassOutput` 字段重复，`colorCount` / `renderTargetCount` 两套计数 | `GpuResources.h:208-242` |
+| `RenderPassCreateInfo` 与 `RenderPassOutput` 字段重复，`colorCount` / `renderTargetCount` 两套计数 | `GpuResources.h:208-242` |
 
 ## 6. 命名（涉及公开接口，本次未改）
 
@@ -111,7 +111,7 @@
 
 ## 7. 死代码
 
-`GfxDevice::ResizeOutputTextures`、`LinkTextureSampler`、`IsVsync`、`GetAllocator`、`GetAbsoluteFrame`、`GetDummyCubeTexture`、`GetDefaultSampler`、`SupportsCompute`、`GetProperties`；`CommandBuffer::IsInsidePass`；`Swapchain::HasSurface`、`ImageCount`；`DescriptorSetLayoutCreation::FindBinding`；`ShaderReflection::localSize`；`kResourceStateGenericRead`；`DebugDraw::Sphere`、`LineCount`、`kSphereSegments`；`Ktx2BytesPerTexel`；`Application::IsSuspended`；`Brdf.slang` 的 `GSmithIbl`（运行时不用）；DDS 的 `forceSRGB`、`alphaMode`、`rowPitch`、`depthPitch`；`CMakeLists.txt:166` 永远为真的 `EXISTS` 判断。保留前需要给出理由，否则删除。
+`GfxDevice::ResizeOutputTextures`、`LinkTextureSampler`、`IsVsync`、`GetAllocator`、`GetAbsoluteFrame`、`GetDummyCubeTexture`、`GetDefaultSampler`、`SupportsCompute`、`GetProperties`；`CommandBuffer::IsInsidePass`；`Swapchain::HasSurface`、`ImageCount`；`DescriptorSetLayoutCreateInfo::FindBinding`；`ShaderReflection::localSize`；`kResourceStateGenericRead`；`DebugDraw::Sphere`、`LineCount`、`kSphereSegments`；`Ktx2BytesPerTexel`；`Application::IsSuspended`；`Brdf.slang` 的 `GSmithIbl`（运行时不用）；DDS 的 `forceSRGB`、`alphaMode`、`rowPitch`、`depthPitch`；`CMakeLists.txt:166` 永远为真的 `EXISTS` 判断。保留前需要给出理由，否则删除。
 
 ## 8. 性能
 

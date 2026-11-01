@@ -262,7 +262,7 @@ void GfxDevice::Init(const GfxDeviceCreateInfo& createInfo)
     swapchainPass->name = "Swapchain";
 
     m_dynamicBytesPerFrame = static_cast<uint32_t>(AlignUp(createInfo.dynamicBufferBytesPerFrame, m_properties.limits.minUniformBufferOffsetAlignment));
-    m_dynamicBuffer = CreateBuffer(BufferCreation{
+    m_dynamicBuffer = CreateBuffer(BufferCreateInfo{
         .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         .resourceUsage = ResourceUsage::Dynamic,
         .size = VkDeviceSize{m_dynamicBytesPerFrame} * kMaxFramesInFlight,
@@ -578,7 +578,7 @@ void GfxDevice::SavePipelineCache()
         return;
     }
     std::vector<uint8_t> data(size);
-    // VK_INCOMPLETE cannot happen: nothing else touches the cache in between (single threaded pipeline creation).
+    // VK_INCOMPLETE cannot happen: nothing else touches the cache in between (single threaded pipeline createInfo).
     if (vkGetPipelineCacheData(m_device, m_pipelineCache, &size, data.data()) != VK_SUCCESS)
     {
         MENGINE_LOG_WARN("Pipeline cache: vkGetPipelineCacheData failed, not saved");
@@ -667,11 +667,11 @@ void GfxDevice::CreateDescriptorPool()
 
 void GfxDevice::CreateDefaultResources()
 {
-    m_defaultSampler = CreateSampler(SamplerCreation{.name = "DefaultSampler"});
+    m_defaultSampler = CreateSampler(SamplerCreateInfo{.name = "DefaultSampler"});
 
     UploadBatchScope batch(*this);
     const std::array<uint8_t, 4> white = {255, 255, 255, 255};
-    m_dummyTexture = CreateTexture(TextureCreation{
+    m_dummyTexture = CreateTexture(TextureCreateInfo{
         .width = 1,
         .height = 1,
         .format = VK_FORMAT_R8G8B8A8_UNORM,
@@ -680,7 +680,7 @@ void GfxDevice::CreateDefaultResources()
         .name = "DummyTexture",
     });
     const std::array<uint16_t, 4 * 6> blackFaces{};
-    m_dummyCubeTexture = CreateTexture(TextureCreation{
+    m_dummyCubeTexture = CreateTexture(TextureCreateInfo{
         .width = 1,
         .height = 1,
         .type = TextureType::TextureCube,
@@ -1048,21 +1048,21 @@ VkCommandBuffer GfxDevice::UploadCommandBuffer() const
     return m_uploadSlots[m_uploadSlot].commandBuffer;
 }
 
-BufferHandle GfxDevice::CreateBuffer(const BufferCreation& creation)
+BufferHandle GfxDevice::CreateBuffer(const BufferCreateInfo& createInfo)
 {
     AssertOwnerThread();
-    if (creation.size == 0)
+    if (createInfo.size == 0)
     {
-        throw std::runtime_error(std::string("CreateBuffer: zero size for ") + (creation.name ? creation.name : "<unnamed>"));
+        throw std::runtime_error(std::string("CreateBuffer: zero size for ") + (createInfo.name ? createInfo.name : "<unnamed>"));
     }
 
-    const bool dynamic = creation.resourceUsage == ResourceUsage::Dynamic;
-    const bool upload = !dynamic && creation.initialData != nullptr;
-    const VkBufferUsageFlags usage = creation.usage | (upload ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : 0);
+    const bool dynamic = createInfo.resourceUsage == ResourceUsage::Dynamic;
+    const bool upload = !dynamic && createInfo.initialData != nullptr;
+    const VkBufferUsageFlags usage = createInfo.usage | (upload ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : 0);
 
     const VkBufferCreateInfo bufferInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = creation.size,
+        .size = createInfo.size,
         .usage = usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
@@ -1087,28 +1087,28 @@ BufferHandle GfxDevice::CreateBuffer(const BufferCreation& creation)
         m_buffers.Release(handle);
         CheckVk(result, "vmaCreateBuffer");
     }
-    buffer.size = creation.size;
+    buffer.size = createInfo.size;
     buffer.usage = usage;
-    buffer.resourceUsage = creation.resourceUsage;
+    buffer.resourceUsage = createInfo.resourceUsage;
     buffer.mappedData = dynamic ? info.pMappedData : nullptr;
-    buffer.name = creation.name ? creation.name : "";
-    SetResourceName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<uint64_t>(buffer.buffer), creation.name);
+    buffer.name = createInfo.name ? createInfo.name : "";
+    SetResourceName(VK_OBJECT_TYPE_BUFFER, reinterpret_cast<uint64_t>(buffer.buffer), createInfo.name);
     *slot = std::move(buffer);
 
-    if (dynamic && creation.initialData != nullptr)
+    if (dynamic && createInfo.initialData != nullptr)
     {
-        std::memcpy(slot->mappedData, creation.initialData, creation.size);
-        vmaFlushAllocation(m_allocator, slot->allocation, 0, creation.size);
+        std::memcpy(slot->mappedData, createInfo.initialData, createInfo.size);
+        vmaFlushAllocation(m_allocator, slot->allocation, 0, createInfo.size);
     }
     else if (upload)
     {
         try
         {
             UploadBatchScope batch(*this);
-            const StagingBuffer staging = CreateStagingBuffer(creation.size);
-            std::memcpy(staging.mappedData, creation.initialData, creation.size);
-            vmaFlushAllocation(m_allocator, staging.allocation, staging.offset, creation.size);
-            const VkBufferCopy copy{.srcOffset = staging.offset, .size = creation.size};
+            const StagingBuffer staging = CreateStagingBuffer(createInfo.size);
+            std::memcpy(staging.mappedData, createInfo.initialData, createInfo.size);
+            vmaFlushAllocation(m_allocator, staging.allocation, staging.offset, createInfo.size);
+            const VkBufferCopy copy{.srcOffset = staging.offset, .size = createInfo.size};
             vkCmdCopyBuffer(UploadCommandBuffer(), staging.buffer, slot->buffer, 1, &copy);
             m_uploadHasBufferCopies = true;
             batch.End();
@@ -1178,8 +1178,8 @@ bool GfxDevice::SupportsStorageImage(VkFormat format) const
 void GfxDevice::CreateTextureObjects(Texture& texture)
 {
     const bool cube = texture.type == TextureType::TextureCube;
-    const bool renderTarget = (texture.flags & kTextureFlagRenderTarget) != 0;
-    const bool generateMips = (texture.flags & kTextureFlagGenerateMips) != 0 && texture.mipLevels > 1;
+    const bool renderTarget = (texture.flags & kTextureUsageRenderTarget) != 0;
+    const bool generateMips = (texture.flags & kTextureUsageGenerateMips) != 0 && texture.mipLevels > 1;
     const bool depth = IsDepthFormat(texture.format);
 
     VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -1191,7 +1191,7 @@ void GfxDevice::CreateTextureObjects(Texture& texture)
     {
         usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     }
-    if ((texture.flags & kTextureFlagStorage) != 0)
+    if ((texture.flags & kTextureUsageStorage) != 0)
     {
         usage |= VK_IMAGE_USAGE_STORAGE_BIT;
     }
@@ -1254,53 +1254,53 @@ void GfxDevice::DeferTextureObjects(Texture& texture)
     texture.view = VK_NULL_HANDLE;
 }
 
-TextureHandle GfxDevice::CreateTexture(const TextureCreation& creation)
+TextureHandle GfxDevice::CreateTexture(const TextureCreateInfo& createInfo)
 {
     AssertOwnerThread();
-    const std::string name = creation.name ? creation.name : "<unnamed>";
-    if (creation.width == 0 || creation.height == 0 || creation.format == VK_FORMAT_UNDEFINED)
+    const std::string name = createInfo.name ? createInfo.name : "<unnamed>";
+    if (createInfo.width == 0 || createInfo.height == 0 || createInfo.format == VK_FORMAT_UNDEFINED)
     {
         throw std::runtime_error("CreateTexture: invalid size or format for " + name);
     }
-    if ((creation.flags & kTextureFlagStorage) != 0 && !SupportsStorageImage(creation.format))
+    if ((createInfo.flags & kTextureUsageStorage) != 0 && !SupportsStorageImage(createInfo.format))
     {
-        throw std::runtime_error("CreateTexture: format " + std::to_string(static_cast<int>(creation.format)) + " of " + name
+        throw std::runtime_error("CreateTexture: format " + std::to_string(static_cast<int>(createInfo.format)) + " of " + name
             + " cannot be a storage image on this GPU");
     }
 
     Texture texture;
-    texture.format = creation.format;
-    texture.width = creation.width;
-    texture.height = creation.height;
-    texture.type = creation.type;
-    texture.layerCount = creation.type == TextureType::TextureCube ? 6u : 1u;
-    texture.flags = creation.flags;
+    texture.format = createInfo.format;
+    texture.width = createInfo.width;
+    texture.height = createInfo.height;
+    texture.type = createInfo.type;
+    texture.layerCount = createInfo.type == TextureType::TextureCube ? 6u : 1u;
+    texture.flags = createInfo.flags;
     texture.name = name;
 
-    const uint32_t fullChain = ComputeMipCount(creation.width, creation.height);
-    texture.mipLevels = creation.mipLevels == 0 ? fullChain : std::min(creation.mipLevels, fullChain);
+    const uint32_t fullChain = ComputeMipCount(createInfo.width, createInfo.height);
+    texture.mipLevels = createInfo.mipLevels == 0 ? fullChain : std::min(createInfo.mipLevels, fullChain);
 
-    bool generateMips = (creation.flags & kTextureFlagGenerateMips) != 0 && texture.mipLevels > 1 && creation.initialData != nullptr;
-    if (generateMips && !SupportsLinearBlit(creation.format))
+    bool generateMips = (createInfo.flags & kTextureUsageGenerateMips) != 0 && texture.mipLevels > 1 && createInfo.initialData != nullptr;
+    if (generateMips && !SupportsLinearBlit(createInfo.format))
     {
-        MENGINE_LOG_WARN("Format %d of %s does not support linear blits; keeping level 0 only", static_cast<int>(creation.format), name.c_str());
+        MENGINE_LOG_WARN("Format %d of %s does not support linear blits; keeping level 0 only", static_cast<int>(createInfo.format), name.c_str());
         generateMips = false;
         texture.mipLevels = 1;
     }
     if (!generateMips)
     {
-        texture.flags = static_cast<uint8_t>(texture.flags & ~kTextureFlagGenerateMips);
+        texture.flags = static_cast<uint8_t>(texture.flags & ~kTextureUsageGenerateMips);
     }
 
     CreateTextureObjects(texture);
 
     try
     {
-        if (creation.initialData != nullptr)
+        if (createInfo.initialData != nullptr)
         {
-            UploadTexture(texture, creation.initialData, creation.initialDataSize, generateMips ? 1u : texture.mipLevels, generateMips);
+            UploadTexture(texture, createInfo.initialData, createInfo.initialDataSize, generateMips ? 1u : texture.mipLevels, generateMips);
         }
-        else if ((creation.flags & kTextureFlagRenderTarget) == 0)
+        else if ((createInfo.flags & kTextureUsageRenderTarget) == 0)
         {
             TransitionToShaderRead(texture);
         }
@@ -1492,30 +1492,30 @@ void GfxDevice::SetTextureState(TextureHandle texture, ResourceStates state)
     }
 }
 
-SamplerHandle GfxDevice::CreateSampler(const SamplerCreation& creation)
+SamplerHandle GfxDevice::CreateSampler(const SamplerCreateInfo& createInfo)
 {
     AssertOwnerThread();
-    const bool anisotropy = m_samplerAnisotropy && creation.maxAnisotropy > 1.0f;
+    const bool anisotropy = m_samplerAnisotropy && createInfo.maxAnisotropy > 1.0f;
     const VkSamplerCreateInfo samplerInfo{
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = creation.magFilter,
-        .minFilter = creation.minFilter,
-        .mipmapMode = creation.mipmapMode,
-        .addressModeU = creation.addressModeU,
-        .addressModeV = creation.addressModeV,
-        .addressModeW = creation.addressModeW,
+        .magFilter = createInfo.magFilter,
+        .minFilter = createInfo.minFilter,
+        .mipmapMode = createInfo.mipmapMode,
+        .addressModeU = createInfo.addressModeU,
+        .addressModeV = createInfo.addressModeV,
+        .addressModeW = createInfo.addressModeW,
         .anisotropyEnable = anisotropy ? VK_TRUE : VK_FALSE,
-        .maxAnisotropy = anisotropy ? std::min(creation.maxAnisotropy, m_properties.limits.maxSamplerAnisotropy) : 1.0f,
-        .compareEnable = creation.compareEnable ? VK_TRUE : VK_FALSE,
-        .compareOp = creation.compareOp,
+        .maxAnisotropy = anisotropy ? std::min(createInfo.maxAnisotropy, m_properties.limits.maxSamplerAnisotropy) : 1.0f,
+        .compareEnable = createInfo.compareEnable ? VK_TRUE : VK_FALSE,
+        .compareOp = createInfo.compareOp,
         .minLod = 0.0f,
-        .maxLod = creation.maxLod,
-        .borderColor = creation.borderColor,
+        .maxLod = createInfo.maxLod,
+        .borderColor = createInfo.borderColor,
     };
     Sampler sampler;
     CheckVk(vkCreateSampler(m_device, &samplerInfo, nullptr, &sampler.sampler), "vkCreateSampler");
-    sampler.name = creation.name ? creation.name : "";
-    SetResourceName(VK_OBJECT_TYPE_SAMPLER, reinterpret_cast<uint64_t>(sampler.sampler), creation.name);
+    sampler.name = createInfo.name ? createInfo.name : "";
+    SetResourceName(VK_OBJECT_TYPE_SAMPLER, reinterpret_cast<uint64_t>(sampler.sampler), createInfo.name);
 
     const SamplerHandle handle = m_samplers.Obtain();
     Sampler* slot = m_samplers.Access(handle);
@@ -1540,13 +1540,13 @@ void GfxDevice::DestroySampler(SamplerHandle handle)
     m_samplers.Release(handle);
 }
 
-DescriptorSetLayoutHandle GfxDevice::CreateDescriptorSetLayout(const DescriptorSetLayoutCreation& creation)
+DescriptorSetLayoutHandle GfxDevice::CreateDescriptorSetLayout(const DescriptorSetLayoutCreateInfo& createInfo)
 {
     AssertOwnerThread();
     std::array<VkDescriptorSetLayoutBinding, kMaxDescriptorsPerSet> bindings{};
-    for (uint32_t index = 0; index < creation.bindingCount; ++index)
+    for (uint32_t index = 0; index < createInfo.bindingCount; ++index)
     {
-        const DescriptorBinding& binding = creation.bindings[index];
+        const DescriptorBinding& binding = createInfo.bindings[index];
         bindings[index] = VkDescriptorSetLayoutBinding{
             .binding = binding.index,
             .descriptorType = binding.type,
@@ -1556,16 +1556,16 @@ DescriptorSetLayoutHandle GfxDevice::CreateDescriptorSetLayout(const DescriptorS
     }
     const VkDescriptorSetLayoutCreateInfo layoutInfo{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = creation.bindingCount,
+        .bindingCount = createInfo.bindingCount,
         .pBindings = bindings.data(),
     };
 
     DescriptorSetLayout layout;
     CheckVk(vkCreateDescriptorSetLayout(m_device, &layoutInfo, nullptr, &layout.layout), "vkCreateDescriptorSetLayout");
-    layout.bindings = creation.bindings;
-    layout.bindingCount = creation.bindingCount;
-    layout.setIndex = creation.setIndex;
-    SetResourceName(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, reinterpret_cast<uint64_t>(layout.layout), creation.name);
+    layout.bindings = createInfo.bindings;
+    layout.bindingCount = createInfo.bindingCount;
+    layout.setIndex = createInfo.setIndex;
+    SetResourceName(VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, reinterpret_cast<uint64_t>(layout.layout), createInfo.name);
 
     const DescriptorSetLayoutHandle handle = m_descriptorSetLayouts.Obtain();
     DescriptorSetLayout* slot = m_descriptorSetLayouts.Access(handle);
@@ -1603,16 +1603,16 @@ VkDescriptorSet GfxDevice::AllocateDescriptorSet(VkDescriptorSetLayout layout)
     return set;
 }
 
-void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayout& layout, const DescriptorSetCreation& creation)
+void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayout& layout, const DescriptorSetCreateInfo& createInfo)
 {
     std::array<VkWriteDescriptorSet, kMaxDescriptorsPerSet> writes{};
     std::array<VkDescriptorBufferInfo, kMaxDescriptorsPerSet> bufferInfos{};
     std::array<VkDescriptorImageInfo, kMaxDescriptorsPerSet> imageInfos{};
     uint32_t writeCount = 0;
 
-    for (uint32_t index = 0; index < creation.resourceCount; ++index)
+    for (uint32_t index = 0; index < createInfo.resourceCount; ++index)
     {
-        const DescriptorResource& resource = creation.resources[index];
+        const DescriptorResource& resource = createInfo.resources[index];
         const DescriptorBinding* binding = nullptr;
         for (uint32_t bindingIndex = 0; bindingIndex < layout.bindingCount; ++bindingIndex)
         {
@@ -1624,12 +1624,12 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
         }
         if (binding == nullptr)
         {
-            throw std::runtime_error("Descriptor set " + std::string(creation.name ? creation.name : "<unnamed>") + " writes binding "
+            throw std::runtime_error("Descriptor set " + std::string(createInfo.name ? createInfo.name : "<unnamed>") + " writes binding "
                 + std::to_string(resource.binding) + " that is not in its layout");
         }
         if (resource.arrayElement >= binding->count)
         {
-            throw std::runtime_error("Descriptor set " + std::string(creation.name ? creation.name : "<unnamed>") + " writes element "
+            throw std::runtime_error("Descriptor set " + std::string(createInfo.name ? createInfo.name : "<unnamed>") + " writes element "
                 + std::to_string(resource.arrayElement) + " of binding " + std::to_string(resource.binding) + ", which has "
                 + std::to_string(binding->count));
         }
@@ -1659,10 +1659,10 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             // No dummy fallback: the dummy texture is not a storage image. The image must be in kResourceStateUnorderedAccess
             // (GENERAL) when the shader runs.
             const Texture* texture = m_textures.Access(resource.texture);
-            if (texture == nullptr || (texture->flags & kTextureFlagStorage) == 0)
+            if (texture == nullptr || (texture->flags & kTextureUsageStorage) == 0)
             {
                 throw std::runtime_error("Descriptor set binding " + std::to_string(resource.binding)
-                    + " needs a valid texture created with kTextureFlagStorage");
+                    + " needs a valid texture created with kTextureUsageStorage");
             }
             imageInfos[writeCount] = VkDescriptorImageInfo{.imageView = texture->view, .imageLayout = VK_IMAGE_LAYOUT_GENERAL};
             write.pImageInfo = &imageInfos[writeCount];
@@ -1704,13 +1704,13 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             continue;
         }
         uint32_t writtenElements = 0;
-        for (uint32_t index = 0; index < creation.resourceCount; ++index)
+        for (uint32_t index = 0; index < createInfo.resourceCount; ++index)
         {
-            writtenElements += creation.resources[index].binding == binding.index ? 1u : 0u;
+            writtenElements += createInfo.resources[index].binding == binding.index ? 1u : 0u;
         }
         if (writtenElements < binding.count)
         {
-            throw std::runtime_error("Descriptor set " + std::string(creation.name ? creation.name : "<unnamed>") + " writes "
+            throw std::runtime_error("Descriptor set " + std::string(createInfo.name ? createInfo.name : "<unnamed>") + " writes "
                 + std::to_string(writtenElements) + " of the " + std::to_string(binding.count) + " elements of binding "
                 + std::to_string(binding.index));
         }
@@ -1719,10 +1719,10 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
     vkUpdateDescriptorSets(m_device, writeCount, writes.data(), 0, nullptr);
 }
 
-DescriptorSetHandle GfxDevice::CreateDescriptorSet(const DescriptorSetCreation& creation)
+DescriptorSetHandle GfxDevice::CreateDescriptorSet(const DescriptorSetCreateInfo& createInfo)
 {
     AssertOwnerThread();
-    const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(creation.layout);
+    const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(createInfo.layout);
     if (layout == nullptr)
     {
         throw std::runtime_error("CreateDescriptorSet: invalid layout");
@@ -1730,17 +1730,17 @@ DescriptorSetHandle GfxDevice::CreateDescriptorSet(const DescriptorSetCreation& 
 
     DescriptorSet set;
     set.set = AllocateDescriptorSet(layout->layout);
-    set.layout = creation.layout;
+    set.layout = createInfo.layout;
     try
     {
-        WriteDescriptorSet(set.set, *layout, creation);
+        WriteDescriptorSet(set.set, *layout, createInfo);
     }
     catch (...)
     {
         vkFreeDescriptorSets(m_device, m_descriptorPool, 1, &set.set);
         throw;
     }
-    SetResourceName(VK_OBJECT_TYPE_DESCRIPTOR_SET, reinterpret_cast<uint64_t>(set.set), creation.name);
+    SetResourceName(VK_OBJECT_TYPE_DESCRIPTOR_SET, reinterpret_cast<uint64_t>(set.set), createInfo.name);
 
     const DescriptorSetHandle handle = m_descriptorSets.Obtain();
     DescriptorSet* slot = m_descriptorSets.Access(handle);
@@ -1753,11 +1753,11 @@ DescriptorSetHandle GfxDevice::CreateDescriptorSet(const DescriptorSetCreation& 
     return handle;
 }
 
-void GfxDevice::UpdateDescriptorSet(DescriptorSetHandle handle, const DescriptorSetCreation& creation)
+void GfxDevice::UpdateDescriptorSet(DescriptorSetHandle handle, const DescriptorSetCreateInfo& createInfo)
 {
     AssertOwnerThread();
     DescriptorSet* set = m_descriptorSets.Access(handle);
-    const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(creation.layout);
+    const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(createInfo.layout);
     if (set == nullptr || layout == nullptr)
     {
         throw std::runtime_error("UpdateDescriptorSet: invalid set or layout");
@@ -1765,10 +1765,10 @@ void GfxDevice::UpdateDescriptorSet(DescriptorSetHandle handle, const Descriptor
 
     // The old set may still be bound by a frame in flight, so a fresh set replaces it.
     const VkDescriptorSet replacement = AllocateDescriptorSet(layout->layout);
-    WriteDescriptorSet(replacement, *layout, creation);
+    WriteDescriptorSet(replacement, *layout, createInfo);
     Defer([device = m_device, pool = m_descriptorPool, old = set->set] { vkFreeDescriptorSets(device, pool, 1, &old); });
     set->set = replacement;
-    set->layout = creation.layout;
+    set->layout = createInfo.layout;
 }
 
 void GfxDevice::DestroyDescriptorSet(DescriptorSetHandle handle)
@@ -1923,23 +1923,23 @@ void GfxDevice::CreateFramebuffer(RenderPass& renderPass)
     SetResourceName(VK_OBJECT_TYPE_FRAMEBUFFER, reinterpret_cast<uint64_t>(renderPass.framebuffer), renderPass.name.c_str());
 }
 
-RenderPassHandle GfxDevice::CreateRenderPass(const RenderPassCreation& creation)
+RenderPassHandle GfxDevice::CreateRenderPass(const RenderPassCreateInfo& createInfo)
 {
     AssertOwnerThread();
     RenderPass renderPass;
-    renderPass.name = creation.name ? creation.name : "<unnamed>";
-    renderPass.outputTextures = creation.outputTextures;
-    renderPass.renderTargetCount = creation.renderTargetCount;
-    renderPass.depthStencilTexture = creation.depthStencilTexture;
+    renderPass.name = createInfo.name ? createInfo.name : "<unnamed>";
+    renderPass.outputTextures = createInfo.outputTextures;
+    renderPass.renderTargetCount = createInfo.renderTargetCount;
+    renderPass.depthStencilTexture = createInfo.depthStencilTexture;
 
     RenderPassOutput& output = renderPass.output;
-    output.colorOperation = creation.colorOperation;
-    output.depthOperation = creation.depthOperation;
-    output.storeDepth = creation.storeDepth;
-    output.sampleDepth = creation.sampleDepth;
-    for (uint32_t index = 0; index < creation.renderTargetCount; ++index)
+    output.colorOperation = createInfo.colorOperation;
+    output.depthOperation = createInfo.depthOperation;
+    output.storeDepth = createInfo.storeDepth;
+    output.sampleDepth = createInfo.sampleDepth;
+    for (uint32_t index = 0; index < createInfo.renderTargetCount; ++index)
     {
-        const Texture* texture = m_textures.Access(creation.outputTextures[index]);
+        const Texture* texture = m_textures.Access(createInfo.outputTextures[index]);
         if (texture == nullptr)
         {
             throw std::runtime_error("CreateRenderPass: invalid color output for " + renderPass.name);
@@ -1948,7 +1948,7 @@ RenderPassHandle GfxDevice::CreateRenderPass(const RenderPassCreation& creation)
         renderPass.width = texture->width;
         renderPass.height = texture->height;
     }
-    if (const Texture* depth = m_textures.Access(creation.depthStencilTexture))
+    if (const Texture* depth = m_textures.Access(createInfo.depthStencilTexture))
     {
         output.SetDepth(depth->format);
         renderPass.width = depth->width;
@@ -2018,13 +2018,13 @@ void GfxDevice::DestroyRenderPass(RenderPassHandle handle)
     m_renderPasses.Release(handle);
 }
 
-PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
+PipelineHandle GfxDevice::CreatePipeline(const PipelineCreateInfo& createInfo)
 {
     AssertOwnerThread();
-    const std::string name = creation.name ? creation.name : "<unnamed>";
+    const std::string name = createInfo.name ? createInfo.name : "<unnamed>";
 
     // A lone compute stage makes a compute pipeline, as in Raptor.
-    const ShaderStateCreation& shaders = creation.shaders;
+    const ShaderStateCreateInfo& shaders = createInfo.shaders;
     if (shaders.stageCount == 0)
     {
         throw std::runtime_error("CreatePipeline: no shader stages for " + name);
@@ -2041,13 +2041,13 @@ PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
     {
         throw std::runtime_error("CreatePipeline: the graphics queue of this GPU does not run compute (" + name + ")");
     }
-    const VkShaderStageFlags pushConstantStages = compute ? VK_SHADER_STAGE_COMPUTE_BIT : creation.pushConstantStages;
-    ValidatePipelineInterface(creation, pushConstantStages);
+    const VkShaderStageFlags pushConstantStages = compute ? VK_SHADER_STAGE_COMPUTE_BIT : createInfo.pushConstantStages;
+    ValidatePipelineInterface(createInfo, pushConstantStages);
 
     std::array<VkDescriptorSetLayout, kMaxDescriptorSetLayouts> setLayouts{};
-    for (uint32_t index = 0; index < creation.descriptorSetLayoutCount; ++index)
+    for (uint32_t index = 0; index < createInfo.descriptorSetLayoutCount; ++index)
     {
-        const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(creation.descriptorSetLayouts[index]);
+        const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(createInfo.descriptorSetLayouts[index]);
         if (layout == nullptr)
         {
             throw std::runtime_error("CreatePipeline: invalid descriptor set layout for " + name);
@@ -2058,23 +2058,23 @@ PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
     const VkPushConstantRange pushConstantRange{
         .stageFlags = pushConstantStages,
         .offset = 0,
-        .size = creation.pushConstantSize,
+        .size = createInfo.pushConstantSize,
     };
     const VkPipelineLayoutCreateInfo layoutInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = creation.descriptorSetLayoutCount,
+        .setLayoutCount = createInfo.descriptorSetLayoutCount,
         .pSetLayouts = setLayouts.data(),
-        .pushConstantRangeCount = creation.pushConstantSize > 0 ? 1u : 0u,
+        .pushConstantRangeCount = createInfo.pushConstantSize > 0 ? 1u : 0u,
         .pPushConstantRanges = &pushConstantRange,
     };
     Pipeline pipeline;
     pipeline.name = name;
     pipeline.bindPoint = compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
     pipeline.pushConstantStages = pushConstantStages;
-    pipeline.pushConstantSize = creation.pushConstantSize;
+    pipeline.pushConstantSize = createInfo.pushConstantSize;
     CheckVk(vkCreatePipelineLayout(m_device, &layoutInfo, nullptr, &pipeline.layout), "vkCreatePipelineLayout");
 
-    // Shader modules only live for the duration of pipeline creation.
+    // Shader modules only live for the duration of pipeline createInfo.
     std::array<VkShaderModule, kMaxShaderStages> modules{};
     const auto destroyModules = [&] {
         for (VkShaderModule module : modules)
@@ -2090,26 +2090,26 @@ PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
     {
         std::array<VkSpecializationMapEntry, kMaxSpecializationConstants> mapEntries{};
         std::array<uint32_t, kMaxSpecializationConstants> specializationData{};
-        for (uint32_t index = 0; index < creation.specializationConstantCount; ++index)
+        for (uint32_t index = 0; index < createInfo.specializationConstantCount; ++index)
         {
             mapEntries[index] = VkSpecializationMapEntry{
-                .constantID = creation.specializationConstants[index].id,
+                .constantID = createInfo.specializationConstants[index].id,
                 .offset = static_cast<uint32_t>(index * sizeof(uint32_t)),
                 .size = sizeof(uint32_t),
             };
-            specializationData[index] = creation.specializationConstants[index].value;
+            specializationData[index] = createInfo.specializationConstants[index].value;
         }
         const VkSpecializationInfo specializationInfo{
-            .mapEntryCount = creation.specializationConstantCount,
+            .mapEntryCount = createInfo.specializationConstantCount,
             .pMapEntries = mapEntries.data(),
-            .dataSize = creation.specializationConstantCount * sizeof(uint32_t),
+            .dataSize = createInfo.specializationConstantCount * sizeof(uint32_t),
             .pData = specializationData.data(),
         };
 
         std::array<VkPipelineShaderStageCreateInfo, kMaxShaderStages> stages{};
-        for (uint32_t index = 0; index < creation.shaders.stageCount; ++index)
+        for (uint32_t index = 0; index < createInfo.shaders.stageCount; ++index)
         {
-            const ShaderStage& stage = creation.shaders.stages[index];
+            const ShaderStage& stage = createInfo.shaders.stages[index];
             const VkShaderModuleCreateInfo moduleInfo{
                 .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                 .codeSize = stage.codeSize,
@@ -2122,7 +2122,7 @@ PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
                 .stage = stage.stage,
                 .module = modules[index],
                 .pName = "main",
-                .pSpecializationInfo = creation.specializationConstantCount > 0 ? &specializationInfo : nullptr,
+                .pSpecializationInfo = createInfo.specializationConstantCount > 0 ? &specializationInfo : nullptr,
             };
         }
 
@@ -2132,7 +2132,7 @@ PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
         }
         else
         {
-            CreateGraphicsPipeline(creation, std::span(stages.data(), creation.shaders.stageCount), pipeline);
+            CreateGraphicsPipeline(createInfo, std::span(stages.data(), createInfo.shaders.stageCount), pipeline);
         }
     }
     catch (...)
@@ -2143,7 +2143,7 @@ PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
     }
     destroyModules();
 
-    SetResourceName(VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<uint64_t>(pipeline.pipeline), creation.name);
+    SetResourceName(VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<uint64_t>(pipeline.pipeline), createInfo.name);
 
     const PipelineHandle handle = m_pipelines.Obtain();
     Pipeline* slot = m_pipelines.Access(handle);
@@ -2157,10 +2157,10 @@ PipelineHandle GfxDevice::CreatePipeline(const PipelineCreation& creation)
     return handle;
 }
 
-void GfxDevice::ValidatePipelineInterface(const PipelineCreation& creation, VkShaderStageFlags pushConstantStages)
+void GfxDevice::ValidatePipelineInterface(const PipelineCreateInfo& createInfo, VkShaderStageFlags pushConstantStages)
 {
-    const std::string name = creation.name ? creation.name : "<unnamed>";
-    const ShaderStateCreation& shaders = creation.shaders;
+    const std::string name = createInfo.name ? createInfo.name : "<unnamed>";
+    const ShaderStateCreateInfo& shaders = createInfo.shaders;
 
     // Malformed SPIR-V is never tolerated: the driver would reject or crash on it anyway.
     std::array<ShaderReflection, kMaxShaderStages> perStage{};
@@ -2201,12 +2201,12 @@ void GfxDevice::ValidatePipelineInterface(const PipelineCreation& creation, VkSh
     for (const ReflectedBinding& binding : merged.bindings)
     {
         const std::string where = "set " + std::to_string(binding.set) + " binding " + std::to_string(binding.binding) + ": ";
-        if (binding.set >= creation.descriptorSetLayoutCount)
+        if (binding.set >= createInfo.descriptorSetLayoutCount)
         {
-            report(where + "used by the shaders, but the pipeline has only " + std::to_string(creation.descriptorSetLayoutCount) + " set layouts");
+            report(where + "used by the shaders, but the pipeline has only " + std::to_string(createInfo.descriptorSetLayoutCount) + " set layouts");
             continue;
         }
-        const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(creation.descriptorSetLayouts[binding.set]);
+        const DescriptorSetLayout* layout = m_descriptorSetLayouts.Access(createInfo.descriptorSetLayouts[binding.set]);
         if (layout == nullptr)
         {
             continue;
@@ -2245,10 +2245,10 @@ void GfxDevice::ValidatePipelineInterface(const PipelineCreation& creation, VkSh
         }
     }
 
-    if (merged.pushConstantSize > creation.pushConstantSize)
+    if (merged.pushConstantSize > createInfo.pushConstantSize)
     {
         report("push constants: shaders use " + std::to_string(merged.pushConstantSize) + " bytes, the pipeline declares " +
-            std::to_string(creation.pushConstantSize));
+            std::to_string(createInfo.pushConstantSize));
     }
     else if (merged.pushConstantSize > 0 && (pushConstantStages & merged.pushConstantStages) != merged.pushConstantStages)
     {
@@ -2256,9 +2256,9 @@ void GfxDevice::ValidatePipelineInterface(const PipelineCreation& creation, VkSh
             StageNames(merged.pushConstantStages & ~pushConstantStages) + " that use them");
     }
 
-    for (uint32_t index = 0; index < creation.specializationConstantCount; ++index)
+    for (uint32_t index = 0; index < createInfo.specializationConstantCount; ++index)
     {
-        const uint32_t id = creation.specializationConstants[index].id;
+        const uint32_t id = createInfo.specializationConstants[index].id;
         if (!std::binary_search(merged.specializationConstantIds.begin(), merged.specializationConstantIds.end(), id))
         {
             MENGINE_LOG_WARN("CreatePipeline %s: specialization constant %u is not declared by any stage", name.c_str(), id);
@@ -2299,18 +2299,18 @@ void GfxDevice::CreateComputePipeline(const VkPipelineShaderStageCreateInfo& sta
 }
 
 void GfxDevice::CreateGraphicsPipeline(
-    const PipelineCreation& creation, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline)
+    const PipelineCreateInfo& createInfo, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline)
 {
     std::array<VkVertexInputBindingDescription, kMaxVertexStreams> vertexBindings{};
-    for (uint32_t index = 0; index < creation.vertexInput.streamCount; ++index)
+    for (uint32_t index = 0; index < createInfo.vertexInput.streamCount; ++index)
     {
-        const VertexStream& stream = creation.vertexInput.streams[index];
+        const VertexStream& stream = createInfo.vertexInput.streams[index];
         vertexBindings[index] = VkVertexInputBindingDescription{.binding = stream.binding, .stride = stream.stride, .inputRate = stream.inputRate};
     }
     std::array<VkVertexInputAttributeDescription, kMaxVertexAttributes> vertexAttributes{};
-    for (uint32_t index = 0; index < creation.vertexInput.attributeCount; ++index)
+    for (uint32_t index = 0; index < createInfo.vertexInput.attributeCount; ++index)
     {
-        const VertexAttribute& attribute = creation.vertexInput.attributes[index];
+        const VertexAttribute& attribute = createInfo.vertexInput.attributes[index];
         vertexAttributes[index] = VkVertexInputAttributeDescription{
             .location = attribute.location,
             .binding = attribute.binding,
@@ -2320,15 +2320,15 @@ void GfxDevice::CreateGraphicsPipeline(
     }
     const VkPipelineVertexInputStateCreateInfo vertexInputState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = creation.vertexInput.streamCount,
+        .vertexBindingDescriptionCount = createInfo.vertexInput.streamCount,
         .pVertexBindingDescriptions = vertexBindings.data(),
-        .vertexAttributeDescriptionCount = creation.vertexInput.attributeCount,
+        .vertexAttributeDescriptionCount = createInfo.vertexInput.attributeCount,
         .pVertexAttributeDescriptions = vertexAttributes.data(),
     };
 
     const VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = creation.topology,
+        .topology = createInfo.topology,
     };
     const VkPipelineViewportStateCreateInfo viewportState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -2337,13 +2337,13 @@ void GfxDevice::CreateGraphicsPipeline(
     };
     const VkPipelineRasterizationStateCreateInfo rasterizationState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .polygonMode = creation.rasterization.polygonMode,
-        .cullMode = creation.rasterization.cullMode,
-        .frontFace = creation.rasterization.frontFace,
-        .depthBiasEnable = creation.rasterization.depthBiasEnable ? VK_TRUE : VK_FALSE,
-        .depthBiasConstantFactor = creation.rasterization.depthBiasConstantFactor,
+        .polygonMode = createInfo.rasterization.polygonMode,
+        .cullMode = createInfo.rasterization.cullMode,
+        .frontFace = createInfo.rasterization.frontFace,
+        .depthBiasEnable = createInfo.rasterization.depthBiasEnable ? VK_TRUE : VK_FALSE,
+        .depthBiasConstantFactor = createInfo.rasterization.depthBiasConstantFactor,
         .depthBiasClamp = 0.0f,
-        .depthBiasSlopeFactor = creation.rasterization.depthBiasSlopeFactor,
+        .depthBiasSlopeFactor = createInfo.rasterization.depthBiasSlopeFactor,
         .lineWidth = 1.0f,
     };
     const VkPipelineMultisampleStateCreateInfo multisampleState{
@@ -2352,15 +2352,15 @@ void GfxDevice::CreateGraphicsPipeline(
     };
     const VkPipelineDepthStencilStateCreateInfo depthStencilState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = creation.depthStencil.depthTestEnable ? VK_TRUE : VK_FALSE,
-        .depthWriteEnable = creation.depthStencil.depthWriteEnable ? VK_TRUE : VK_FALSE,
-        .depthCompareOp = creation.depthStencil.depthCompareOp,
+        .depthTestEnable = createInfo.depthStencil.depthTestEnable ? VK_TRUE : VK_FALSE,
+        .depthWriteEnable = createInfo.depthStencil.depthWriteEnable ? VK_TRUE : VK_FALSE,
+        .depthCompareOp = createInfo.depthStencil.depthCompareOp,
     };
 
     std::array<VkPipelineColorBlendAttachmentState, kMaxImageOutputs> blendAttachments{};
-    for (uint32_t index = 0; index < creation.renderPass.colorCount; ++index)
+    for (uint32_t index = 0; index < createInfo.renderPass.colorCount; ++index)
     {
-        const BlendStateCreation& blend = creation.blend;
+        const BlendStateCreateInfo& blend = createInfo.blend;
         blendAttachments[index] = VkPipelineColorBlendAttachmentState{
             .blendEnable = blend.blendEnable ? VK_TRUE : VK_FALSE,
             .srcColorBlendFactor = blend.sourceColor,
@@ -2374,7 +2374,7 @@ void GfxDevice::CreateGraphicsPipeline(
     }
     const VkPipelineColorBlendStateCreateInfo colorBlendState{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .attachmentCount = creation.renderPass.colorCount,
+        .attachmentCount = createInfo.renderPass.colorCount,
         .pAttachments = blendAttachments.data(),
     };
 
@@ -2398,7 +2398,7 @@ void GfxDevice::CreateGraphicsPipeline(
         .pColorBlendState = &colorBlendState,
         .pDynamicState = &dynamicState,
         .layout = pipeline.layout,
-        .renderPass = GetVulkanRenderPass(creation.renderPass),
+        .renderPass = GetVulkanRenderPass(createInfo.renderPass),
         .subpass = 0,
     };
     const uint64_t start = SDL_GetPerformanceCounter();

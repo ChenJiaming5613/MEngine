@@ -65,13 +65,13 @@ public:
     void Shutdown();
 
     // Creation throws on Vulkan errors. Initial data is uploaded in the current upload batch, or in a one-off batch.
-    BufferHandle CreateBuffer(const BufferCreation& creation);
-    TextureHandle CreateTexture(const TextureCreation& creation);
-    SamplerHandle CreateSampler(const SamplerCreation& creation);
-    DescriptorSetLayoutHandle CreateDescriptorSetLayout(const DescriptorSetLayoutCreation& creation);
-    DescriptorSetHandle CreateDescriptorSet(const DescriptorSetCreation& creation);
-    PipelineHandle CreatePipeline(const PipelineCreation& creation);
-    RenderPassHandle CreateRenderPass(const RenderPassCreation& creation);
+    BufferHandle CreateBuffer(const BufferCreateInfo& createInfo);
+    TextureHandle CreateTexture(const TextureCreateInfo& createInfo);
+    SamplerHandle CreateSampler(const SamplerCreateInfo& createInfo);
+    DescriptorSetLayoutHandle CreateDescriptorSetLayout(const DescriptorSetLayoutCreateInfo& createInfo);
+    DescriptorSetHandle CreateDescriptorSet(const DescriptorSetCreateInfo& createInfo);
+    PipelineHandle CreatePipeline(const PipelineCreateInfo& createInfo);
+    RenderPassHandle CreateRenderPass(const RenderPassCreateInfo& createInfo);
 
     // Handles become stale at once; the Vulkan objects are destroyed after the frames that may use them complete.
     void DestroyBuffer(BufferHandle handle);
@@ -98,7 +98,7 @@ public:
     // Declares the state of every subresource, after barriers on partial ranges (per-mip transitions) left them uniform.
     void SetTextureState(TextureHandle texture, ResourceStates state);
     // Rewrites every descriptor of the set under the same handle; the old VkDescriptorSet is freed later.
-    void UpdateDescriptorSet(DescriptorSetHandle handle, const DescriptorSetCreation& creation);
+    void UpdateDescriptorSet(DescriptorSetHandle handle, const DescriptorSetCreateInfo& createInfo);
     // Recreates the pass's output textures (same handles) and framebuffer. Descriptor sets sampling them must be updated.
     void ResizeOutputTextures(RenderPassHandle handle, uint32_t width, uint32_t height);
 
@@ -142,7 +142,7 @@ public:
     bool SupportsLinearBlit(VkFormat format) const;
     // Linear filtering of sampled images; for depth formats this enables hardware 2x2 PCF with compare samplers.
     bool SupportsLinearFilter(VkFormat format) const;
-    // kTextureFlagStorage needs this for the texture's format.
+    // kTextureUsageStorage needs this for the texture's format.
     bool SupportsStorageImage(VkFormat format) const;
     // The graphics queue also runs compute; compute pipelines and Dispatch need it.
     bool SupportsCompute() const { return m_computeSupported; }
@@ -268,12 +268,12 @@ private:
     void CreateFramebuffer(RenderPass& renderPass);
     // Fill pipeline.pipeline; pipeline.layout and the stages already exist.
     void CreateComputePipeline(const VkPipelineShaderStageCreateInfo& stage, Pipeline& pipeline);
-    void CreateGraphicsPipeline(const PipelineCreation& creation, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline);
+    void CreateGraphicsPipeline(const PipelineCreateInfo& createInfo, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline);
     // Compares the reflected shader interface with the layouts, push constants and specialization constants of the
-    // creation. Throws in builds with validation layers, logs an error otherwise.
-    void ValidatePipelineInterface(const PipelineCreation& creation, VkShaderStageFlags pushConstantStages);
+    // createInfo. Throws in builds with validation layers, logs an error otherwise.
+    void ValidatePipelineInterface(const PipelineCreateInfo& createInfo, VkShaderStageFlags pushConstantStages);
     void RecordPipelineCreation(uint64_t startTicks);
-    void WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayout& layout, const DescriptorSetCreation& creation);
+    void WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayout& layout, const DescriptorSetCreateInfo& createInfo);
     VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetLayout layout);
 
     SDL_Window* m_window = nullptr;

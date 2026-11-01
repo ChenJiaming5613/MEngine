@@ -72,12 +72,12 @@ graph TB
 
 ### 4.1 资源模型
 
-- **Creation 描述**：每种资源一个纯数据的 `XxxCreation`，带链式 `AddXxx`。
+- **CreateInfo 描述**：每种资源一个纯数据的 `XxxCreateInfo`，带链式 `AddXxx`。
 - **句柄 + 池**：`GfxDevice::CreateXxx` 返回 `Handle<Tag>`（index + generation，不同资源的句柄类型不能混用）；对象存在固定容量、永不扩容的 `ResourcePool` 里，所以 `AccessXxx` 取得的指针在资源存活期间稳定，失效句柄返回 `nullptr`。
 - **延迟销毁**：`DestroyXxx` 立即使句柄失效，Vulkan 对象在可能使用它的帧完成后销毁；`WaitIdleAndReleaseDeferred` 在帧外一次性释放（切换场景时用，避免新旧场景同时占显存）。
 - **薄命令封装**：`CommandBuffer` 把句柄解析为 Vulkan 对象再录制，附带用途、对齐、pass 内外等检查，失败时记错误并跳过该命令。
 
-与 Raptor 的差异：句柄带 generation；`ShaderState` 并入 `PipelineCreation`；没有 `Renderer` 资源缓存层。
+与 Raptor 的差异：句柄带 generation；`ShaderState` 并入 `PipelineCreateInfo`；没有 `Renderer` 资源缓存层。
 
 ### 4.2 Render pass 模型
 
@@ -261,7 +261,7 @@ graph LR
 - 无抗锯齿；只有 CPU 视锥剔除（无遮挡剔除、无 GPU 剔除）；alpha BLEND 当作 MASK；无透射。
 - 只有方向光有阴影。
 - 所有工作在单一图形队列上，单命令缓冲录制；上传在主线程按帧分批，每批同步等待。
-- 描述符没有数组和 bindless；每个 `DescriptorSetCreation` 最多 16 个资源，每个管线最多 4 个 set layout、3 个着色器阶段、4 个颜色附件。
+- 描述符没有数组和 bindless；每个 `DescriptorSetCreateInfo` 最多 16 个资源，每个管线最多 4 个 set layout、3 个着色器阶段、4 个颜色附件。
 - Frame Graph 没有跨帧历史资源和图内瞬时 buffer；纹理复用只在描述相同的纹理之间。
 - 只查询、尚未启用 Vulkan 1.1 以上的可选能力。
 - 代码审查发现的设计问题与待办见 [`Review.md`](Review.md)。

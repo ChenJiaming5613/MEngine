@@ -20,7 +20,7 @@ void HashCombine(uint64_t& hash, uint64_t value)
 
 } // namespace
 
-ShaderStateCreation& ShaderStateCreation::AddStage(VkShaderStageFlagBits stage, const uint32_t* code, size_t codeSizeBytes)
+ShaderStateCreateInfo& ShaderStateCreateInfo::AddStage(VkShaderStageFlagBits stage, const uint32_t* code, size_t codeSizeBytes)
 {
     MENGINE_ASSERT(stageCount < kMaxShaderStages);
     if (stageCount < kMaxShaderStages)
@@ -30,7 +30,7 @@ ShaderStateCreation& ShaderStateCreation::AddStage(VkShaderStageFlagBits stage, 
     return *this;
 }
 
-DescriptorSetLayoutCreation& DescriptorSetLayoutCreation::AddBinding(const DescriptorBinding& binding)
+DescriptorSetLayoutCreateInfo& DescriptorSetLayoutCreateInfo::AddBinding(const DescriptorBinding& binding)
 {
     MENGINE_ASSERT(bindingCount < kMaxDescriptorsPerSet);
     if (bindingCount < kMaxDescriptorsPerSet)
@@ -40,7 +40,7 @@ DescriptorSetLayoutCreation& DescriptorSetLayoutCreation::AddBinding(const Descr
     return *this;
 }
 
-DescriptorBinding* DescriptorSetLayoutCreation::FindBinding(uint32_t index)
+DescriptorBinding* DescriptorSetLayoutCreateInfo::FindBinding(uint32_t index)
 {
     for (uint32_t slot = 0; slot < bindingCount; ++slot)
     {
@@ -52,7 +52,7 @@ DescriptorBinding* DescriptorSetLayoutCreation::FindBinding(uint32_t index)
     return nullptr;
 }
 
-DescriptorSetCreation& DescriptorSetCreation::AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range,
+DescriptorSetCreateInfo& DescriptorSetCreateInfo::AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range,
     uint32_t arrayElement)
 {
     MENGINE_ASSERT(resourceCount < kMaxDescriptorsPerSet);
@@ -64,7 +64,7 @@ DescriptorSetCreation& DescriptorSetCreation::AddBuffer(BufferHandle buffer, uin
     return *this;
 }
 
-DescriptorSetCreation& DescriptorSetCreation::AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler,
+DescriptorSetCreateInfo& DescriptorSetCreateInfo::AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler,
     uint32_t arrayElement)
 {
     MENGINE_ASSERT(resourceCount < kMaxDescriptorsPerSet);
@@ -76,7 +76,7 @@ DescriptorSetCreation& DescriptorSetCreation::AddTexture(TextureHandle texture, 
     return *this;
 }
 
-VertexInputCreation& VertexInputCreation::AddStream(const VertexStream& stream)
+VertexInputCreateInfo& VertexInputCreateInfo::AddStream(const VertexStream& stream)
 {
     MENGINE_ASSERT(streamCount < kMaxVertexStreams);
     if (streamCount < kMaxVertexStreams)
@@ -86,7 +86,7 @@ VertexInputCreation& VertexInputCreation::AddStream(const VertexStream& stream)
     return *this;
 }
 
-VertexInputCreation& VertexInputCreation::AddAttribute(const VertexAttribute& attribute)
+VertexInputCreateInfo& VertexInputCreateInfo::AddAttribute(const VertexAttribute& attribute)
 {
     MENGINE_ASSERT(attributeCount < kMaxVertexAttributes);
     if (attributeCount < kMaxVertexAttributes)
@@ -136,7 +136,7 @@ uint64_t RenderPassOutput::Hash() const
     return hash;
 }
 
-RenderPassCreation& RenderPassCreation::AddRenderTexture(TextureHandle texture)
+RenderPassCreateInfo& RenderPassCreateInfo::AddRenderTexture(TextureHandle texture)
 {
     MENGINE_ASSERT(renderTargetCount < kMaxImageOutputs);
     if (renderTargetCount < kMaxImageOutputs)
@@ -146,20 +146,20 @@ RenderPassCreation& RenderPassCreation::AddRenderTexture(TextureHandle texture)
     return *this;
 }
 
-RenderPassCreation& RenderPassCreation::SetDepthStencilTexture(TextureHandle texture)
+RenderPassCreateInfo& RenderPassCreateInfo::SetDepthStencilTexture(TextureHandle texture)
 {
     depthStencilTexture = texture;
     return *this;
 }
 
-RenderPassCreation& RenderPassCreation::SetOperations(RenderPassOperation color, RenderPassOperation depth)
+RenderPassCreateInfo& RenderPassCreateInfo::SetOperations(RenderPassOperation color, RenderPassOperation depth)
 {
     colorOperation = color;
     depthOperation = depth;
     return *this;
 }
 
-PipelineCreation& PipelineCreation::AddDescriptorSetLayout(DescriptorSetLayoutHandle layout)
+PipelineCreateInfo& PipelineCreateInfo::AddDescriptorSetLayout(DescriptorSetLayoutHandle layout)
 {
     MENGINE_ASSERT(descriptorSetLayoutCount < kMaxDescriptorSetLayouts);
     if (descriptorSetLayoutCount < kMaxDescriptorSetLayouts)
@@ -169,7 +169,7 @@ PipelineCreation& PipelineCreation::AddDescriptorSetLayout(DescriptorSetLayoutHa
     return *this;
 }
 
-PipelineCreation& PipelineCreation::AddSpecializationConstant(uint32_t id, uint32_t value)
+PipelineCreateInfo& PipelineCreateInfo::AddSpecializationConstant(uint32_t id, uint32_t value)
 {
     MENGINE_ASSERT(specializationConstantCount < kMaxSpecializationConstants);
     if (specializationConstantCount < kMaxSpecializationConstants)

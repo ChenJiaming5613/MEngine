@@ -40,16 +40,16 @@ void SkyboxPass::OnCompiled(const FrameGraphResources& resources)
     m_device->DestroyPipeline(m_pipeline);
     m_output = output;
 
-    rhi::PipelineCreation creation;
-    creation.name = "Skybox";
-    creation.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexCode.data(), m_vertexCode.size() * sizeof(uint32_t))
+    rhi::PipelineCreateInfo createInfo;
+    createInfo.name = "Skybox";
+    createInfo.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexCode.data(), m_vertexCode.size() * sizeof(uint32_t))
         .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, m_fragmentCode.data(), m_fragmentCode.size() * sizeof(uint32_t));
-    creation.rasterization.cullMode = VK_CULL_MODE_NONE;
+    createInfo.rasterization.cullMode = VK_CULL_MODE_NONE;
     // Only pixels still at the cleared far depth pass.
-    creation.depthStencil = {.depthTestEnable = true, .depthWriteEnable = false, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
-    creation.renderPass = output;
-    creation.AddDescriptorSetLayout(m_frameLayout);
-    m_pipeline = m_device->CreatePipeline(creation);
+    createInfo.depthStencil = {.depthTestEnable = true, .depthWriteEnable = false, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
+    createInfo.renderPass = output;
+    createInfo.AddDescriptorSetLayout(m_frameLayout);
+    m_pipeline = m_device->CreatePipeline(createInfo);
 }
 
 void SkyboxPass::Execute(FrameGraphContext& context)

@@ -52,10 +52,10 @@ bool MergeReflections(std::span<const ShaderReflection> stages, ShaderReflection
 // The layout of one set as used by the shaders, stages limited to the ones that use each binding. Uniform buffers come
 // back as UNIFORM_BUFFER; use FindBinding to switch one to UNIFORM_BUFFER_DYNAMIC. Throws when the set holds more than
 // kMaxDescriptorsPerSet bindings.
-DescriptorSetLayoutCreation BuildDescriptorSetLayout(const ShaderReflection& merged, uint32_t setIndex, const char* name);
+DescriptorSetLayoutCreateInfo BuildDescriptorSetLayout(const ShaderReflection& merged, uint32_t setIndex, const char* name);
 
 // Reflects and merges a whole shader state; throws std::runtime_error naming the pipeline on failure.
-ShaderReflection ReflectShaderState(const ShaderStateCreation& shaders, const char* pipelineName);
+ShaderReflection ReflectShaderState(const ShaderStateCreateInfo& shaders, const char* pipelineName);
 
 const char* DescriptorTypeName(VkDescriptorType type);
 

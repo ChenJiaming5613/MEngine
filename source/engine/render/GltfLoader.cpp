@@ -525,7 +525,7 @@ void PrepareDds(PreparedTexture& prepared, bool srgb, bool bcSupported)
         return;
     }
 
-    // A single 2D slice: the levels are tightly packed one after another, as TextureCreation expects.
+    // A single 2D slice: the levels are tightly packed one after another, as TextureCreateInfo expects.
     prepared.format = format;
     prepared.width = info.width;
     prepared.height = info.height;
@@ -891,33 +891,33 @@ private:
 
         GltfSamplerData data;
         data.name = "glTF sampler " + std::to_string(samplerIndex);
-        rhi::SamplerCreation& creation = data.creation;
-        creation.maxAnisotropy = kMaxAnisotropy;
+        rhi::SamplerCreateInfo& createInfo = data.createInfo;
+        createInfo.maxAnisotropy = kMaxAnisotropy;
         if (samplerIndex >= 0)
         {
             const tg3_sampler& sampler = m_model.samplers[samplerIndex];
-            creation.magFilter = sampler.mag_filter == TG3_TEXTURE_FILTER_NEAREST ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
+            createInfo.magFilter = sampler.mag_filter == TG3_TEXTURE_FILTER_NEAREST ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
             switch (sampler.min_filter)
             {
             case TG3_TEXTURE_FILTER_NEAREST:
-                creation.minFilter = VK_FILTER_NEAREST;
-                creation.maxLod = 0.0f;
+                createInfo.minFilter = VK_FILTER_NEAREST;
+                createInfo.maxLod = 0.0f;
                 break;
             case TG3_TEXTURE_FILTER_LINEAR:
-                creation.minFilter = VK_FILTER_LINEAR;
-                creation.maxLod = 0.0f;
+                createInfo.minFilter = VK_FILTER_LINEAR;
+                createInfo.maxLod = 0.0f;
                 break;
             case TG3_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
-                creation.minFilter = VK_FILTER_NEAREST;
-                creation.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+                createInfo.minFilter = VK_FILTER_NEAREST;
+                createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
                 break;
             case TG3_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
-                creation.minFilter = VK_FILTER_LINEAR;
-                creation.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+                createInfo.minFilter = VK_FILTER_LINEAR;
+                createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
                 break;
             case TG3_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
-                creation.minFilter = VK_FILTER_NEAREST;
-                creation.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+                createInfo.minFilter = VK_FILTER_NEAREST;
+                createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
                 break;
             default:
                 break;
@@ -933,11 +933,11 @@ private:
                     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
                 }
             };
-            creation.addressModeU = wrap(sampler.wrap_s);
-            creation.addressModeV = wrap(sampler.wrap_t);
-            if (creation.minFilter == VK_FILTER_NEAREST && creation.magFilter == VK_FILTER_NEAREST)
+            createInfo.addressModeU = wrap(sampler.wrap_s);
+            createInfo.addressModeV = wrap(sampler.wrap_t);
+            if (createInfo.minFilter == VK_FILTER_NEAREST && createInfo.magFilter == VK_FILTER_NEAREST)
             {
-                creation.maxAnisotropy = 1.0f;
+                createInfo.maxAnisotropy = 1.0f;
             }
         }
 
@@ -1604,13 +1604,13 @@ bool GltfSceneUploader::UploadBuffers(VkDeviceSize byteBudget)
     {
         const GltfBufferData& source = buffers[m_nextBuffer];
         const std::span<const uint8_t> bytes = source.Bytes();
-        rhi::BufferCreation creation;
-        creation.usage = source.usage;
-        creation.size = bytes.size();
-        creation.initialData = bytes.data();
-        creation.name = source.name.c_str();
+        rhi::BufferCreateInfo createInfo;
+        createInfo.usage = source.usage;
+        createInfo.size = bytes.size();
+        createInfo.initialData = bytes.data();
+        createInfo.name = source.name.c_str();
         // Appended in list order, which keeps the primitives' buffer indices valid for Scene::buffers.
-        m_scene.buffers.push_back(m_device.CreateBuffer(creation));
+        m_scene.buffers.push_back(m_device.CreateBuffer(createInfo));
         ++m_nextBuffer;
         uploaded += bytes.size();
         m_uploadedBufferBytes += bytes.size();
@@ -1638,21 +1638,21 @@ void GltfSceneUploader::UploadTexture(size_t requestIndex, PreparedTexture&& tex
     }
     m_decodedBcCount += prepared.decodedBc ? 1 : 0;
 
-    rhi::TextureCreation creation;
-    creation.width = prepared.width;
-    creation.height = prepared.height;
-    creation.mipLevels = prepared.mipLevels;
-    creation.format = prepared.format;
-    creation.flags = prepared.generateMips ? rhi::kTextureFlagGenerateMips : 0;
-    creation.initialData = prepared.bytes.data() + prepared.dataOffset;
-    creation.initialDataSize = prepared.dataSize;
-    creation.name = label.c_str();
+    rhi::TextureCreateInfo createInfo;
+    createInfo.width = prepared.width;
+    createInfo.height = prepared.height;
+    createInfo.mipLevels = prepared.mipLevels;
+    createInfo.format = prepared.format;
+    createInfo.flags = prepared.generateMips ? rhi::kTextureUsageGenerateMips : 0;
+    createInfo.initialData = prepared.bytes.data() + prepared.dataOffset;
+    createInfo.initialDataSize = prepared.dataSize;
+    createInfo.name = label.c_str();
 
-    // A failed creation only costs this texture; a failed submission (End) fails the load.
+    // A failed createInfo only costs this texture; a failed submission (End) fails the load.
     rhi::UploadBatchScope batch(m_device);
     try
     {
-        m_textures[requestIndex] = m_device.CreateTexture(creation);
+        m_textures[requestIndex] = m_device.CreateTexture(createInfo);
         m_scene.textures.push_back(m_textures[requestIndex]);
     }
     catch (const std::exception& exception)
@@ -1678,9 +1678,9 @@ void GltfSceneUploader::Finish()
     samplers.reserve(m_data.samplers.size());
     for (const GltfSamplerData& sampler : m_data.samplers)
     {
-        rhi::SamplerCreation creation = sampler.creation;
-        creation.name = sampler.name.c_str();
-        samplers.push_back(m_device.CreateSampler(creation));
+        rhi::SamplerCreateInfo createInfo = sampler.createInfo;
+        createInfo.name = sampler.name.c_str();
+        samplers.push_back(m_device.CreateSampler(createInfo));
         m_scene.samplers.push_back(samplers.back());
     }
     for (size_t i = 0; i < m_data.materials.size(); ++i)
@@ -1734,24 +1734,24 @@ void GltfSceneUploader::CreateMaterial(size_t materialIndex, const std::vector<r
     {
         data.flags |= kMaterialFlagNormalTexture;
     }
-    rhi::BufferCreation bufferCreation;
-    bufferCreation.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    bufferCreation.size = sizeof(MaterialData);
-    bufferCreation.initialData = &data;
-    bufferCreation.name = material.name.c_str();
-    material.uniformBuffer = m_device.CreateBuffer(bufferCreation);
+    rhi::BufferCreateInfo bufferCreateInfo;
+    bufferCreateInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    bufferCreateInfo.size = sizeof(MaterialData);
+    bufferCreateInfo.initialData = &data;
+    bufferCreateInfo.name = material.name.c_str();
+    material.uniformBuffer = m_device.CreateBuffer(bufferCreateInfo);
 
     // Missing textures bind the device's 1x1 white texture: it leaves base color, metallic-roughness, occlusion
     // and emissive equal to their factors; the normal map is skipped through kMaterialFlagNormalTexture.
-    rhi::DescriptorSetCreation setCreation;
-    setCreation.layout = m_materialLayout;
-    setCreation.name = material.name.c_str();
-    setCreation.AddBuffer(material.uniformBuffer, kMaterialBindingData, sizeof(MaterialData));
+    rhi::DescriptorSetCreateInfo setCreateInfo;
+    setCreateInfo.layout = m_materialLayout;
+    setCreateInfo.name = material.name.c_str();
+    setCreateInfo.AddBuffer(material.uniformBuffer, kMaterialBindingData, sizeof(MaterialData));
     for (uint32_t slot = 0; slot < kGltfMaterialTextureCount; ++slot)
     {
-        setCreation.AddTexture(textures[slot].texture, kMaterialBindingBaseColor + slot, textures[slot].sampler);
+        setCreateInfo.AddTexture(textures[slot].texture, kMaterialBindingBaseColor + slot, textures[slot].sampler);
     }
-    material.descriptorSet = m_device.CreateDescriptorSet(setCreation);
+    material.descriptorSet = m_device.CreateDescriptorSet(setCreateInfo);
     m_scene.materials.push_back(std::move(material));
 }
 
