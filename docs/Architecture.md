@@ -88,7 +88,7 @@ graph TB
 
 ### 4.3 同步模型
 
-- `ResourceState`（`GpuEnums.h`，来自 Raptor / D3D12）是位标志，只读状态可组合；`VulkanUtils` 把它翻译为布局、访问掩码和管线阶段。阶段直接由状态推导，所以片元读和 compute 读能区分。
+- `ResourceState`（`GfxEnums.h`，来自 Raptor / D3D12）是位标志，只读状态可组合；`VulkanUtils` 把它翻译为布局、访问掩码和管线阶段。阶段直接由状态推导，所以片元读和 compute 读能区分。
 - 每个 `Texture` 记录录制到当前为止的状态。前提是每帧只有一个按顺序录制的命令缓冲，录制顺序即执行顺序。Buffer 不跟踪状态，barrier 由调用方给出新旧两端。
 - `ExecutionBarrier` 把若干纹理、buffer 和全局 barrier 合成一次 `vkCmdPipelineBarrier`：新状态是旧只读状态的子集时丢弃；只读到只读但多了读者时仍录制并合并状态；只覆盖部分子资源的 barrier 必须显式给出旧状态。render pass 内调用 barrier 会报错。
 - `BindPass` 在附件上次访问超出 subpass dependency 覆盖范围或布局不对时先插 barrier；`EndPass` 按最终布局更新附件状态。因此纯图形路径不需要手写 barrier。

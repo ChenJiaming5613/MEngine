@@ -1,7 +1,7 @@
 #pragma once
 
 #include "render/Scene.h"
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include <cstddef>
 #include <cstdint>

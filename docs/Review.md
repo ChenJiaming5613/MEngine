@@ -21,7 +21,7 @@
 | 11 | `render/FrameGraph.cpp:778,1214` | 合并组成员数没有上限，超过 64 时 `1ull << member` 是未定义行为（只有一个 assert）。 | 合并时限制组大小，或改用动态位集<br>**已修复**：合并组最多 `kMaxPassesPerGroup`（64）个节点 |
 | 12 | `rhi/CommandBuffer.cpp:~385` | `FillBuffer` 只检查了 `offset`，没有检查 `offset + size <= size`，与错误信息不符。 | 补上这项检查<br>**已修复** |
 | 13 | `rhi/GfxDevice.cpp:~1601` | render pass 缓存只用 64 位哈希、不比较内容，哈希冲突时会静默返回错误的 `VkRenderPass`。 | 命中后比较 `RenderPassOutput`<br>**已修复**：缓存键改为 `RenderPassOutput` 本身（`operator==` + 哈希） |
-| 14 | `rhi/GpuEnums.h:~57` | `kResourceStateGenericRead` 没有使用，而且按 `ToVkImageLayout` 的优先级会被映射成 `TRANSFER_SRC` 布局，是个陷阱。 | 删除<br>**已修复**：删除 |
+| 14 | `rhi/GfxEnums.h:~57` | `kResourceStateGenericRead` 没有使用，而且按 `ToVkImageLayout` 的优先级会被映射成 `TRANSFER_SRC` 布局，是个陷阱。 | 删除<br>**已修复**：删除 |
 | 15 | `shaders/common/Bindings.slang`、`DebugLine.slang` | DebugLine 包含 Bindings 后，同一模块里有两个 push_constant 块，能用完全依赖 `-O2` 删掉未用的那个。 | 拆分 Bindings（见 P2-8）<br>**推迟**到 P2-8（Bindings 拆分） |
 | 16 | `cmake/StageAssets.cmake:90-100` | 资产镜像是 MEngine 的 POST_BUILD 步骤，只改 `.slang` 或资产时 exe 旁的 `assets/` 可能不会更新（Ninja 下必然如此，VS 在 IDE 里也可能）。需要验证。 | 改为独立的 `MEngineMirrorAssets` ALL 目标<br>**VS 生成器下已验证正常**（只改 `.slang` 时 MSBuild 仍执行镜像）；只影响 Ninja，降为 P3 |
 | 17 | `android/app/build.gradle:6` | 所有 variant 共用一个 `generated/mengine_assets`，Debug 和 Release 的 CMake 会互相覆盖、互相清理。 | 按 variant 分目录<br>**降为 P3**：两个 variant 暂存的内容相同，只在并行构建时互相干扰；需要能运行 Gradle 的环境再改 |
@@ -31,7 +31,7 @@
 当前设计的隐含前提是“单线程、单命令缓冲、录制顺序即执行顺序”。阶段 3 会同时打破这三点。
 
 1. **资源注册表没有同步**（**已定契约**：主线程独占设备，`GfxDevice` 入口断言调用线程；以下加锁方案不再需要，只剩 `ResourcePool::m_alive` 的位压缩与槽位立即复用两点在并行录制时仍要处理）：`core/ResourcePool.h:52,84` 的 `std::vector<bool>` 位压缩，并发读写不同下标也会数据竞争；`Release` 立刻复用槽位，还持有裸指针的地方（如 `CommandBuffer` 的 `m_currentPipeline`）会读到别的资源。`GfxDevice` 的 `m_pendingDestructions`、render pass 缓存、descriptor pool、pipeline cache、`m_pipelineStats` 都没有锁；上传和 `EndFrame` 直接 `vkQueueSubmit`。→ 写明线程契约；池加锁，或改为“任意线程拿 handle、Vulkan 对象创建加锁”；所有提交走一个加锁的提交器；槽位回收进延迟销毁队列。
-2. **全局纹理状态跟踪**：`GpuResources.h:350` 的 `Texture::state` 在录制时改写（`CommandBuffer.cpp:142,147,465`；`FrameGraph.cpp` 的 `RecordBarriers` 同理），并行录制下录制顺序不等于执行顺序。→ 由 Frame Graph 在编译期或每帧串行准备阶段生成全部 barrier，录制线程只照计划执行；或每个命令缓冲维护本地状态，提交时合并。
+2. **全局纹理状态跟踪**：`GfxResources.h:350` 的 `Texture::state` 在录制时改写（`CommandBuffer.cpp:142,147,465`；`FrameGraph.cpp` 的 `RecordBarriers` 同理），并行录制下录制顺序不等于执行顺序。→ 由 Frame Graph 在编译期或每帧串行准备阶段生成全部 barrier，录制线程只照计划执行；或每个命令缓冲维护本地状态，提交时合并。
 3. **没有 secondary command buffer**：没有 `BeginSecondary` / `ExecuteCommands`；secondary 里 `m_insidePass` 恒为 false，Draw 的 assert 必然触发；`BindPass` 隐式设置的视口不会被继承；每帧槽只有一个命令池（`GfxDevice.h:287,292`）。另外，合并组的 subpass 一旦用 `SECONDARY_COMMAND_BUFFERS` 开始，primary 里只能执行 `vkCmdExecuteCommands`，组内逐节点的 timestamp 和 clear 设置都要搬家（`FrameGraph.cpp:1234,1252`）。→ 每线程每帧槽一个命令池；`BindPass(handle, contents)`；Frame Graph 的 Execute 拆成“串行准备 → 并行录制 → 串行组装”三段。
 4. **帧接口依赖隐式时序**：`GetCommandBuffer`、`DynamicAllocate`、`GetFramebuffer` 只在 `BeginFrame` 和 `EndFrame` 之间有效；`ConsumeSwapchainResized` 读一次就清掉；`AccessXxx` 返回池内部的可写裸指针。→ `BeginFrame` 返回 `FrameContext`（命令缓冲工厂、图像索引、临时分配器）；`Access` 返回 const，状态修改走设备接口。
 5. **动态 uniform 环是非原子的线性分配器**（`GfxDevice.cpp:~2336`）。→ 按线程分块（atomic `fetch_add`），用途泛化到 storage 和 indirect。
@@ -86,15 +86,15 @@
 | 内容 | 位置 |
 | --- | --- |
 | AABB 8 角点变换（三处），空包围盒判断标准不一致（只看 x 或看 xyz） | `Renderer.cpp:127`、`GltfLoader.cpp:1500`、`DebugDraw.cpp:70,109`；`Scene.h:88`、`Culling.cpp:39` → 引入 `struct Aabb` |
-| FNV-1a | `GpuResources.cpp:9-19`、`PipelineCacheFile.cpp:17-26` → `core/Hash.h` |
-| VMA 屏蔽警告的 pragma 块 | `VulkanUtils.h:7-27`、`VmaUsage.cpp:4-28` → `rhi/VmaInclude.h`；`GpuResources.h` 改为前置声明 VMA 类型 |
+| FNV-1a | `GfxResources.cpp:9-19`、`PipelineCacheFile.cpp:17-26` → `core/Hash.h` |
+| VMA 屏蔽警告的 pragma 块 | `VulkanUtils.h:7-27`、`VmaUsage.cpp:4-28` → `rhi/VmaInclude.h`；`GfxResources.h` 改为前置声明 VMA 类型 |
 | Uncharted 2 曲线与 sRGB 转换 | `Tonemap.slang:32-49`、`DebugLine.slang:34-58` → `common/Tonemapping.slang` |
 | 全屏三角形 VS | `Skybox.slang:11-19`、`Tonemap.slang:20-29` |
 | PI 常量（三份，命名不一致） | `Brdf.slang:4`、`UeBrdf.h:19`、`Cubemap.cpp:13` |
 | 格式名表 | `ViewerApplication.cpp:62-80`、`DeviceCapabilities.cpp:~91` |
 | 方向向量归一化 UI | `ViewerApplication.cpp:370-379`、`PassInspectors.cpp:32-43` |
 | 设备扩展枚举、队列族遍历 | `GfxDevice.cpp:89,99,337-386`、`DeviceCapabilities.cpp:28,290-312` |
-| `RenderPassCreateInfo` 与 `RenderPassOutput` 字段重复，`colorCount` / `renderTargetCount` 两套计数 | `GpuResources.h:208-242` |
+| `RenderPassCreateInfo` 与 `RenderPassOutput` 字段重复，`colorCount` / `renderTargetCount` 两套计数 | `GfxResources.h:208-242` |
 
 ## 6. 命名（涉及公开接口，本次未改）
 

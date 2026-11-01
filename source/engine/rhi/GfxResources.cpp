@@ -1,4 +1,4 @@
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include "core/Assert.h"
 

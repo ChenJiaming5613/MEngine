@@ -13,7 +13,7 @@
 #include "render/passes/SkyboxPass.h"
 #include "render/passes/TonemapPass.h"
 #include "camera/Camera.h"
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>

@@ -38,7 +38,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 
 ### 第 1 章 Raptor 与 Hydra 入门
 
-- **新增**：基础库（分配器、容器、文件、日志、服务，`raptor/foundation`）；窗口、输入、相机（`raptor/application`）；RHI：`GfxDevice`、`CommandBuffer`、`GpuResources`（CreateInfo 描述 + 句柄 + 资源池、延迟销毁）；`GpuProfiler`（timestamp query）；ImGui 服务；带资源缓存的 `Renderer`；`main.cpp` 中的 glTF 加载与绘制。
+- **新增**：基础库（分配器、容器、文件、日志、服务，`raptor/foundation`）；窗口、输入、相机（`raptor/application`）；RHI：`GfxDevice`、`CommandBuffer`、`GfxResources`（CreateInfo 描述 + 句柄 + 资源池、延迟销毁）；`GpuProfiler`（timestamp query）；ImGui 服务；带资源缓存的 `Renderer`；`main.cpp` 中的 glTF 加载与绘制。
 - **能力**：T0。
 - **MEngine 现状**：已完成（阶段 0）。RHI 按此章蓝本实现，并提前吸收了后续章节的 `ResourceState`、`ExecutionBarrier`、compute、indirect draw（`02d7c32`）。阶段 0 的收尾（设备能力分级、CPU 视锥剔除）也已完成。
 - **阶段 0 收尾的设计决定**（CPU 视锥剔除，细节见 `Architecture.md` 5.1）：

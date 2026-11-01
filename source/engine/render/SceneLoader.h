@@ -1,7 +1,7 @@
 #pragma once
 
 #include "render/GltfLoader.h"
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include <chrono>
 #include <cstddef>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rhi/GpuEnums.h"
+#include "rhi/GfxEnums.h"
 
 #include <vulkan/vulkan.h>
 

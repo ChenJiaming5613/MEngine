@@ -2,7 +2,7 @@
 
 #include "render/RenderTypes.h"
 #include "render/Scene.h"
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include <glm/vec3.hpp>
 

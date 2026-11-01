@@ -5,7 +5,7 @@
 #include "rhi/CommandBuffer.h"
 #include "rhi/DeviceCapabilities.h"
 #include "rhi/GpuProfiler.h"
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 #include "rhi/Swapchain.h"
 
 #include <array>

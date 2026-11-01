@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/CpuProfiler.h"
-#include "rhi/GpuEnums.h"
+#include "rhi/GfxEnums.h"
 #include "rhi/VulkanUtils.h"
 
 #include <array>

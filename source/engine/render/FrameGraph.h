@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/CpuProfiler.h"
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include <glm/vec4.hpp>
 

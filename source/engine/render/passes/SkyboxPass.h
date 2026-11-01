@@ -1,7 +1,7 @@
 #pragma once
 
 #include "render/FrameGraph.h"
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include <cstdint>
 #include <vector>

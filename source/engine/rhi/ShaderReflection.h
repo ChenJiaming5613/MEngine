@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rhi/GpuResources.h"
+#include "rhi/GfxResources.h"
 
 #include <array>
 #include <cstdint>
