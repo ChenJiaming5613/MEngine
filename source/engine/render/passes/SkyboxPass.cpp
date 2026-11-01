@@ -2,12 +2,12 @@
 
 #include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 #include "rhi/VulkanUtils.hpp"
 
 namespace mengine::render {
 
-void SkyboxPass::Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout)
+void SkyboxPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout)
 {
     m_device = &device;
     m_frameLayout = frameLayout;

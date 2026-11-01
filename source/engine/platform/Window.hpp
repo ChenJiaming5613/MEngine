@@ -6,7 +6,7 @@ struct SDL_Window;
 
 namespace mengine {
 
-struct WindowCreation
+struct WindowCreateInfo
 {
     const char* title = "MEngine";
     int width = 1280;
@@ -21,7 +21,7 @@ public:
     Window(const Window&) = delete;
     Window& operator=(const Window&) = delete;
 
-    bool Create(const WindowCreation& creation);
+    bool Create(const WindowCreateInfo& createInfo);
     void Destroy();
 
     SDL_Window* NativeHandle() const { return m_window; }

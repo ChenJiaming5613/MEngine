@@ -7,14 +7,14 @@
 namespace mengine {
 
 namespace rhi {
-class GpuDevice;
+class GfxDevice;
 } // namespace rhi
 
 // Read-only window listing rhi::DeviceCapabilities, with memory heaps' live budgets.
 class DeviceCapabilitiesPanel
 {
 public:
-    void Draw(const rhi::GpuDevice& device);
+    void Draw(const rhi::GfxDevice& device);
 
     bool IsOpen() const { return m_open; }
     void SetOpen(bool open) { m_open = open; }
@@ -22,12 +22,12 @@ public:
     bool Contains(float x, float y) const;
 
 private:
-    void DrawHeader(const rhi::GpuDevice& device);
+    void DrawHeader(const rhi::GfxDevice& device);
     void DrawOverview(const rhi::DeviceCapabilities& caps);
-    void DrawFeatures(const rhi::GpuDevice& device);
+    void DrawFeatures(const rhi::GfxDevice& device);
     void DrawExtensions(const rhi::DeviceCapabilities& caps);
     void DrawLimits(const rhi::DeviceCapabilities& caps);
-    void DrawMemory(const rhi::GpuDevice& device);
+    void DrawMemory(const rhi::GfxDevice& device);
     void DrawQueues(const rhi::DeviceCapabilities& caps);
     void DrawFormats(const rhi::DeviceCapabilities& caps);
 

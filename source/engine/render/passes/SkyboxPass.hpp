@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 } // namespace mengine::rhi
 
 namespace mengine::render {
@@ -17,7 +17,7 @@ namespace mengine::render {
 class SkyboxPass final : public FrameGraphPass
 {
 public:
-    void Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout);
+    void Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout);
     void Shutdown();
 
     void Setup(FrameGraphBuilder& builder) override;
@@ -28,7 +28,7 @@ public:
     bool DrawInspector(RenderSettings& settings) override;
 
 private:
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     rhi::DescriptorSetLayoutHandle m_frameLayout;
     std::vector<uint32_t> m_vertexCode;
     std::vector<uint32_t> m_fragmentCode;

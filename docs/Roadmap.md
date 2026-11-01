@@ -29,7 +29,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 实现规则：
 
 - 只链接 1.0 符号的约束不变：`vkGetPhysicalDeviceFeatures2`、`vkGetPhysicalDeviceProperties2`（1.1 入口）和所有扩展函数都经 `vkGetInstanceProcAddr` / `vkGetDeviceProcAddr` 运行时获取。
-- `GpuDevice` 汇总成一个能力结构（`DeviceCapabilities`），渲染层只查询能力，不直接判断扩展名。ImGui 面板显示当前档位与各开关。**已完成**（`99eb18a`，只查询，尚未按能力启用特性）。
+- `GfxDevice` 汇总成一个能力结构（`DeviceCapabilities`），渲染层只查询能力，不直接判断扩展名。ImGui 面板显示当前档位与各开关。**已完成**（`99eb18a`，只查询，尚未按能力启用特性）。
 - 不引入 dynamic rendering：Raptor 第 4 章起在有扩展时使用 `VK_KHR_dynamic_rendering`，MEngine 一律走 `VkRenderPass`。
 
 ## 2. 各章新增内容
@@ -38,7 +38,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
 
 ### 第 1 章 Raptor 与 Hydra 入门
 
-- **新增**：基础库（分配器、容器、文件、日志、服务，`raptor/foundation`）；窗口、输入、相机（`raptor/application`）；RHI：`GpuDevice`、`CommandBuffer`、`GpuResources`（Creation 描述 + 句柄 + 资源池、延迟销毁）；`GpuProfiler`（timestamp query）；ImGui 服务；带资源缓存的 `Renderer`；`main.cpp` 中的 glTF 加载与绘制。
+- **新增**：基础库（分配器、容器、文件、日志、服务，`raptor/foundation`）；窗口、输入、相机（`raptor/application`）；RHI：`GfxDevice`、`CommandBuffer`、`GpuResources`（Creation 描述 + 句柄 + 资源池、延迟销毁）；`GpuProfiler`（timestamp query）；ImGui 服务；带资源缓存的 `Renderer`；`main.cpp` 中的 glTF 加载与绘制。
 - **能力**：T0。
 - **MEngine 现状**：已完成（阶段 0）。RHI 按此章蓝本实现，并提前吸收了后续章节的 `ResourceState`、`ExecutionBarrier`、compute、indirect draw（`02d7c32`）。阶段 0 的收尾（设备能力分级、CPU 视锥剔除）也已完成。
 - **阶段 0 收尾的设计决定**（CPU 视锥剔除，细节见 `Architecture.md` 5.1）：
@@ -74,7 +74,7 @@ MEngine 的基线是 Vulkan 1.1 手机。Raptor 的特性按设备能力分三�
   | D3 | 校验失败：定义 `MENGINE_ENABLE_VALIDATION_LAYERS` 时抛异常，否则记 ERROR 继续 |
   | D4 | 特化常量继续所有阶段共用一份 `VkSpecializationInfo`；id 不在任何阶段中时记 WARN |
   | D5 | cache 文件 = 32 字节自定义头（`MEPC`、版本、vendor/device/driver、长度、FNV-1a 64）+ 驱动数据；读取时同时校验驱动头；上限 64 MB |
-  | D6 | 路径由 `GpuDeviceCreation::pipelineCachePath` 传入，空表示不持久化 |
+  | D6 | 路径由 `GfxDeviceCreation::pipelineCachePath` 传入，空表示不持久化 |
   | D7 | 写回：`Shutdown`、场景加载预热后、Android 挂起时；长度不变则跳过；先写临时文件再改名 |
   | D8 | 只预热当前场景 draw 用到的 key，由各 pass 的 `WarmPipelines` 负责 |
   | D9 | 构建期 `slangc -reflection-json` → `static_assert`，C++ 与 Slang 结构同名同成员 |

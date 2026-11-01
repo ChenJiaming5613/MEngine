@@ -3,7 +3,7 @@
 #include "asset/Ktx2.hpp"
 #include "core/FileSystem.hpp"
 #include "core/Log.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 #include <glm/gtc/packing.hpp>
 
@@ -49,7 +49,7 @@ asset::Ktx2Image LoadKtx2(const std::string& path, uint32_t expectedFormat, uint
     return std::move(*image);
 }
 
-rhi::TextureHandle CreateEnvironmentTexture(rhi::GpuDevice& device, const asset::Ktx2Image& image, VkFormat format,
+rhi::TextureHandle CreateEnvironmentTexture(rhi::GfxDevice& device, const asset::Ktx2Image& image, VkFormat format,
     const std::string& name)
 {
     const std::vector<uint8_t> data = Concatenate(image);
@@ -86,7 +86,7 @@ asset::Ktx2Image SolidImage(uint32_t vkFormat, uint32_t faceCount, std::span<con
     return image;
 }
 
-void CreateFallback(rhi::GpuDevice& device, Environment& environment)
+void CreateFallback(rhi::GfxDevice& device, Environment& environment)
 {
     const glm::vec3 c = Environment::kFallbackRadiance;
     const std::array<float, 4> radiance = {c.r, c.g, c.b, 1.0f};
@@ -104,7 +104,7 @@ void CreateFallback(rhi::GpuDevice& device, Environment& environment)
     environment.directory.clear();
 }
 
-void CreateSamplers(rhi::GpuDevice& device, Environment& environment)
+void CreateSamplers(rhi::GfxDevice& device, Environment& environment)
 {
     rhi::SamplerCreation cube;
     cube.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -122,7 +122,7 @@ void CreateSamplers(rhi::GpuDevice& device, Environment& environment)
 
 } // namespace
 
-void Environment::Destroy(rhi::GpuDevice& device)
+void Environment::Destroy(rhi::GfxDevice& device)
 {
     device.DestroyTexture(specular);
     device.DestroyTexture(irradiance);
@@ -132,7 +132,7 @@ void Environment::Destroy(rhi::GpuDevice& device)
     *this = Environment{};
 }
 
-void LoadEnvironment(rhi::GpuDevice& device, std::optional<std::string_view> directory, Environment& environment)
+void LoadEnvironment(rhi::GfxDevice& device, std::optional<std::string_view> directory, Environment& environment)
 {
     environment.Destroy(device);
     CreateSamplers(device, environment);

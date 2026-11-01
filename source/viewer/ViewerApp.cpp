@@ -13,7 +13,7 @@
 #include "render/ImGuiLayer.hpp"
 #include "render/RenderTypes.hpp"
 #include "render/Renderer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -90,12 +90,12 @@ public:
 protected:
     bool OnInitialize() override
     {
-        rhi::GpuDeviceCreation deviceCreation{.window = GetWindow().NativeHandle(), .vsync = m_vsyncEnabled};
+        rhi::GfxDeviceCreateInfo deviceCreateInfo{.window = GetWindow().NativeHandle(), .vsync = m_vsyncEnabled};
         if (const std::optional<std::string> userDirectory = GetUserDataDirectory())
         {
-            deviceCreation.pipelineCachePath = *userDirectory + "pipeline_cache.bin";
+            deviceCreateInfo.pipelineCachePath = *userDirectory + "pipeline_cache.bin";
         }
-        m_device.Init(deviceCreation);
+        m_device.Init(deviceCreateInfo);
         m_imGui.Init(m_device, GetWindow());
         m_frameGraphViewer.Init();
         m_renderer.Init(m_device, GetTaskScheduler());
@@ -693,7 +693,7 @@ private:
         MENGINE_LOG_INFO("Camera control: %s", ActiveCameraController().Name());
     }
 
-    rhi::GpuDevice m_device;
+    rhi::GfxDevice m_device;
     render::ImGuiLayer m_imGui;
     FrameGraphViewer m_frameGraphViewer;
     DeviceCapabilitiesPanel m_capabilitiesPanel;

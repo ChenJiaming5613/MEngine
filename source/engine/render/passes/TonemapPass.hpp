@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 } // namespace mengine::rhi
 
 namespace mengine::render {
@@ -16,7 +16,7 @@ namespace mengine::render {
 class TonemapPass final : public FrameGraphPass
 {
 public:
-    void Init(rhi::GpuDevice& device);
+    void Init(rhi::GfxDevice& device);
     void Shutdown();
 
     void Setup(FrameGraphBuilder& builder) override;
@@ -28,7 +28,7 @@ public:
     bool DrawInspector(RenderSettings& settings) override;
 
 private:
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     std::vector<uint32_t> m_vertexCode;
     std::vector<uint32_t> m_fragmentCode;
     rhi::DescriptorSetLayoutHandle m_layout;

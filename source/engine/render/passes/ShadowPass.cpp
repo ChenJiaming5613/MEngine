@@ -5,14 +5,14 @@
 #include "render/passes/PipelineVariants.hpp"
 #include "render/Scene.hpp"
 #include "rhi/CommandBuffer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 #include "rhi/VulkanUtils.hpp"
 
 #include <string>
 
 namespace mengine::render {
 
-void ShadowPass::Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout,
+void ShadowPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout,
     rhi::DescriptorSetLayoutHandle materialLayout)
 {
     m_device = &device;

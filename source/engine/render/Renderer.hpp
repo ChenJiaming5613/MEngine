@@ -27,7 +27,7 @@ class TaskScheduler;
 }
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 }
 
 namespace mengine::render {
@@ -40,7 +40,7 @@ class Renderer
 {
 public:
     // Throws on Vulkan or shader loading errors. Scene loading runs its CPU work on `tasks`.
-    void Init(rhi::GpuDevice& device, enki::TaskScheduler& tasks);
+    void Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks);
     void Shutdown();
 
     // Frees the current scene (waiting for the GPU) and starts loading the next one; outside a frame. The scene stays
@@ -57,12 +57,12 @@ public:
     const Environment& GetEnvironment() const { return m_environment; }
     // Pass toggles and the compile snapshot for debug UI; changes are compiled at the next Render.
     FrameGraph& GetFrameGraph() { return m_graph; }
-    // Lines added before Render (after GpuDevice::BeginFrame or earlier) are drawn this frame, then cleared.
+    // Lines added before Render (after GfxDevice::BeginFrame or earlier) are drawn this frame, then cleared.
     DebugDraw& GetDebugDraw() { return m_debugDraw; }
     // Frustum culling result of the last Render.
     const CullingStats& GetCullingStats() const { return m_cullingStats; }
 
-    // Records the frame between GpuDevice::BeginFrame and EndFrame. ImGui (if any) must have finished its frame.
+    // Records the frame between GfxDevice::BeginFrame and EndFrame. ImGui (if any) must have finished its frame.
     void Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui);
 
 private:
@@ -75,7 +75,7 @@ private:
     ShadowView FitShadowView(const glm::vec3& direction) const;
     void UpdateFrameSet();
 
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     rhi::DescriptorSetLayoutHandle m_frameLayout;
     rhi::DescriptorSetLayoutHandle m_materialLayout;
     rhi::DescriptorSetHandle m_frameSet;

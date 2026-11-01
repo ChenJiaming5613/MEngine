@@ -3,7 +3,7 @@
 #include "core/Assert.hpp"
 #include "core/Log.hpp"
 #include "rhi/CommandBuffer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 #include "rhi/VulkanUtils.hpp"
 
 #include <algorithm>
@@ -193,7 +193,7 @@ const rhi::RenderPassOutput& FrameGraphResources::GetRenderPassOutput() const
     return group < m_graph.m_groups.size() ? m_graph.m_groups[group].output : kNoOutput;
 }
 
-void FrameGraph::Init(rhi::GpuDevice& device)
+void FrameGraph::Init(rhi::GfxDevice& device)
 {
     m_device = &device;
 }

@@ -19,7 +19,7 @@ public:
     Application(const Application&) = delete;
     Application& operator=(const Application&) = delete;
 
-    bool Initialize(const WindowCreation& windowCreation);
+    bool Initialize(const WindowCreateInfo& windowCreateInfo);
     void Shutdown();
 
     SDL_AppResult Iterate();
@@ -35,7 +35,7 @@ protected:
 
     Window& GetWindow() { return m_window; }
     Input& GetInput() { return m_input; }
-    // Worker threads for CPU work only: tasks must not touch GpuDevice (see Architecture.md, threading).
+    // Worker threads for CPU work only: tasks must not touch GfxDevice (see Architecture.md, threading).
     enki::TaskScheduler& GetTaskScheduler() { return m_tasks; }
     bool IsSuspended() const { return m_suspended; }
 

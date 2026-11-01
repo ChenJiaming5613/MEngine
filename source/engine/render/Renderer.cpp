@@ -5,7 +5,7 @@
 #include "render/GltfLoader.hpp"
 #include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 #include <glm/common.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -25,7 +25,7 @@ constexpr std::string_view kShadowPassName = "Shadow";
 
 } // namespace
 
-void Renderer::Init(rhi::GpuDevice& device, enki::TaskScheduler& tasks)
+void Renderer::Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks)
 {
     m_device = &device;
 
@@ -82,7 +82,7 @@ void Renderer::Shutdown()
     {
         return;
     }
-    rhi::GpuDevice& device = *m_device;
+    rhi::GfxDevice& device = *m_device;
     m_sceneLoader.Shutdown();
     m_scene.Destroy(device);
     m_environment.Destroy(device);
@@ -180,7 +180,7 @@ void Renderer::UpdateFrameSet()
 
 void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui)
 {
-    rhi::GpuDevice& device = *m_device;
+    rhi::GfxDevice& device = *m_device;
     device.ConsumeSwapchainResized();
     if (m_graph.NeedsCompile())
     {

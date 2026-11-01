@@ -8,7 +8,7 @@
 #include "core/Log.hpp"
 #include "render/DdsFile.hpp"
 #include "render/GltfSceneData.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 #include <tiny_gltf_v3.h>
 
@@ -1573,7 +1573,7 @@ PreparedTexture PrepareGltfTexture(const GltfSceneData& data, size_t requestInde
     return prepared;
 }
 
-GltfSceneUploader::GltfSceneUploader(rhi::GpuDevice& device, const GltfSceneData& data,
+GltfSceneUploader::GltfSceneUploader(rhi::GfxDevice& device, const GltfSceneData& data,
     rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene)
     : m_device(device)
     , m_data(data)

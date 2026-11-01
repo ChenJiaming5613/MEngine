@@ -324,7 +324,7 @@ struct ExecutionBarrier
 
     // Whole texture from its tracked state; the tracked state becomes newState.
     ExecutionBarrier& AddImage(TextureHandle texture, ResourceStates newState);
-    // A partial range leaves the tracked state alone; see GpuDevice::SetTextureState.
+    // A partial range leaves the tracked state alone; see GfxDevice::SetTextureState.
     ExecutionBarrier& AddImage(const ImageBarrier& barrier);
     ExecutionBarrier& AddBuffer(BufferHandle buffer, ResourceStates oldState, ResourceStates newState);
     ExecutionBarrier& AddBuffer(const BufferBarrier& barrier);

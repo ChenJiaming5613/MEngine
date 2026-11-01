@@ -9,7 +9,7 @@
 #include <string_view>
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 }
 
 namespace mengine::render {
@@ -32,11 +32,11 @@ struct Environment
     rhi::SamplerHandle cubeSampler;
     rhi::SamplerHandle lutSampler;
 
-    void Destroy(rhi::GpuDevice& device);
+    void Destroy(rhi::GfxDevice& device);
 };
 
 // Loads the three files from `directory` (relative to the asset root). nullopt or any load failure (logged) falls back
 // to a uniform environment of kFallbackRadiance; never throws on bad assets.
-void LoadEnvironment(rhi::GpuDevice& device, std::optional<std::string_view> directory, Environment& environment);
+void LoadEnvironment(rhi::GfxDevice& device, std::optional<std::string_view> directory, Environment& environment);
 
 } // namespace mengine::render

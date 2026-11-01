@@ -14,14 +14,14 @@ constexpr uint32_t kIdleDelayMilliseconds = 16;
 
 } // namespace
 
-bool Application::Initialize(const WindowCreation& windowCreation)
+bool Application::Initialize(const WindowCreateInfo& windowCreateInfo)
 {
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         MENGINE_LOG_ERROR("SDL_Init failed: %s", SDL_GetError());
         return false;
     }
-    if (!m_window.Create(windowCreation))
+    if (!m_window.Create(windowCreateInfo))
     {
         return false;
     }

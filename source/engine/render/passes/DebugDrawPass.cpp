@@ -4,7 +4,7 @@
 #include "render/RenderTypes.hpp"
 #include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 #include "rhi/VulkanUtils.hpp"
 
 #include <algorithm>
@@ -12,7 +12,7 @@
 
 namespace mengine::render {
 
-void DebugDrawPass::Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, const DebugDraw& lines)
+void DebugDrawPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, const DebugDraw& lines)
 {
     m_device = &device;
     m_lines = &lines;

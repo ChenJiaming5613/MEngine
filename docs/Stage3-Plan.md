@@ -47,7 +47,7 @@
 
 | 编号 | 决定 | 理由 |
 | --- | --- | --- |
-| D1 | **fork-join 并行录制**：主线程发起录制任务并等待它们完成；这段时间里主线程不创建、不销毁资源。`GpuDevice` 用一个“并行录制中”标志，让所有创建 / 销毁 / 上传 / 提交入口在此期间断言失败 | 工作线程只读资源池（`Access*`）。只要没有并发写，`std::vector<bool>` 位压缩和槽位立即复用都不会出问题，因此不需要加锁 |
+| D1 | **fork-join 并行录制**：主线程发起录制任务并等待它们完成；这段时间里主线程不创建、不销毁资源。`GfxDevice` 用一个“并行录制中”标志，让所有创建 / 销毁 / 上传 / 提交入口在此期间断言失败 | 工作线程只读资源池（`Access*`）。只要没有并发写，`std::vector<bool>` 位压缩和槽位立即复用都不会出问题，因此不需要加锁 |
 | D2 | **barrier 和 render pass 的开始 / 结束仍由主线程在主命令缓冲里串行录制**，工作线程只录 render pass 内部的 secondary | secondary 在 render pass 内，本来就不能录 barrier；纹理状态只在主线程上按调度顺序改写，录制顺序仍等于执行顺序，P1-2 的问题不出现 |
 | D3 | **整组切换**：一个合并组只有一个 subpass，要么全部 inline，要么全部 secondary。只要组里有 pass 的可并行条目数 ≥ `2 × minItemsPerTask`（默认 128），这个组就用 secondary。组里不能拆分的 pass（Skybox、DebugDraw）各录成一个 secondary | Vulkan 规定一个 subpass 不能混用 inline 与 secondary 内容（`VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS`） |
 | D4 | **只能在主线程录制的 pass**（ImGui：后端在录制时会创建、扩容自己的 buffer）声明 `RecordsOnMainThread()`，它所在的组永远走 inline | ImGui 后端不是线程安全的 |
@@ -83,7 +83,7 @@ sequenceDiagram
 ### A1 上传不在 CPU 上等待（D10，Review P1-6）——**已完成**
 
 - 实现比原计划简单：没有 ticket，也没有同步 / 异步两套批次（见 D10 的理由）。
-  - `GpuDevice`：3 个上传槽，提交后不等待；复用在途的槽时才等它的 fence；`BeginFrame` 与 `WaitIdle` 回收已完成的槽。
+  - `GfxDevice`：3 个上传槽，提交后不等待；复用在途的槽时才等它的 fence；`BeginFrame` 与 `WaitIdle` 回收已完成的槽。
   - `UploadBatchHasRoomFor(bytes)`：`SceneLoader` 和 `GltfSceneUploader::UploadBuffers` 用它把一次更新控制在一个槽内；`Finish`（材质常量）并入最后一次更新的批次。
   - 修正：`UploadTexture` 先取 staging 再取命令缓冲（取 staging 可能提交并换槽）。
 - 第一版只有 2 个槽、一次更新可以跨槽：等待从数百毫秒降到约 10–20 ms，但每次跨槽仍会等上一个批次，它排在等待交换链图像的帧后面。改为 3 个槽并且不跨槽后，测量期间没有再出现超过 5 ms 的等待。
@@ -106,9 +106,9 @@ sequenceDiagram
 
 ### B1 RHI：secondary command buffer 与每线程命令池（D5，Review P1-3）
 
-- `GpuDeviceCreation::recordingThreadCount`（由 `Application` 传入 enkiTS 的线程数，设备本身不依赖 enkiTS）。`FrameData` 增加每线程的命令池和 secondary 列表；`BeginFrame` 重置当前帧槽的所有线程池。
-- `GpuDevice::BeginParallelRecording()` / `EndParallelRecording()`：设置 D1 的标志；`AssertOwnerThread` 同时断言不在并行录制中。
-- `CommandBuffer GpuDevice::AcquireSecondary(uint32_t threadIndex)`：任意线程，只访问该线程自己的池；只允许在并行录制期间调用。
+- `GfxDeviceCreation::recordingThreadCount`（由 `Application` 传入 enkiTS 的线程数，设备本身不依赖 enkiTS）。`FrameData` 增加每线程的命令池和 secondary 列表；`BeginFrame` 重置当前帧槽的所有线程池。
+- `GfxDevice::BeginParallelRecording()` / `EndParallelRecording()`：设置 D1 的标志；`AssertOwnerThread` 同时断言不在并行录制中。
+- `CommandBuffer GfxDevice::AcquireSecondary(uint32_t threadIndex)`：任意线程，只访问该线程自己的池；只允许在并行录制期间调用。
 - `CommandBuffer`：
   - `BeginSecondary(RenderPassHandle)`：继承 render pass、subpass 0 和 framebuffer，`RENDER_PASS_CONTINUE`；设置视口和裁剪（secondary 不继承动态状态）；`End()`。
   - `BindPass(handle, SubpassContents)`；`ExecuteCommands(std::span<const VkCommandBuffer>)`。
@@ -166,6 +166,6 @@ sequenceDiagram
 
 ## 7. 推迟到之后的阶段
 
-- `FrameContext`、`Access*` 返回 const（P1-4），并入 P3-1 的 `GpuDevice` 拆分。
+- `FrameContext`、`Access*` 返回 const（P1-4），并入 P3-1 的 `GfxDevice` 拆分。
 - 动态 uniform 环按线程分块（P1-5）：GPU 驱动渲染（阶段 8）需要每 draw 数据进 storage buffer 时再做。
 - barrier 编译期生成（P1-2）：异步计算（阶段 9）引入多队列时再做。

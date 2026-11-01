@@ -21,7 +21,7 @@ cmake/                 资产暂存与镜像、Slang 编译、布局校验、第
 source/engine/core     日志、断言、文件系统、JSON、计时、Handle、ResourcePool
 source/engine/platform SDL 窗口与输入
 source/engine/asset    纯 CPU 解码：PNG/JPEG/HDR、KTX2、BC7（与 IblBaker 共用，不依赖 Vulkan）
-source/engine/rhi      GpuDevice、CommandBuffer、资源描述与池、Swapchain、Profiler、反射、pipeline cache、设备能力
+source/engine/rhi      GfxDevice、CommandBuffer、资源描述与池、Swapchain、Profiler、反射、pipeline cache、设备能力
 source/engine/render   Renderer、Scene、GltfLoader、Environment、Camera、Culling、DebugDraw、ImGuiLayer、graph/、passes/
 source/viewer          查看器：入口、ViewerApp、配置、相机控制器、Frame Graph 与设备能力面板
 source/shaders         Slang 着色器，common/ 为共享头
@@ -55,14 +55,14 @@ graph TB
     platform --> core
 ```
 
-- 自上而下单向依赖。`rhi` 不认识 `render` 的类型；`render` 只通过 `GpuDevice` 和 `CommandBuffer` 使用 Vulkan（例外：`ImGuiLayer` 把设备句柄交给 imgui 官方后端）。
-- `ViewerApp` 持有 `GpuDevice`、`ImGuiLayer`、`Renderer`，负责它们的初始化与销毁顺序。
+- 自上而下单向依赖。`rhi` 不认识 `render` 的类型；`render` 只通过 `GfxDevice` 和 `CommandBuffer` 使用 Vulkan（例外：`ImGuiLayer` 把设备句柄交给 imgui 官方后端）。
+- `ViewerApp` 持有 `GfxDevice`、`ImGuiLayer`、`Renderer`，负责它们的初始化与销毁顺序。
 - 命名空间：`mengine`、`mengine::asset`、`mengine::rhi`、`mengine::render`。
 
 ## 3. 应用层
 
 - **入口**：SDL3 main callbacks，桌面和 Android 共用 `viewer/main.cpp`。`Application` 把回调转成 `OnInitialize / OnFrame / OnEvent / OnSuspendChanged / OnShutdown`；挂起或最小化时不调用 `OnFrame`；回调抛出的异常在基类记录，初始化或帧内的异常让程序以失败退出。
-- **ViewerApp**：读 `config.json`、加载环境与首个场景；场景切换在下一帧 `BeginFrame` 之前执行（需要等 GPU 空闲）；换场景后复位相机与灯光；把窗口尺寸变化和前后台切换转给 `GpuDevice`。
+- **ViewerApp**：读 `config.json`、加载环境与首个场景；场景切换在下一帧 `BeginFrame` 之前执行（需要等 GPU 空闲）；换场景后复位相机与灯光；把窗口尺寸变化和前后台切换转给 `GfxDevice`。
 - **输入**：`Input` 的坐标统一为窗口点（与 ImGui 相同）；按下点落在 UI 上的按压不当作相机输入。桌面关闭“触摸转鼠标”，Android 保留它供 ImGui 使用，`Input` 忽略这类合成鼠标事件。
 - **相机控制器**：`CameraController` 把输入变成 `render::Camera` 的运动，渲染器不知道当前模式。切换模式时新控制器接管当前位姿。
   - `FlyCameraController`：桌面右键转视角 + WASD/QE；触摸左半屏虚拟摇杆、右半屏转视角。
@@ -73,7 +73,7 @@ graph TB
 ### 4.1 资源模型
 
 - **Creation 描述**：每种资源一个纯数据的 `XxxCreation`，带链式 `AddXxx`。
-- **句柄 + 池**：`GpuDevice::CreateXxx` 返回 `Handle<Tag>`（index + generation，不同资源的句柄类型不能混用）；对象存在固定容量、永不扩容的 `ResourcePool` 里，所以 `AccessXxx` 取得的指针在资源存活期间稳定，失效句柄返回 `nullptr`。
+- **句柄 + 池**：`GfxDevice::CreateXxx` 返回 `Handle<Tag>`（index + generation，不同资源的句柄类型不能混用）；对象存在固定容量、永不扩容的 `ResourcePool` 里，所以 `AccessXxx` 取得的指针在资源存活期间稳定，失效句柄返回 `nullptr`。
 - **延迟销毁**：`DestroyXxx` 立即使句柄失效，Vulkan 对象在可能使用它的帧完成后销毁；`WaitIdleAndReleaseDeferred` 在帧外一次性释放（切换场景时用，避免新旧场景同时占显存）。
 - **薄命令封装**：`CommandBuffer` 把句柄解析为 Vulkan 对象再录制，附带用途、对齐、pass 内外等检查，失败时记错误并跳过该命令。
 
@@ -233,7 +233,7 @@ graph LR
 
 ## 8. 线程模型
 
-- **主线程独占设备**：`GpuDevice` 的创建、销毁、上传、提交只能在调用 `Init` 的线程上进行（每个入口都有断言）。
+- **主线程独占设备**：`GfxDevice` 的创建、销毁、上传、提交只能在调用 `Init` 的线程上进行（每个入口都有断言）。
 - **任务调度**：`Application` 持有 enkiTS 调度器（硬件线程数个线程，主线程等待任务时也会执行任务），`GetTaskScheduler()` 交给需要的模块。任务只做 CPU 工作：读文件、解析、解码；之后的并行录制任务只录 secondary 命令缓冲，期间主线程等待，设备只读。
 - **文件读取**：Android 上 SDL 的 asset manager 在首次读文件时惰性创建且不加锁，所以第一次读取必须在主线程（读 `config.json` 满足这一点）。
 - **上传**：每个上传批次都在 CPU 上等自己的 fence。fence 的信号要等队列中此前提交的工作全部完成，所以加载期间每帧的上传最多多等一帧。staging 用一个常驻的 64 MB 环（Windows 上逐个分配和释放 staging 内存会让队列停顿数百毫秒），更大的上传单独分配。

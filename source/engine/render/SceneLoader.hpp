@@ -17,7 +17,7 @@ class TaskScheduler;
 }
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 }
 
 namespace mengine::render {
@@ -66,7 +66,7 @@ public:
     SceneLoader(SceneLoader&&) noexcept;
     SceneLoader& operator=(SceneLoader&&) noexcept;
 
-    void Init(rhi::GpuDevice& device, enki::TaskScheduler& tasks, rhi::DescriptorSetLayoutHandle materialLayout);
+    void Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks, rhi::DescriptorSetLayoutHandle materialLayout);
     void Shutdown();
 
     // `scene` must be empty and must not be touched by anyone else until the load ends. Cancels a load in flight.
@@ -91,7 +91,7 @@ private:
     void FreeFinishedOrphans();
     void Reset();
 
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     enki::TaskScheduler* m_tasks = nullptr;
     rhi::DescriptorSetLayoutHandle m_materialLayout;
     size_t m_decodeWindow = 2;

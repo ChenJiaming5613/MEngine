@@ -1,6 +1,6 @@
 #include "DeviceCapabilitiesPanel.hpp"
 
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)
@@ -399,7 +399,7 @@ bool DeviceCapabilitiesPanel::Contains(float x, float y) const
     return x >= m_windowMin[0] && y >= m_windowMin[1] && x <= m_windowMax[0] && y <= m_windowMax[1];
 }
 
-void DeviceCapabilitiesPanel::Draw(const rhi::GpuDevice& device)
+void DeviceCapabilitiesPanel::Draw(const rhi::GfxDevice& device)
 {
     m_windowMin[0] = m_windowMin[1] = 0.0f;
     m_windowMax[0] = m_windowMax[1] = -1.0f;
@@ -453,7 +453,7 @@ void DeviceCapabilitiesPanel::Draw(const rhi::GpuDevice& device)
     ImGui::End();
 }
 
-void DeviceCapabilitiesPanel::DrawHeader(const rhi::GpuDevice& device)
+void DeviceCapabilitiesPanel::DrawHeader(const rhi::GfxDevice& device)
 {
     const DeviceCapabilities& caps = device.GetCapabilities();
     const VkPhysicalDeviceProperties& properties = caps.properties;
@@ -523,7 +523,7 @@ void DeviceCapabilitiesPanel::DrawOverview(const DeviceCapabilities& caps)
     ImGui::Text("Timestamp period: %.3f ns   Max anisotropy: %.0f", limits.timestampPeriod, limits.maxSamplerAnisotropy);
 }
 
-void DeviceCapabilitiesPanel::DrawFeatures(const rhi::GpuDevice& device)
+void DeviceCapabilitiesPanel::DrawFeatures(const rhi::GfxDevice& device)
 {
     const DeviceCapabilities& caps = device.GetCapabilities();
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
@@ -761,7 +761,7 @@ void DeviceCapabilitiesPanel::DrawLimits(const DeviceCapabilities& caps)
     ImGui::EndTable();
 }
 
-void DeviceCapabilitiesPanel::DrawMemory(const rhi::GpuDevice& device)
+void DeviceCapabilitiesPanel::DrawMemory(const rhi::GfxDevice& device)
 {
     const DeviceCapabilities& caps = device.GetCapabilities();
     const double now = ImGui::GetTime();

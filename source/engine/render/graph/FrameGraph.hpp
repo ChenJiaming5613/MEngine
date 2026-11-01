@@ -13,7 +13,7 @@
 
 namespace mengine::rhi {
 class CommandBuffer;
-class GpuDevice;
+class GfxDevice;
 } // namespace mengine::rhi
 
 namespace mengine::render {
@@ -204,7 +204,7 @@ struct FrameGraphDebugInfo
 class FrameGraph
 {
 public:
-    void Init(rhi::GpuDevice& device);
+    void Init(rhi::GfxDevice& device);
     // Destroys the graph's textures and render passes; passes are left alone.
     void Shutdown();
 
@@ -358,7 +358,7 @@ private:
     void ExecuteSchedule(rhi::CommandBuffer& commandBuffer, const RenderView& view);
     void RecordBarriers(rhi::CommandBuffer& commandBuffer, const Node& node);
 
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     CpuProfiler m_cpuProfiler;
     std::vector<Node> m_nodes;
     std::vector<Resource> m_resources;

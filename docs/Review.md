@@ -10,17 +10,17 @@
 | --- | --- | --- | --- |
 | 1 ✔ | `shaders/Pbr.slang:66-91` | 双面材质背面的法线贴图 TBN 符号错误。传入的 N 已取反；有切线的分支得到 (-T, +B, -N)，用导数构建的分支得到 (T, -B, -N)，正确结果应为 (-T, -B, -N)。影响带法线贴图的双面植被背面（Sponza、Bistro）。 | 用未取反的法线构建 TBN，扰动后整体取反；或两个分支都只取反 T<br>**已修复**：用正面法线构建 TBN，背面把扰动结果整体取反 |
 | 2 ✔ | `shaders/common/Brdf.slang:DGgx`、`Pbr.slang:143` | roughness 没有下限。roughness = 0 且 NoH = 1 时 `DGgx` 为 0/0 = NaN；粗糙度很小时 D 会超过 RGBA16F 上限变成 inf。MetalRoughSpheres 有 roughness 0 的球。 | 解析光源路径钳制 `max(roughness, 0.045)`（IBL 不受影响）<br>**已修复**：解析光源路径 roughness 下限 0.089（半精度下 D < 约 5e3），输出钳制到 65504 |
-| 3 ✔ | `rhi/GpuDevice.cpp:959-968` | 上传批次不是 RAII：`CreateStagingBuffer` 抛异常后 `m_uploadDepth` 永久加 1，之后所有上传都不再提交且不报错；`CreateBuffer` 还会泄漏已创建的 VkBuffer。 | 把 `GltfLoader.cpp` 里的 `UploadBatchScope` 提升为 RHI 公共类型，内部也用它；`CreateBuffer` 用 scope guard 回收<br>**已修复**：公共 `rhi::UploadBatchScope`；`CreateBuffer` 先占池槽、失败时延迟销毁；`CreateTexture` 失败时也改为延迟销毁（原来立即销毁，外层批次提交时会访问已释放的图像） |
-| 4 | `rhi/GpuDevice.cpp:~1495-1507`、`ShaderReflection.cpp:142` | 描述符写入固定 `descriptorCount = 1`、`dstArrayElement = 0`，但 layout 和反射都允许 `count > 1`：数组中除第 0 个之外的元素从不写入。 | `DescriptorResource` 加 `arrayElement`；或在 count > 1 时显式报错<br>**已修复**：`DescriptorResource::arrayElement`，越界报错，数组绑定未写满时报错 |
-| 5 | `rhi/GpuDevice.cpp:~1516` | 纹理无效时总是回退到 2D dummy，cube 绑定会因此触发校验错误；`m_dummyCubeTexture` 已创建，但这里没有用到。 | 按绑定的维度选择对应的 dummy<br>**已修复**：`DescriptorBinding::textureType` 决定回退的 dummy 并校验写入的纹理类型；反射记录 cube 维度，`CreatePipeline` 校验 layout 与着色器一致 |
-| 6 | `rhi/GpuDevice.cpp:~2336-2351` | 动态 uniform 环在帧中途耗尽时抛异常，此时 `m_frameActive` 仍为 true，下一次 `BeginFrame` 断言失败，帧状态无法恢复。 | 耗尽时返回失败并记录，下一帧扩容<br>**不是实际缺陷**：帧内异常会让应用以失败退出，不存在“下一帧”；并入 P1-5 重做 |
+| 3 ✔ | `rhi/GfxDevice.cpp:959-968` | 上传批次不是 RAII：`CreateStagingBuffer` 抛异常后 `m_uploadDepth` 永久加 1，之后所有上传都不再提交且不报错；`CreateBuffer` 还会泄漏已创建的 VkBuffer。 | 把 `GltfLoader.cpp` 里的 `UploadBatchScope` 提升为 RHI 公共类型，内部也用它；`CreateBuffer` 用 scope guard 回收<br>**已修复**：公共 `rhi::UploadBatchScope`；`CreateBuffer` 先占池槽、失败时延迟销毁；`CreateTexture` 失败时也改为延迟销毁（原来立即销毁，外层批次提交时会访问已释放的图像） |
+| 4 | `rhi/GfxDevice.cpp:~1495-1507`、`ShaderReflection.cpp:142` | 描述符写入固定 `descriptorCount = 1`、`dstArrayElement = 0`，但 layout 和反射都允许 `count > 1`：数组中除第 0 个之外的元素从不写入。 | `DescriptorResource` 加 `arrayElement`；或在 count > 1 时显式报错<br>**已修复**：`DescriptorResource::arrayElement`，越界报错，数组绑定未写满时报错 |
+| 5 | `rhi/GfxDevice.cpp:~1516` | 纹理无效时总是回退到 2D dummy，cube 绑定会因此触发校验错误；`m_dummyCubeTexture` 已创建，但这里没有用到。 | 按绑定的维度选择对应的 dummy<br>**已修复**：`DescriptorBinding::textureType` 决定回退的 dummy 并校验写入的纹理类型；反射记录 cube 维度，`CreatePipeline` 校验 layout 与着色器一致 |
+| 6 | `rhi/GfxDevice.cpp:~2336-2351` | 动态 uniform 环在帧中途耗尽时抛异常，此时 `m_frameActive` 仍为 true，下一次 `BeginFrame` 断言失败，帧状态无法恢复。 | 耗尽时返回失败并记录，下一帧扩容<br>**不是实际缺陷**：帧内异常会让应用以失败退出，不存在“下一帧”；并入 P1-5 重做 |
 | 7 | `viewer/ViewerApp.cpp:209-265` | 忽略 `Renderer::LoadScene` 的返回值：加载失败时 `m_currentScene` 照样切换，pipeline cache 照样保存，下拉框显示的是失败的场景。 | 按返回值处理失败分支<br>**已修复**：加载失败时不保存 cache，面板显示失败状态 |
 | 8 | `render/GltfLoader.cpp:877-902`、`DdsFile.cpp:538,613` | 工作线程里的解码异常在 `future.get()` 处重新抛出，导致整个场景加载失败，违背“纹理失败只告警”的约定；DDS 的 `mipMapCount` / `arraySize` 没有上限，一个畸形文件就可能 `bad_alloc`。 | lambda 内捕获异常写入 `prepared.error`；mip 数钳制到 `log2(max(w,h)) + 1`<br>**已修复**：工作线程捕获异常，只让该纹理回退；DDS 拒绝超过完整 mip 链的 mip 数和超过 2048 的数组 |
 | 9 | `render/Environment.cpp:176`、`GltfLoader.cpp:929,1693` | `catch (const std::exception&)` 会把 `CheckVk` 抛出的 OOM、device lost 也当成资源损坏，降级处理。 | RHI 抛专用的 `VulkanError`，资源路径只捕获资源类错误<br>**已修复**：`rhi::VulkanError`；降级路径调用 `RethrowIfDeviceUnusable`，只有内存不足类错误会被降级 |
 | 10 | `render/graph/FrameGraph.cpp:453,576` | 导入纹理被销毁时，只有第一个导入它的 pass 被标为无效，其他读取者仍被调度并拿到失效句柄。 | 把资源本身标为不可用，依赖它的 pass 一律跳过<br>**已修复**：导入的纹理和 buffer 失效时资源本身不可用，所有读取者 skipped |
 | 11 | `render/graph/FrameGraph.cpp:778,1214` | 合并组成员数没有上限，超过 64 时 `1ull << member` 是未定义行为（只有一个 assert）。 | 合并时限制组大小，或改用动态位集<br>**已修复**：合并组最多 `kMaxPassesPerGroup`（64）个节点 |
 | 12 | `rhi/CommandBuffer.cpp:~385` | `FillBuffer` 只检查了 `offset`，没有检查 `offset + size <= size`，与错误信息不符。 | 补上这项检查<br>**已修复** |
-| 13 | `rhi/GpuDevice.cpp:~1601` | render pass 缓存只用 64 位哈希、不比较内容，哈希冲突时会静默返回错误的 `VkRenderPass`。 | 命中后比较 `RenderPassOutput`<br>**已修复**：缓存键改为 `RenderPassOutput` 本身（`operator==` + 哈希） |
+| 13 | `rhi/GfxDevice.cpp:~1601` | render pass 缓存只用 64 位哈希、不比较内容，哈希冲突时会静默返回错误的 `VkRenderPass`。 | 命中后比较 `RenderPassOutput`<br>**已修复**：缓存键改为 `RenderPassOutput` 本身（`operator==` + 哈希） |
 | 14 | `rhi/GpuEnums.hpp:~57` | `kResourceStateGenericRead` 没有使用，而且按 `ToVkImageLayout` 的优先级会被映射成 `TRANSFER_SRC` 布局，是个陷阱。 | 删除<br>**已修复**：删除 |
 | 15 | `shaders/common/Bindings.slang`、`DebugLine.slang` | DebugLine 包含 Bindings 后，同一模块里有两个 push_constant 块，能用完全依赖 `-O2` 删掉未用的那个。 | 拆分 Bindings（见 P2-8）<br>**推迟**到 P2-8（Bindings 拆分） |
 | 16 | `cmake/StageAssets.cmake:90-100` | 资产镜像是 MEngine 的 POST_BUILD 步骤，只改 `.slang` 或资产时 exe 旁的 `assets/` 可能不会更新（Ninja 下必然如此，VS 在 IDE 里也可能）。需要验证。 | 改为独立的 `MEngineMirrorAssets` ALL 目标<br>**VS 生成器下已验证正常**（只改 `.slang` 时 MSBuild 仍执行镜像）；只影响 Ninja，降为 P3 |
@@ -30,12 +30,12 @@
 
 当前设计的隐含前提是“单线程、单命令缓冲、录制顺序即执行顺序”。阶段 3 会同时打破这三点。
 
-1. **资源注册表没有同步**（**已定契约**：主线程独占设备，`GpuDevice` 入口断言调用线程；以下加锁方案不再需要，只剩 `ResourcePool::m_alive` 的位压缩与槽位立即复用两点在并行录制时仍要处理）：`core/ResourcePool.hpp:52,84` 的 `std::vector<bool>` 位压缩，并发读写不同下标也会数据竞争；`Release` 立刻复用槽位，还持有裸指针的地方（如 `CommandBuffer` 的 `m_currentPipeline`）会读到别的资源。`GpuDevice` 的 `m_pendingDestructions`、render pass 缓存、descriptor pool、pipeline cache、`m_pipelineStats` 都没有锁；上传和 `EndFrame` 直接 `vkQueueSubmit`。→ 写明线程契约；池加锁，或改为“任意线程拿 handle、Vulkan 对象创建加锁”；所有提交走一个加锁的提交器；槽位回收进延迟销毁队列。
+1. **资源注册表没有同步**（**已定契约**：主线程独占设备，`GfxDevice` 入口断言调用线程；以下加锁方案不再需要，只剩 `ResourcePool::m_alive` 的位压缩与槽位立即复用两点在并行录制时仍要处理）：`core/ResourcePool.hpp:52,84` 的 `std::vector<bool>` 位压缩，并发读写不同下标也会数据竞争；`Release` 立刻复用槽位，还持有裸指针的地方（如 `CommandBuffer` 的 `m_currentPipeline`）会读到别的资源。`GfxDevice` 的 `m_pendingDestructions`、render pass 缓存、descriptor pool、pipeline cache、`m_pipelineStats` 都没有锁；上传和 `EndFrame` 直接 `vkQueueSubmit`。→ 写明线程契约；池加锁，或改为“任意线程拿 handle、Vulkan 对象创建加锁”；所有提交走一个加锁的提交器；槽位回收进延迟销毁队列。
 2. **全局纹理状态跟踪**：`GpuResources.hpp:350` 的 `Texture::state` 在录制时改写（`CommandBuffer.cpp:142,147,465`；`FrameGraph.cpp` 的 `RecordBarriers` 同理），并行录制下录制顺序不等于执行顺序。→ 由 Frame Graph 在编译期或每帧串行准备阶段生成全部 barrier，录制线程只照计划执行；或每个命令缓冲维护本地状态，提交时合并。
-3. **没有 secondary command buffer**：没有 `BeginSecondary` / `ExecuteCommands`；secondary 里 `m_insidePass` 恒为 false，Draw 的 assert 必然触发；`BindPass` 隐式设置的视口不会被继承；每帧槽只有一个命令池（`GpuDevice.hpp:287,292`）。另外，合并组的 subpass 一旦用 `SECONDARY_COMMAND_BUFFERS` 开始，primary 里只能执行 `vkCmdExecuteCommands`，组内逐节点的 timestamp 和 clear 设置都要搬家（`FrameGraph.cpp:1234,1252`）。→ 每线程每帧槽一个命令池；`BindPass(handle, contents)`；Frame Graph 的 Execute 拆成“串行准备 → 并行录制 → 串行组装”三段。
+3. **没有 secondary command buffer**：没有 `BeginSecondary` / `ExecuteCommands`；secondary 里 `m_insidePass` 恒为 false，Draw 的 assert 必然触发；`BindPass` 隐式设置的视口不会被继承；每帧槽只有一个命令池（`GfxDevice.hpp:287,292`）。另外，合并组的 subpass 一旦用 `SECONDARY_COMMAND_BUFFERS` 开始，primary 里只能执行 `vkCmdExecuteCommands`，组内逐节点的 timestamp 和 clear 设置都要搬家（`FrameGraph.cpp:1234,1252`）。→ 每线程每帧槽一个命令池；`BindPass(handle, contents)`；Frame Graph 的 Execute 拆成“串行准备 → 并行录制 → 串行组装”三段。
 4. **帧接口依赖隐式时序**：`GetCommandBuffer`、`DynamicAllocate`、`GetFramebuffer` 只在 `BeginFrame` 和 `EndFrame` 之间有效；`ConsumeSwapchainResized` 读一次就清掉；`AccessXxx` 返回池内部的可写裸指针。→ `BeginFrame` 返回 `FrameContext`（命令缓冲工厂、图像索引、临时分配器）；`Access` 返回 const，状态修改走设备接口。
-5. **动态 uniform 环是非原子的线性分配器**（`GpuDevice.cpp:~2336`）。→ 按线程分块（atomic `fetch_add`），用途泛化到 storage 和 indirect。
-6. **上传同步阻塞，并且和 `Create*` 绑在一起**（**上传阻塞已解决**：批次提交后不等待，3 个上传槽各带 fence 和 staging 段，只在复用仍在途的槽时等待；`SceneLoader` 每帧一个不跨槽的批次。Bistro 单帧最长上传从 527 ms 降到 16 ms，Sponza 从 780 ms 降到 8 ms（Release）。不需要 ticket：同一队列按提交顺序执行，帧 fence 覆盖更早的批次。`Create*` 与上传仍绑定，并入 P3-1）：每批都在 CPU 上等 fence，每个资源单独建 staging，无初始数据的普通纹理仅为一次布局转换也要单独提交（`GpuDevice.cpp:825-920,1180-1316`）。→ 拆出 `UploadContext`：常驻映射的 staging ring，返回 ticket（fence 或帧号），提供就绪查询；`Create*` 只建对象。
+5. **动态 uniform 环是非原子的线性分配器**（`GfxDevice.cpp:~2336`）。→ 按线程分块（atomic `fetch_add`），用途泛化到 storage 和 indirect。
+6. **上传同步阻塞，并且和 `Create*` 绑在一起**（**上传阻塞已解决**：批次提交后不等待，3 个上传槽各带 fence 和 staging 段，只在复用仍在途的槽时等待；`SceneLoader` 每帧一个不跨槽的批次。Bistro 单帧最长上传从 527 ms 降到 16 ms，Sponza 从 780 ms 降到 8 ms（Release）。不需要 ticket：同一队列按提交顺序执行，帧 fence 覆盖更早的批次。`Create*` 与上传仍绑定，并入 P3-1）：每批都在 CPU 上等 fence，每个资源单独建 staging，无初始数据的普通纹理仅为一次布局转换也要单独提交（`GfxDevice.cpp:825-920,1180-1316`）。→ 拆出 `UploadContext`：常驻映射的 staging ring，返回 ticket（fence 或帧号），提供就绪查询；`Create*` 只建对象。
 7. **Pass 的 Execute 不是只读的**：`ForwardPbrPass::Pipeline()` 和 `ShadowPass` 在 Execute 中懒建管线（会改 `m_pipelines` 并同步调用 `vkCreateGraphicsPipelines`）；Execute 里还写统计和 `m_dirty` / `m_rendered`。→ 变体必须在 `WarmPipelines` / `OnCompiled` 建好，录制时缺失就报错跳过；状态更新挪到串行的 `OnExecuted`。**已完成（管线部分）**：录制只查找变体（`GetOrCreatePipeline` 只在 `WarmPipelines` 中调用），缺失时跳过并报告一次；图重新编译后 `Renderer` 重新预热。Execute 只写 pass 自己的成员，在 fork-join 式并行录制（每个 pass 一个任务，UI 在录制前后读取）下不构成竞争，暂不改。
 8. ~~**glTF 加载原地改写 `Scene&`，CPU 解析与 GPU 创建交织**~~（`GltfLoader.cpp:502,1641-1709`）：读 accessor 时就 `CreateBuffer`；图片 I/O 在主线程；`LoadScene` 和 `LoadGltfScene` 都 `Destroy` 了一次。→ 拆成 `ParseGltf(path) -> SceneData`（纯 CPU，可在工作线程运行、可单测）和 `UploadScene(device, SceneData) -> Scene`，Renderer 在帧边界交换；`m_sceneVersion` 并入 Scene。**已完成**：`ParseGltfScene` / `PrepareGltfTexture`（CPU）+ `GltfSceneUploader`（主线程，按预算逐步上传），`SceneLoader` 用 enkiTS 跨帧组合；`ScenePrimitive` 改存 buffer 下标；重复的 `Destroy` 已去掉。没有做双场景交换：旧场景先释放再加载新场景，加载期间画面为空，换来不同时占用两份显存。
 9. ~~**查看器的场景切换是一条同步链**~~（`ViewerApp.cpp:209-265`）：相机复位、cache 保存、灯光复位都假设加载在一次调用内完成。→ 改为 `RequestScene` 加状态（Loading / Ready / Failed），收尾工作放到 `OnSceneReady`。**已完成**：`RequestScene` + 每帧 `UpdateSceneLoad`，`Finished` / `Failed` 时复位相机灯光、保存 cache；面板显示解析中或纹理进度。取消加载原先要等在途的解析和解码任务结束；现在不等待：任务连同它读取的数据转为“孤儿”，在后台跑完后由下一次 `Update` 释放（Stage3-Plan A2）。查看器在画面底部显示加载进度条。
@@ -45,12 +45,12 @@
 
 ## 3. 后续阶段之前要扩展（P2）
 
-1. **没有启用特性的通道**（`GpuDevice.cpp:388-439`）：只启用 `VK_KHR_swapchain`，特性只通过 1.0 的 `pEnabledFeatures` 传入，没有 Features2 的 pNext 链，T1 能力全都打不开。→ 新增 `EnabledDeviceFeatures`，按能力构建 pNext 链（`Chain` 工具从匿名命名空间移出）；渲染路径一律查“已启用”。同时把 `m_samplerAnisotropy`、`m_multiDrawIndirect` 等重复的布尔值合并进去（`GpuDevice.hpp:251-268`）。*阶段 4 之前。*
+1. **没有启用特性的通道**（`GfxDevice.cpp:388-439`）：只启用 `VK_KHR_swapchain`，特性只通过 1.0 的 `pEnabledFeatures` 传入，没有 Features2 的 pNext 链，T1 能力全都打不开。→ 新增 `EnabledDeviceFeatures`，按能力构建 pNext 链（`Chain` 工具从匿名命名空间移出）；渲染路径一律查“已启用”。同时把 `m_samplerAnisotropy`、`m_multiDrawIndirect` 等重复的布尔值合并进去（`GfxDevice.hpp:251-268`）。*阶段 4 之前。*
 2. **档位不该当功能开关**（`DeviceCapabilities.cpp:205-255`）：T2 要求所有能力同时具备，异步计算如果按档位判断，没有光追的桌面卡也会被挡掉；`Bindless()` 没有检查上限；`drawIndirectCount` 等只看扩展名，其他字段看特性位，语义不一致。→ 档位只用于显示，功能按单项判断。
 3. **描述符模型**：layout 不支持 binding flags（PARTIALLY_BOUND / UPDATE_AFTER_BIND / VARIABLE_COUNT）；buffer 描述符的 offset 固定为 0；只有一个固定大小的池，`UpdateDescriptorSet` 先分配新 set 再延迟释放旧 set，峰值翻倍；反射拒绝运行时数组。→ `DescriptorAllocator`：可扩容的池列表、每帧临时池、单独的 bindless 池；增加按元素写入的接口。*阶段 8。*
 4. **队列模型写死**：只有一个 `m_queue`，`EndFrame` 写死一个等待和一个信号；能力里只记录“有没有独立队列”，没有队列族索引；barrier 的 queue family 写死为 IGNORED；`ToVkPipelineStages` 总会带上 VS/FS 阶段，这在只有 compute 能力的队列上非法（`CommandBuffer.cpp:448,488`、`VulkanUtils.cpp:180-193`）。→ `Submit(queue, waits, signals)`；barrier 增加所有权转移，或对共享资源用 CONCURRENT；阶段掩码按队列能力过滤。*阶段 9。*
 5. **`UnorderedAccess` / `VertexAndConstantBuffer` 映射到 VS|FS|CS**，compute 写后读的 barrier 会等所有 fragment 工作结束，在 tiler 上破坏重叠（`VulkanUtils.cpp:165-187`）。→ 拆分 compute 和 pixel 两种状态，或允许显式指定阶段。
-6. **延迟销毁按帧号计数，并且每个对象一个 `std::function`**（`GpuDevice.cpp:~810`）：异步上传和 compute 队列的提交不受帧 fence 覆盖；最小化时不回收。→ 按提交的 fence 或 timeline 值判断，按资源类型分组的删除队列。
+6. **延迟销毁按帧号计数，并且每个对象一个 `std::function`**（`GfxDevice.cpp:~810`）：异步上传和 compute 队列的提交不受帧 fence 覆盖；最小化时不回收。→ 按提交的 fence 或 timeline 值判断，按资源类型分组的删除队列。
 7. **Frame Graph 的扩展点**：
    - 没有 History 资源（阶段 4）：读历史正好是“本帧写之前先读”，会被判成声明错误，Load 也会被改成 Clear。→ 双缓冲物理纹理、不参与别名，访问用 `ReadPrevious`，并告知 pass 历史是否有效。
    - 没有瞬时 buffer（阶段 8）：`Resource` 一个结构体同时塞了纹理和 buffer 的字段；`m_bufferStates` 按句柄跨帧累积，从不清理。→ 资源本体改成 variant，增加 `FrameGraphBufferDesc`。
@@ -63,7 +63,7 @@
 
 ## 4. 职责划分与接口设计（P3，按收益排序）
 
-1. **`GpuDevice` 2400 行，职责过多** → 拆成 `VulkanContext`（instance、device、VMA）、`FrameScheduler`、`UploadContext`、`DeletionQueue`、`DescriptorAllocator`、`RenderPassCache`、`PipelineFactory`（cache、反射校验），`GpuDevice` 只保留资源注册表和门面。P1-6、P2-3、P2-6 正好是这几个子模块。
+1. **`GfxDevice` 2400 行，职责过多** → 拆成 `VulkanContext`（instance、device、VMA）、`FrameScheduler`、`UploadContext`、`DeletionQueue`、`DescriptorAllocator`、`RenderPassCache`、`PipelineFactory`（cache、反射校验），`GfxDevice` 只保留资源注册表和门面。P1-6、P2-3、P2-6 正好是这几个子模块。
 2. **ImGui 和调试 UI 泄漏进渲染层**：`Renderer.hpp` 包含 `ImGuiLayer.hpp`（连带 SDL 事件）；`Render(..., ImGuiLayer*)`；`FrameGraphPass` 带有 `Description` / `DrawInspector(RenderSettings&)`，`FrameGraphContext` 带有 `RenderView`，通用的图层因此依赖渲染器专有类型；`ShadowPass::DrawInspector` 会读 Execute 写入的状态。→ Renderer 提供 overlay 节点注册入口，ImGuiLayer / ImGuiPass 移出 render；inspector 在 viewer 侧按 pass 名注册，pass 只暴露 const 的统计快照。
 3. **`Renderer::Render` 什么都做**（`Renderer.cpp:119-150,193-270`）：填 FrameConstants、阴影拟合、剔除、冻结状态机、三类调试线。阴影拟合在 Renderer、重绘判断在 ShadowPass，两者隐式耦合，拟合方式一变重绘判断就悄悄失效。→ 阴影视图的拟合和重绘判断都收进 `ShadowPass`；剔除和冻结抽成 `Visibility`；调试线抽成 `SceneDebugOverlay`。
 4. **`RenderSettings` 是大杂烩**：灯光属于场景内容，不是设置；其余混着后处理、剔除和调试开关，又被整体传给每个 pass。→ 灯光进 `Scene` / `SceneLighting`（分簇需要数组）；拆成 `PostSettings`、`CullingSettings`、`DebugSettings`。
@@ -73,7 +73,7 @@
 8. **UI 命中测试靠手工拼窗口矩形**（`ViewerApp.cpp:268-279`），新增窗口忘了加就会让相机误吃输入；矩形有 `float[2]`、`glm::vec2` 两种表示。→ `ImGuiLayer` 在 `EndFrame` 时记录所有窗口和弹窗的矩形，统一提供 `HitTest`。
 9. **CommandBuffer 的隐式状态**：graphics 和 compute 共用一个 `m_currentPipeline`，`BindPass` / `EndPass` 都会清空它；`BindDescriptorSet` 必须先绑管线，没法在命令缓冲开头一次绑好全局 set；set 编号写在三处（layout 的 `setIndex`、PipelineCreation 里的位置、Bind 的参数），没有一致性检查；`SetClearColor` 的值跨 pass 残留。→ 按绑定点分别跟踪；set 编号直接取 layout 的 `setIndex`；清屏值作为 `BindPass` 的参数。
 10. **错误处理不一致**：抛异常、assert、记日志后跳过、返回 bool、返回 optional + `string*`、返回空 vector、BC7 输入不足时静默输出黑色，混用；Release 下 builder 超限静默丢弃，barrier 超过 8 条会悄悄丢掉同步；校验错误在 Debug 抛异常、Release 只记日志。→ 定一条规则：编程错误 assert + 日志 + 跳过；运行时错误（内存不足、池满、资产损坏）throw 或 `Result<T>`；builder 超限硬失败。
-11. **Frame Graph 的 Compile 难以单测**：纯算法（剔除、合并、生命周期、别名）与 `GpuDevice` 绑在一起；`CheckReadsBeforeWrites` 名为 Check，实际会改声明（Load → Clear），外层还要重试。→ 纯函数 `CompileGraph(declarations, caps) -> CompiledGraph`，再由 realize 步骤创建 GPU 对象。
+11. **Frame Graph 的 Compile 难以单测**：纯算法（剔除、合并、生命周期、别名）与 `GfxDevice` 绑在一起；`CheckReadsBeforeWrites` 名为 Check，实际会改声明（Load → Clear），外层还要重试。→ 纯函数 `CompileGraph(declarations, caps) -> CompiledGraph`，再由 realize 步骤创建 GPU 对象。
 12. **Frame Graph 用字符串标识资源和节点**：`Read` / `ColorAttachment` 只接受名字，拼写错误要到 Compile 才暴露；`SetEnabled` / `IsScheduled` 每帧线性扫描比较字符串；调试快照的 `kind` / `status` 也是字符串，viewer 用 `strcmp` 或按前缀解析。→ Create / Import / AddPass 返回带类型的句柄，状态用枚举。
 13. **反射与管线创建耦合**：Release 下每次 `CreatePipeline` 仍会反射 SPIR-V；`ValidatePipelineInterface` 基本复制了一遍 `ReflectShaderState`；TonemapPass 同一组着色器反射两次。→ 反射结果复用或按哈希缓存，非校验构建跳过校验。
 14. **着色器 / IBL 约定散落**：mip ↔ roughness 映射和 LUT 轴约定分散在 `Prefilter.cpp:14`、`Brdf.slang`、`Skybox.slang:27`（还内联重写了一遍）；烘焙产物提交在仓库里，没有重新烘焙的构建规则，`--self-test` 也没有接入测试；`ShadowSampling.slang` 隐式依赖 Bindings 里的全局变量，却没有 include 它。→ 新增 `SpecularMipFromRoughness()`；把约定写进 KTX2 的 key/value 并在加载时校验；增加 `MEngineBakeIbl` 目标和 `add_test`。
@@ -93,7 +93,7 @@
 | PI 常量（三份，命名不一致） | `Brdf.slang:4`、`UeBrdf.hpp:19`、`Cubemap.cpp:13` |
 | 格式名表 | `ViewerApp.cpp:62-80`、`DeviceCapabilities.cpp:~91` |
 | 方向向量归一化 UI | `ViewerApp.cpp:370-379`、`PassInspectors.cpp:32-43` |
-| 设备扩展枚举、队列族遍历 | `GpuDevice.cpp:89,99,337-386`、`DeviceCapabilities.cpp:28,290-312` |
+| 设备扩展枚举、队列族遍历 | `GfxDevice.cpp:89,99,337-386`、`DeviceCapabilities.cpp:28,290-312` |
 | `RenderPassCreation` 与 `RenderPassOutput` 字段重复，`colorCount` / `renderTargetCount` 两套计数 | `GpuResources.hpp:208-242` |
 
 ## 6. 命名（涉及公开接口，本次未改）
@@ -101,7 +101,7 @@
 - `RenderSettings::light` → `pointLight`；`FrameConstants` 的 `lightViewProjection`（方向光）和 `lightPositionRadius`（点光源）都用 `light` 前缀，容易混。
 - `GetVulkanRenderPass` 会创建对象 → `ObtainVulkanRenderPass`。
 - `CommandBuffer::BufferBarrier` / `GlobalBarrier` 遮蔽同名的 `rhi::` 类型，`CommandBuffer::Handle()` 与 `mengine::Handle` 模板同名；`DebugDraw::Frustum()` 遮蔽 `render::Frustum` 类型。
-- 取值函数的 `Get` 前缀不统一：`ShadowPass::Texture()`、`DebugDraw::Buffer()`、`Swapchain` 不带，`GpuDevice`、`Renderer` 带。
+- 取值函数的 `Get` 前缀不统一：`ShadowPass::Texture()`、`DebugDraw::Buffer()`、`Swapchain` 不带，`GfxDevice`、`Renderer` 带。
 - `ResourceUsage::Immutable` 实际含义是设备本地（compute 写入的 buffer 也用它）→ `DeviceLocal`，另需补 `Readback`。
 - `FrameGraphNodeType` 实际表示“是否在 render pass 内”；`Node::renderPass` 存的是合并组索引。
 - `geometricNormal`（`Pbr.slang:154`）其实是插值的顶点法线。
@@ -111,7 +111,7 @@
 
 ## 7. 死代码
 
-`GpuDevice::ResizeOutputTextures`、`LinkTextureSampler`、`IsVsync`、`GetAllocator`、`GetAbsoluteFrame`、`GetDummyCubeTexture`、`GetDefaultSampler`、`SupportsCompute`、`GetProperties`；`CommandBuffer::IsInsidePass`；`Swapchain::HasSurface`、`ImageCount`；`DescriptorSetLayoutCreation::FindBinding`；`ShaderReflection::localSize`；`kResourceStateGenericRead`；`DebugDraw::Sphere`、`LineCount`、`kSphereSegments`；`Ktx2BytesPerTexel`；`Application::IsSuspended`；`Brdf.slang` 的 `GSmithIbl`（运行时不用）；DDS 的 `forceSRGB`、`alphaMode`、`rowPitch`、`depthPitch`；`CMakeLists.txt:166` 永远为真的 `EXISTS` 判断。保留前需要给出理由，否则删除。
+`GfxDevice::ResizeOutputTextures`、`LinkTextureSampler`、`IsVsync`、`GetAllocator`、`GetAbsoluteFrame`、`GetDummyCubeTexture`、`GetDefaultSampler`、`SupportsCompute`、`GetProperties`；`CommandBuffer::IsInsidePass`；`Swapchain::HasSurface`、`ImageCount`；`DescriptorSetLayoutCreation::FindBinding`；`ShaderReflection::localSize`；`kResourceStateGenericRead`；`DebugDraw::Sphere`、`LineCount`、`kSphereSegments`；`Ktx2BytesPerTexel`；`Application::IsSuspended`；`Brdf.slang` 的 `GSmithIbl`（运行时不用）；DDS 的 `forceSRGB`、`alphaMode`、`rowPitch`、`depthPitch`；`CMakeLists.txt:166` 永远为真的 `EXISTS` 判断。保留前需要给出理由，否则删除。
 
 ## 8. 性能
 
@@ -125,7 +125,7 @@
 
 1. **P0 缺陷**：先修 1–3（着色错误和静默失败），其余与相关模块的改动一并处理。
 2. **阶段 3 的前置重构**，按依赖顺序：
-   1. `GpuDevice` 拆出 `UploadContext`、`DeletionQueue` 和 `DescriptorAllocator`（P1-6、P3-1）。
+   1. `GfxDevice` 拆出 `UploadContext`、`DeletionQueue` 和 `DescriptorAllocator`（P1-6、P3-1）。
    2. 资源注册表的线程契约（P1-1）。
    3. `FrameContext`、命令池按线程分配、secondary 接口（P1-3、P1-4）。
    4. Frame Graph 的 Execute 改为三段式，barrier 由图统一生成（P1-2、P1-3）。

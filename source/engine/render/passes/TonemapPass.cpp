@@ -3,7 +3,7 @@
 #include "render/RenderTypes.hpp"
 #include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 #include "rhi/ShaderReflection.hpp"
 #include "rhi/VulkanUtils.hpp"
 
@@ -21,7 +21,7 @@ rhi::ShaderStateCreation TonemapShaders(const std::vector<uint32_t>& vertexCode,
 
 } // namespace
 
-void TonemapPass::Init(rhi::GpuDevice& device)
+void TonemapPass::Init(rhi::GfxDevice& device)
 {
     m_device = &device;
     m_vertexCode = rhi::LoadSpirvAsset("shaders/Tonemap.VertexMain.spv");

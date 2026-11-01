@@ -13,7 +13,7 @@
 #include <vector>
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 }
 
 namespace mengine::render {
@@ -90,7 +90,7 @@ struct Scene
     bool HasBounds() const { return boundsMin.x <= boundsMax.x; }
 
     // Releases every GPU resource (deferred by the device) and leaves an empty scene.
-    void Destroy(rhi::GpuDevice& device);
+    void Destroy(rhi::GfxDevice& device);
 };
 
 } // namespace mengine::render

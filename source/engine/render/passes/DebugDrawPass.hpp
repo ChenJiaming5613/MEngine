@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 } // namespace mengine::rhi
 
 namespace mengine::render {
@@ -19,7 +19,7 @@ class DebugDraw;
 class DebugDrawPass final : public FrameGraphPass
 {
 public:
-    void Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, const DebugDraw& lines);
+    void Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, const DebugDraw& lines);
     void Shutdown();
 
     void Setup(FrameGraphBuilder& builder) override;
@@ -31,7 +31,7 @@ public:
     bool DrawInspector(RenderSettings& settings) override;
 
 private:
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     const DebugDraw* m_lines = nullptr;
     rhi::DescriptorSetLayoutHandle m_frameLayout;
     std::vector<uint32_t> m_vertexCode;

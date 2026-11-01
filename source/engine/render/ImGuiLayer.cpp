@@ -4,7 +4,7 @@
 #include "platform/Window.hpp"
 #include "render/RenderView.hpp"
 #include "rhi/CommandBuffer.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)
@@ -37,7 +37,7 @@ void CheckImGuiVkResult(VkResult result)
 
 } // namespace
 
-void ImGuiLayer::Init(rhi::GpuDevice& device, Window& window)
+void ImGuiLayer::Init(rhi::GfxDevice& device, Window& window)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

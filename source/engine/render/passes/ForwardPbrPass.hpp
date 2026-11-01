@@ -10,7 +10,7 @@
 
 namespace mengine::rhi {
 class CommandBuffer;
-class GpuDevice;
+class GfxDevice;
 } // namespace mengine::rhi
 
 namespace mengine::render {
@@ -22,7 +22,7 @@ struct Scene;
 class ForwardPbrPass final : public FrameGraphPass
 {
 public:
-    void Init(rhi::GpuDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout);
+    void Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout);
     void Shutdown();
 
     // Creates the variants the scene's draws use, so the first frame does not stall on pipeline creation.
@@ -39,7 +39,7 @@ private:
     rhi::PipelineHandle GetOrCreatePipeline(uint32_t key);
     void DestroyPipelines();
 
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     rhi::RenderPassOutput m_output;
     rhi::DescriptorSetLayoutHandle m_frameLayout;
     rhi::DescriptorSetLayoutHandle m_materialLayout;

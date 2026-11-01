@@ -19,7 +19,7 @@ SDL_AppResult SDL_AppInit(void** appState, int, char*[])
 #endif
 
     std::unique_ptr<mengine::Application> application = mengine::CreateViewerApp();
-    const bool initialized = application->Initialize(mengine::WindowCreation{.title = "MEngine", .width = 1280, .height = 720});
+    const bool initialized = application->Initialize(mengine::WindowCreateInfo{.title = "MEngine", .width = 1280, .height = 720});
     *appState = application.release();
     return initialized ? SDL_APP_CONTINUE : SDL_APP_FAILURE;
 }

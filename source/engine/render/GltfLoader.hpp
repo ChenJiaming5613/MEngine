@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 }
 
 namespace mengine::render {
@@ -22,11 +22,11 @@ struct GltfSceneData;
 
 struct GltfParseOptions
 {
-    // GpuDevice::SupportsTextureCompressionBc(), queried by the caller on the main thread.
+    // GfxDevice::SupportsTextureCompressionBc(), queried by the caller on the main thread.
     bool bcSupported = false;
 };
 
-// A decoded texture ready for GpuDevice::CreateTexture.
+// A decoded texture ready for GfxDevice::CreateTexture.
 struct PreparedTexture
 {
     std::vector<uint8_t> bytes; // owns the pixel data, which starts at dataOffset
@@ -57,7 +57,7 @@ class GltfSceneUploader
 {
 public:
     // materialLayout is the forward pass's set 1 layout; `scene` must be empty.
-    GltfSceneUploader(rhi::GpuDevice& device, const GltfSceneData& data, rhi::DescriptorSetLayoutHandle materialLayout,
+    GltfSceneUploader(rhi::GfxDevice& device, const GltfSceneData& data, rhi::DescriptorSetLayoutHandle materialLayout,
         Scene& scene);
 
     // Uploads the next buffers, at least one, stopping before the one that would take this call over byteBudget.
@@ -75,7 +75,7 @@ public:
 private:
     void CreateMaterial(size_t materialIndex, const std::vector<rhi::SamplerHandle>& samplers);
 
-    rhi::GpuDevice& m_device;
+    rhi::GfxDevice& m_device;
     const GltfSceneData& m_data;
     rhi::DescriptorSetLayoutHandle m_materialLayout;
     Scene& m_scene;

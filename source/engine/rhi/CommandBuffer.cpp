@@ -2,7 +2,7 @@
 
 #include "core/Assert.hpp"
 #include "core/Log.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 namespace mengine::rhi {
 
@@ -11,11 +11,11 @@ namespace {
 constexpr VkClearColorValue kDefaultClearColor = {{0.0f, 0.0f, 0.0f, 1.0f}};
 
 // States whose accesses the external subpass dependency of every render pass already orders before the pass's
-// attachment writes (GpuDevice::GetVulkanRenderPass: attachment stages and fragment shader reads).
+// attachment writes (GfxDevice::GetVulkanRenderPass: attachment stages and fragment shader reads).
 constexpr ResourceStates kStatesCoveredByPassDependency =
     kResourceStateRenderTarget | kResourceStateDepthWrite | kResourceStateDepthRead | kResourceStatePixelShaderResource;
 
-// Must match the final layouts chosen by GpuDevice::GetVulkanRenderPass.
+// Must match the final layouts chosen by GfxDevice::GetVulkanRenderPass.
 ResourceStates AttachmentFinalState(const RenderPassOutput& output, bool depth)
 {
     if (depth)
@@ -47,7 +47,7 @@ bool IsRedundant(ResourceStates oldState, ResourceStates newState)
 
 } // namespace
 
-void CommandBuffer::Init(GpuDevice* device, VkCommandBuffer commandBuffer)
+void CommandBuffer::Init(GfxDevice* device, VkCommandBuffer commandBuffer)
 {
     m_device = device;
     m_commandBuffer = commandBuffer;

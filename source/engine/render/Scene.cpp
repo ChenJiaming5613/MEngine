@@ -1,10 +1,10 @@
 #include "render/Scene.hpp"
 
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 namespace mengine::render {
 
-void Scene::Destroy(rhi::GpuDevice& device)
+void Scene::Destroy(rhi::GfxDevice& device)
 {
     for (const SceneMaterial& material : materials)
     {

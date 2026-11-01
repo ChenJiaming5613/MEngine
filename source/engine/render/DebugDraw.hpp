@@ -10,7 +10,7 @@
 #include <vector>
 
 namespace mengine::rhi {
-class GpuDevice;
+class GfxDevice;
 } // namespace mengine::rhi
 
 namespace mengine::render {
@@ -32,7 +32,7 @@ public:
     static constexpr uint32_t kMaxLines = 64u * 1024u;
     static constexpr uint32_t kSphereSegments = 32;
 
-    void Init(rhi::GpuDevice& device);
+    void Init(rhi::GfxDevice& device);
     void Shutdown();
 
     void Line(const glm::vec3& from, const glm::vec3& to, const glm::vec4& color);
@@ -42,7 +42,7 @@ public:
     // The 12 edges of the volume a view projection maps to clip space (Vulkan depth range 0..1).
     void Frustum(const glm::mat4& viewProjection, const glm::vec4& color);
 
-    // Copies the lines into the current frame slot's buffer range. Call between GpuDevice::BeginFrame and the draw.
+    // Copies the lines into the current frame slot's buffer range. Call between GfxDevice::BeginFrame and the draw.
     void Upload();
     // Forgets this frame's lines (after the frame is recorded).
     void Clear();
@@ -55,7 +55,7 @@ public:
     static uint32_t PackColor(const glm::vec4& color);
 
 private:
-    rhi::GpuDevice* m_device = nullptr;
+    rhi::GfxDevice* m_device = nullptr;
     rhi::BufferHandle m_buffer;
     std::vector<DebugVertex> m_vertices;
     uint32_t m_uploadedVertices = 0;

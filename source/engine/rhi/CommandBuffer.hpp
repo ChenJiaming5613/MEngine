@@ -10,7 +10,7 @@
 
 namespace mengine::rhi {
 
-class GpuDevice;
+class GfxDevice;
 
 // Thin recording wrapper over a primary VkCommandBuffer that resolves handles through the device, after Raptor.
 // Unlike Raptor, Barrier() refuses to run inside a render pass instead of silently ending it, and BindPass/EndPass keep
@@ -19,7 +19,7 @@ class GpuDevice;
 class CommandBuffer
 {
 public:
-    void Init(GpuDevice* device, VkCommandBuffer commandBuffer);
+    void Init(GfxDevice* device, VkCommandBuffer commandBuffer);
     void Reset();
 
     VkCommandBuffer Handle() const { return m_commandBuffer; }
@@ -48,7 +48,7 @@ public:
     void DrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t vertexOffset = 0,
         uint32_t firstInstance = 0);
     // The buffer needs VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT and holds VkDrawIndirectCommand / VkDrawIndexedIndirectCommand
-    // records. drawCount > 1 needs GpuDevice::SupportsMultiDrawIndirect(); a non-zero firstInstance in a record needs
+    // records. drawCount > 1 needs GfxDevice::SupportsMultiDrawIndirect(); a non-zero firstInstance in a record needs
     // SupportsDrawIndirectFirstInstance().
     void DrawIndirect(BufferHandle buffer, VkDeviceSize offset = 0, uint32_t drawCount = 1,
         uint32_t stride = sizeof(VkDrawIndirectCommand));
@@ -86,7 +86,7 @@ private:
     const Buffer* AccessIndirectBuffer(BufferHandle handle, VkDeviceSize offset, VkDeviceSize recordSize, uint32_t drawCount,
         uint32_t stride, const char* command) const;
 
-    GpuDevice* m_device = nullptr;
+    GfxDevice* m_device = nullptr;
     VkCommandBuffer m_commandBuffer = VK_NULL_HANDLE;
     const Pipeline* m_currentPipeline = nullptr;
     RenderPassHandle m_currentPass;

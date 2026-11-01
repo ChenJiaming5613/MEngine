@@ -10,7 +10,7 @@ class Window;
 
 namespace mengine::rhi {
 class CommandBuffer;
-class GpuDevice;
+class GfxDevice;
 } // namespace mengine::rhi
 
 namespace mengine::render {
@@ -20,7 +20,7 @@ class ImGuiLayer
 {
 public:
     // Throws std::runtime_error when a backend fails to initialize.
-    void Init(rhi::GpuDevice& device, Window& window);
+    void Init(rhi::GfxDevice& device, Window& window);
     void Shutdown();
 
     bool IsReady() const { return m_initialized; }

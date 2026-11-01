@@ -3,7 +3,7 @@
 #include "core/Log.hpp"
 #include "render/GltfSceneData.hpp"
 #include "render/Scene.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 #include "rhi/VulkanUtils.hpp"
 
 #include <TaskScheduler.h>
@@ -71,7 +71,7 @@ SceneLoader::~SceneLoader() = default;
 SceneLoader::SceneLoader(SceneLoader&&) noexcept = default;
 SceneLoader& SceneLoader::operator=(SceneLoader&&) noexcept = default;
 
-void SceneLoader::Init(rhi::GpuDevice& device, enki::TaskScheduler& tasks, rhi::DescriptorSetLayoutHandle materialLayout)
+void SceneLoader::Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks, rhi::DescriptorSetLayoutHandle materialLayout)
 {
     m_device = &device;
     m_tasks = &tasks;

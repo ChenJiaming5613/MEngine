@@ -1,7 +1,7 @@
 #include "render/DebugDraw.hpp"
 
 #include "core/Log.hpp"
-#include "rhi/GpuDevice.hpp"
+#include "rhi/GfxDevice.hpp"
 
 #include <glm/common.hpp>
 #include <glm/matrix.hpp>
@@ -19,7 +19,7 @@ constexpr VkDeviceSize kSegmentBytes = VkDeviceSize{DebugDraw::kMaxLines} * 2 * 
 
 } // namespace
 
-void DebugDraw::Init(rhi::GpuDevice& device)
+void DebugDraw::Init(rhi::GfxDevice& device)
 {
     m_device = &device;
     // One segment per frame in flight, written through the persistent mapping.
