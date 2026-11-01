@@ -26,7 +26,7 @@ bool Application::Initialize(const WindowCreateInfo& windowCreateInfo)
         return false;
     }
     // One thread is the main thread, which also runs tasks while it waits for them.
-    m_tasks.Initialize();
+    m_taskScheduler.Initialize();
     m_tasksRunning = true;
 
     try
@@ -43,7 +43,7 @@ bool Application::Initialize(const WindowCreateInfo& windowCreateInfo)
     }
 
     m_initialized = true;
-    m_clock.Reset();
+    m_timer.Reset();
     return true;
 }
 
@@ -60,7 +60,7 @@ void Application::Shutdown()
     // OnShutdown has waited for (or cancelled) its own tasks; this only joins the worker threads.
     if (m_tasksRunning)
     {
-        m_tasks.WaitforAllAndShutdown();
+        m_taskScheduler.WaitforAllAndShutdown();
         m_tasksRunning = false;
     }
     m_initialized = false;
@@ -69,7 +69,7 @@ void Application::Shutdown()
 
 SDL_AppResult Application::Tick()
 {
-    const double deltaSeconds = m_clock.Tick();
+    const double deltaSeconds = m_timer.Tick();
     if (!m_initialized || m_suspended || m_window.IsMinimized())
     {
         SDL_Delay(kIdleDelayMilliseconds);
@@ -111,7 +111,7 @@ SDL_AppResult Application::HandleEvent(const SDL_Event& event)
                 {
                     OnSuspendChanged(suspended);
                 }
-                m_clock.Reset();
+                m_timer.Reset();
             }
         }
         return m_initialized ? OnEvent(event) : SDL_APP_CONTINUE;

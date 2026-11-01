@@ -4,12 +4,12 @@
 
 namespace mengine {
 
-void FrameClock::Reset()
+void Timer::Reset()
 {
     m_lastCounter = SDL_GetPerformanceCounter();
 }
 
-double FrameClock::Tick()
+double Timer::Tick()
 {
     const uint64_t now = SDL_GetPerformanceCounter();
     if (m_lastCounter == 0)

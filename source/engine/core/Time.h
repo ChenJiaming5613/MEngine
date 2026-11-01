@@ -4,7 +4,7 @@
 
 namespace mengine {
 
-class FrameClock
+class Timer
 {
 public:
     void Reset();
