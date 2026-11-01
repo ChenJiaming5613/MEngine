@@ -10,7 +10,7 @@
 
 namespace mengine {
 
-// Drives the SDL main callbacks. Subclasses get no OnFrame while suspended (Android background) or minimized.
+// Drives the SDL main callbacks. Subclasses get no OnTick while suspended (Android background) or minimized.
 class Application
 {
 public:
@@ -22,14 +22,14 @@ public:
     bool Initialize(const WindowCreateInfo& windowCreateInfo);
     void Shutdown();
 
-    SDL_AppResult Iterate();
+    SDL_AppResult Tick();
     SDL_AppResult HandleEvent(const SDL_Event& event);
 
 protected:
     virtual bool OnInitialize() = 0;
     virtual void OnShutdown() = 0;
     // Exceptions thrown here end the application with SDL_APP_FAILURE.
-    virtual void OnFrame(double deltaSeconds) = 0;
+    virtual void OnTick(double deltaSeconds) = 0;
     virtual SDL_AppResult OnEvent(const SDL_Event&) { return SDL_APP_CONTINUE; }
     virtual void OnSuspendChanged(bool) {}
 

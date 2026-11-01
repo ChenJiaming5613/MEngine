@@ -2,7 +2,7 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_hints.h>
 
-#include "ViewerApp.h"
+#include "ViewerApplication.h"
 
 SDL_AppResult SDL_AppInit(void** appState, int, char*[])
 {
@@ -18,7 +18,7 @@ SDL_AppResult SDL_AppInit(void** appState, int, char*[])
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
 
-    std::unique_ptr<mengine::Application> application = mengine::CreateViewerApp();
+    std::unique_ptr<mengine::Application> application = std::make_unique<mengine::ViewerApplication>();
     const bool initialized = application->Initialize(mengine::WindowCreateInfo{.title = "MEngine", .width = 1280, .height = 720});
     *appState = application.release();
     return initialized ? SDL_APP_CONTINUE : SDL_APP_FAILURE;
@@ -26,7 +26,7 @@ SDL_AppResult SDL_AppInit(void** appState, int, char*[])
 
 SDL_AppResult SDL_AppIterate(void* appState)
 {
-    return static_cast<mengine::Application*>(appState)->Iterate();
+    return static_cast<mengine::Application*>(appState)->Tick();
 }
 
 SDL_AppResult SDL_AppEvent(void* appState, SDL_Event* event)

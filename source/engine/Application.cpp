@@ -67,7 +67,7 @@ void Application::Shutdown()
     m_window.Destroy();
 }
 
-SDL_AppResult Application::Iterate()
+SDL_AppResult Application::Tick()
 {
     const double deltaSeconds = m_clock.Tick();
     if (!m_initialized || m_suspended || m_window.IsMinimized())
@@ -78,7 +78,7 @@ SDL_AppResult Application::Iterate()
 
     try
     {
-        OnFrame(deltaSeconds);
+        OnTick(deltaSeconds);
     }
     catch (const std::exception& error)
     {
