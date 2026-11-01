@@ -64,7 +64,7 @@ graph TB
 - **入口**：SDL3 main callbacks，桌面和 Android 共用 `viewer/main.cpp`。`Application` 把回调转成 `OnInitialize / OnTick / OnEvent / OnSuspendChanged / OnShutdown`；挂起或最小化时不调用 `OnTick`；回调抛出的异常在基类记录，初始化或帧内的异常让程序以失败退出。
 - **ViewerApplication**：读 `config.json`、加载环境与首个场景；场景切换在下一帧 `BeginFrame` 之前执行（需要等 GPU 空闲）；换场景后复位相机与灯光；把窗口尺寸变化和前后台切换转给 `GfxDevice`。
 - **输入**：`Input` 的坐标统一为窗口点（与 ImGui 相同）；按下点落在 UI 上的按压不当作相机输入。桌面关闭“触摸转鼠标”，Android 保留它供 ImGui 使用，`Input` 忽略这类合成鼠标事件。
-- **相机控制器**：`CameraController` 把输入变成 `render::Camera` 的运动，渲染器不知道当前模式。切换模式时新控制器接管当前位姿。
+- **相机控制器**：`CameraController` 把输入变成 `camera::Camera` 的运动，渲染器不知道当前模式。切换模式时新控制器接管当前位姿。
   - `FlyCameraController`：桌面右键转视角 + WASD/QE；触摸左半屏虚拟摇杆、右半屏转视角。
   - `OrbitCameraController`：移植 Vulkan-glTF-PBR 的 look-at 相机，内部保存原版的 `rotation / position`，每帧换算为等价的 MEngine 相机，因此操作手感与原版一致，切换模式时画面不跳。
 

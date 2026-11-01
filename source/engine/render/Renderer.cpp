@@ -1,6 +1,6 @@
 #include "render/Renderer.h"
 
-#include "render/Camera.h"
+#include "camera/Camera.h"
 #include "render/Culling.h"
 #include "render/GltfLoader.h"
 #include "render/RenderView.h"
@@ -178,7 +178,7 @@ void Renderer::UpdateFrameSet()
     }
 }
 
-void Renderer::Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui)
+void Renderer::Render(const mengine::camera::Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui)
 {
     rhi::GfxDevice& device = *m_device;
     device.ConsumeSwapchainResized();

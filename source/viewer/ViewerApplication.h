@@ -1,14 +1,14 @@
 #pragma once
 
 #include "Application.h"
-#include "CameraController.h"
 #include "DeviceCapabilitiesPanel.h"
-#include "FlyCameraController.h"
 #include "FrameGraphViewer.h"
-#include "OrbitCameraController.h"
 #include "ProfilerPanel.h"
+#include "camera/CameraController.h"
+#include "camera/FlyCameraController.h"
+#include "camera/OrbitCameraController.h"
 #include "ViewerConfig.h"
-#include "render/Camera.h"
+#include "camera/Camera.h"
 #include "render/ImGuiLayer.h"
 #include "render/RenderTypes.h"
 #include "render/Renderer.h"
@@ -54,7 +54,7 @@ private:
     const char* CurrentSceneName() const;
     void DrawSceneLoadOverlay();
     void BuildFrameGraphPanel();
-    CameraController& ActiveCameraController();
+    camera::CameraController& ActiveCameraController();
     void SetCameraMode(size_t mode);
 
     rhi::GfxDevice m_device;
@@ -63,11 +63,11 @@ private:
     DeviceCapabilitiesPanel m_capabilitiesPanel;
     ProfilerPanel m_profilerPanel;
     render::Renderer m_renderer;
-    render::Camera m_camera;
+    camera::Camera m_camera;
     render::RenderSettings m_settings;
-    std::array<std::unique_ptr<CameraController>, kCameraModeCount> m_cameraControllers{
-        std::make_unique<FlyCameraController>(),
-        std::make_unique<OrbitCameraController>(),
+    std::array<std::unique_ptr<camera::CameraController>, kCameraModeCount> m_cameraControllers{
+        std::make_unique<camera::FlyCameraController>(),
+        std::make_unique<camera::OrbitCameraController>(),
     };
     size_t m_cameraMode = kCameraModeFly;
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CameraController.h"
+#include "camera/CameraController.h"
 
 #include <SDL3/SDL_touch.h>
 
@@ -10,7 +10,7 @@
 #include <optional>
 #include <utility>
 
-namespace mengine {
+namespace mengine::camera {
 
 // Orbit (look-at) camera, a port of Sascha Willems' Vulkan-glTF-PBR (base/camera.hpp with CameraType::lookat, the
 // mouse handling of VulkanExampleBase::handleMouseMove / WM_MOUSEWHEEL and the Android touch handling), with its
@@ -38,18 +38,18 @@ public:
     const char* Help() const override { return "LMB rotate, RMB drag / wheel zoom, MMB pan; touch: drag rotate, pinch zoom"; }
 
     // Vulkan-glTF-PBR's resetCamera(): rotation 0, position (0, 0, 1), i.e. the center seen from +Z at distance L.
-    void ResetView(render::Camera& camera) override;
-    void Activate(render::Camera& camera) override;
+    void ResetView(camera::Camera& camera) override;
+    void Activate(camera::Camera& camera) override;
     void Deactivate(Window& window) override;
-    void Update(render::Camera& camera, const CameraInput& input, float deltaSeconds) override;
+    void Update(camera::Camera& camera, const CameraInput& input, float deltaSeconds) override;
 
     void DrawSettings() override;
 
 private:
     // Scene units per Vulkan-glTF-PBR unit.
     float UnitLength() const { return 2.0f * m_scene.MaxExtent(); }
-    void ApplyTo(render::Camera& camera) const;
-    void AdoptFrom(const render::Camera& camera);
+    void ApplyTo(camera::Camera& camera) const;
+    void AdoptFrom(const camera::Camera& camera);
     void UpdateTouches(const CameraInput& input, float pixelsPerPoint);
 
     glm::vec2 m_rotation{0.0f}; // degrees, Vulkan-glTF-PBR's rotation.xy
@@ -58,4 +58,4 @@ private:
     float m_pinchDistance = 0.0f;
 };
 
-} // namespace mengine
+} // namespace mengine::camera

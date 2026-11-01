@@ -12,6 +12,7 @@
 #include "render/passes/ShadowPass.h"
 #include "render/passes/SkyboxPass.h"
 #include "render/passes/TonemapPass.h"
+#include "camera/Camera.h"
 #include "rhi/GpuResources.h"
 
 #include <glm/mat4x4.hpp>
@@ -31,8 +32,6 @@ class GfxDevice;
 }
 
 namespace mengine::render {
-
-class Camera;
 
 // Owns the scene, the environment and the passes, and runs the frame graph every frame:
 // Shadow (on demand) -> Forward -> Skybox -> DebugDraw into HDR -> Tonemap -> ImGui into the backbuffer.
@@ -63,7 +62,7 @@ public:
     const CullingStats& GetCullingStats() const { return m_cullingStats; }
 
     // Records the frame between GfxDevice::BeginFrame and EndFrame. ImGui (if any) must have finished its frame.
-    void Render(const Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui);
+    void Render(const mengine::camera::Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui);
 
 private:
     struct ShadowView

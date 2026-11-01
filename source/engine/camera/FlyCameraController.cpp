@@ -1,8 +1,8 @@
-#include "FlyCameraController.h"
+#include "camera/FlyCameraController.h"
 
 #include "platform/Input.h"
 #include "platform/Window.h"
-#include "render/Camera.h"
+#include "camera/Camera.h"
 
 #include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_platform_defines.h>
@@ -27,7 +27,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace mengine {
+namespace mengine::camera {
 namespace {
 
 constexpr float kStickRadiusFraction = 0.15f; // of the shorter window side
@@ -55,7 +55,7 @@ void FlyCameraController::SetScene(const CameraScene& scene)
     moveSpeed = std::max(0.5f, scene.Radius() * 0.25f);
 }
 
-void FlyCameraController::ResetView(render::Camera& camera)
+void FlyCameraController::ResetView(camera::Camera& camera)
 {
     if (m_scene.configuredPose)
     {
@@ -74,7 +74,7 @@ void FlyCameraController::ResetView(render::Camera& camera)
     camera.farPlane = FarPlaneFor(camera);
 }
 
-void FlyCameraController::Activate(render::Camera& camera)
+void FlyCameraController::Activate(camera::Camera& camera)
 {
     // An orbit may have left the camera upside down; keep the view direction, drop the roll.
     camera.ClampPitch();
@@ -99,7 +99,7 @@ void FlyCameraController::SetMouseLook(Window& window, bool enabled)
 }
 
 // Returns the stick deflection: x strafes right, y moves forward, length in [0, 1].
-glm::vec2 FlyCameraController::UpdateTouches(render::Camera& camera, const Input& input, Window& window)
+glm::vec2 FlyCameraController::UpdateTouches(camera::Camera& camera, const Input& input, Window& window)
 {
 #if defined(SDL_PLATFORM_ANDROID)
     m_usesTouch = true;
@@ -176,7 +176,7 @@ glm::vec2 FlyCameraController::UpdateTouches(render::Camera& camera, const Input
     return glm::vec2(deflection.x, -deflection.y); // screen y grows downward
 }
 
-void FlyCameraController::Update(render::Camera& camera, const CameraInput& context, float deltaSeconds)
+void FlyCameraController::Update(camera::Camera& camera, const CameraInput& context, float deltaSeconds)
 {
     const Input& input = context.input;
 
@@ -265,4 +265,4 @@ void FlyCameraController::DrawOverlay() const
         IM_COL32(255, 255, 255, 140), 32);
 }
 
-} // namespace mengine
+} // namespace mengine::camera

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CameraController.h"
+#include "camera/CameraController.h"
 
 #include <SDL3/SDL_touch.h>
 
@@ -8,7 +8,7 @@
 
 #include <optional>
 
-namespace mengine {
+namespace mengine::camera {
 
 // Unity scene view style fly camera.
 // Desktop: hold the right mouse button to look around (relative mouse mode), WASD to move, Q/E down/up.
@@ -27,10 +27,10 @@ public:
 
     void SetScene(const CameraScene& scene) override;
     // The configured pose, otherwise the bounding sphere framed from +Z looking down -Z.
-    void ResetView(render::Camera& camera) override;
-    void Activate(render::Camera& camera) override;
+    void ResetView(camera::Camera& camera) override;
+    void Activate(camera::Camera& camera) override;
     void Deactivate(Window& window) override;
-    void Update(render::Camera& camera, const CameraInput& input, float deltaSeconds) override;
+    void Update(camera::Camera& camera, const CameraInput& input, float deltaSeconds) override;
 
     void DrawSettings() override;
     // Touch devices only: a faint ring where the stick usually sits, and the live stick while a finger holds it.
@@ -46,7 +46,7 @@ private:
         float radius = 0.0f;    // drag distance for full speed
     };
 
-    glm::vec2 UpdateTouches(render::Camera& camera, const Input& input, Window& window);
+    glm::vec2 UpdateTouches(camera::Camera& camera, const Input& input, Window& window);
     void SetMouseLook(Window& window, bool enabled);
 
     bool m_mouseLook = false;
@@ -57,4 +57,4 @@ private:
     Joystick m_joystick;
 };
 
-} // namespace mengine
+} // namespace mengine::camera

@@ -110,7 +110,7 @@ void ViewerApplication::OnTick(double deltaSeconds)
     }
 
     const float cameraStep = static_cast<float>(std::min(deltaSeconds, kMaxCameraStepSeconds));
-    const CameraInput cameraInput{
+    const camera::CameraInput cameraInput{
         .input = GetInput(),
         .window = GetWindow(),
         .uiWantsKeyboard = m_imGui.WantsKeyboard(),
@@ -208,7 +208,7 @@ void ViewerApplication::ResetCameraAndLights()
     const SceneConfig* sceneConfig =
         m_config && m_currentScene < m_config->scenes.size() ? &m_config->scenes[m_currentScene] : nullptr;
     const render::Scene& scene = m_renderer.GetScene();
-    CameraScene cameraScene;
+    camera::CameraScene cameraScene;
     cameraScene.hasBounds = scene.HasBounds();
     if (cameraScene.hasBounds)
     {
@@ -216,17 +216,17 @@ void ViewerApplication::ResetCameraAndLights()
         cameraScene.boundsMax = scene.boundsMax;
     }
 
-    m_camera = render::Camera{};
+    m_camera = camera::Camera{};
     if (sceneConfig != nullptr && sceneConfig->camera)
     {
-        cameraScene.configuredPose = CameraScene::Pose{
+        cameraScene.configuredPose = camera::CameraScene::Pose{
             .position = sceneConfig->camera->position,
             .yawDegrees = sceneConfig->camera->yawDegrees,
             .pitchDegrees = sceneConfig->camera->pitchDegrees,
         };
         m_camera.fovYDegrees = sceneConfig->camera->fovYDegrees;
     }
-    for (const std::unique_ptr<CameraController>& controller : m_cameraControllers)
+    for (const std::unique_ptr<camera::CameraController>& controller : m_cameraControllers)
     {
         controller->SetScene(cameraScene);
     }
@@ -402,7 +402,7 @@ void ViewerApplication::BuildPanel()
 
     if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        CameraController& active = ActiveCameraController();
+        camera::CameraController& active = ActiveCameraController();
         if (ImGui::BeginCombo("Control", active.Name()))
         {
             for (size_t mode = 0; mode < m_cameraControllers.size(); ++mode)
@@ -645,7 +645,7 @@ void ViewerApplication::BuildFrameGraphPanel()
     }
 }
 
-CameraController& ViewerApplication::ActiveCameraController() { return *m_cameraControllers[m_cameraMode]; }
+camera::CameraController& ViewerApplication::ActiveCameraController() { return *m_cameraControllers[m_cameraMode]; }
 
 void ViewerApplication::SetCameraMode(size_t mode)
 {

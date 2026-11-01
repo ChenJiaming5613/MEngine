@@ -1,8 +1,8 @@
-#include "OrbitCameraController.h"
+#include "camera/OrbitCameraController.h"
 
 #include "platform/Input.h"
 #include "platform/Window.h"
-#include "render/Camera.h"
+#include "camera/Camera.h"
 
 #include <SDL3/SDL_mouse.h>
 
@@ -24,7 +24,7 @@
 
 #include <vector>
 
-namespace mengine {
+namespace mengine::camera {
 namespace {
 
 // Vulkan-glTF-PBR constants (VulkanExampleBase.cpp).
@@ -49,7 +49,7 @@ float PixelsPerPoint(const Window& window)
 
 } // namespace
 
-void OrbitCameraController::ApplyTo(render::Camera& camera) const
+void OrbitCameraController::ApplyTo(camera::Camera& camera) const
 {
     camera.pitchDegrees = m_rotation.x;
     camera.yawDegrees = -m_rotation.y;
@@ -58,21 +58,21 @@ void OrbitCameraController::ApplyTo(render::Camera& camera) const
     camera.farPlane = FarPlaneFor(camera);
 }
 
-void OrbitCameraController::AdoptFrom(const render::Camera& camera)
+void OrbitCameraController::AdoptFrom(const camera::Camera& camera)
 {
     m_rotation = glm::vec2(camera.pitchDegrees, -camera.yawDegrees);
     const glm::vec3 viewTranslation = camera.ViewRotation() * (m_scene.Center() - camera.position);
     m_position = glm::vec3(viewTranslation.x, -viewTranslation.y, -viewTranslation.z) / UnitLength();
 }
 
-void OrbitCameraController::ResetView(render::Camera& camera)
+void OrbitCameraController::ResetView(camera::Camera& camera)
 {
     m_rotation = glm::vec2(0.0f);
     m_position = glm::vec3(0.0f, 0.0f, 1.0f);
     ApplyTo(camera);
 }
 
-void OrbitCameraController::Activate(render::Camera& camera)
+void OrbitCameraController::Activate(camera::Camera& camera)
 {
     AdoptFrom(camera);
     ApplyTo(camera);
@@ -127,7 +127,7 @@ void OrbitCameraController::UpdateTouches(const CameraInput& context, float pixe
     }
 }
 
-void OrbitCameraController::Update(render::Camera& camera, const CameraInput& context, float /*deltaSeconds*/)
+void OrbitCameraController::Update(camera::Camera& camera, const CameraInput& context, float /*deltaSeconds*/)
 {
     // Vulkan-glTF-PBR's motion is per event, not per second.
     const Input& input = context.input;
@@ -172,4 +172,4 @@ void OrbitCameraController::DrawSettings()
     ImGui::Text("Distance: %.2f (x %.2f units)", m_position.z, UnitLength());
 }
 
-} // namespace mengine
+} // namespace mengine::camera
