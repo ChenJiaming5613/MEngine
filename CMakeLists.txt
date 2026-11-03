@@ -80,6 +80,9 @@ file(GLOB_RECURSE MENGINE_CORE_SOURCES CONFIGURE_DEPENDS
 list(FILTER MENGINE_CORE_SOURCES EXCLUDE REGEX "/engine/asset/")
 add_library(MEngineCore STATIC ${MENGINE_CORE_SOURCES})
 target_include_directories(MEngineCore PUBLIC "${MENGINE_ENGINE_DIR}")
+# volk provides the Vulkan function pointers; its header must precede vulkan.h everywhere.
+target_include_directories(MEngineCore PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/third_party/volk")
+target_sources(MEngineCore PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/volk/volk.c")
 target_link_libraries(MEngineCore PUBLIC
     MEngineAsset
     SDL3::SDL3
@@ -89,6 +92,8 @@ target_link_libraries(MEngineCore PUBLIC
     glm::glm
     tinygltf3
 )
+# volk.h force-defines this, but stating it explicitly keeps any direct vulkan.h include consistent.
+target_compile_definitions(MEngineCore PUBLIC VK_NO_PROTOTYPES)
 target_link_libraries(MEngineCore PUBLIC enkiTS PRIVATE spirv_reflect)
 
 # render/ShaderLayoutChecks.cpp includes the generated static_asserts, so layout drift between RenderTypes.h and Slang

@@ -2,7 +2,7 @@
 
 #include "rhi/GfxEnums.h"
 
-#include <vulkan/vulkan.h>
+#include <volk.h>
 
 #if defined(_MSC_VER)
 #pragma warning(push, 0)

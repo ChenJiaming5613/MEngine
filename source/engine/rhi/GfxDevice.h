@@ -243,7 +243,6 @@ private:
     void CreateDescriptorPool();
     void CreateDefaultResources();
     void CreatePipelineCache();
-    void LoadDebugUtilsFunctions();
 
     bool RecreateSwapchain();
     void HandleSurfaceLost();
@@ -303,10 +302,6 @@ private:
     std::string m_pipelineCachePath;
     size_t m_lastSavedCacheSize = 0;
     PipelineStats m_pipelineStats;
-
-    PFN_vkSetDebugUtilsObjectNameEXT m_setObjectName = nullptr;
-    PFN_vkCmdBeginDebugUtilsLabelEXT m_cmdBeginLabel = nullptr;
-    PFN_vkCmdEndDebugUtilsLabelEXT m_cmdEndLabel = nullptr;
 
     Swapchain m_swapchain;
     RenderPassOutput m_swapchainOutput;

@@ -311,11 +311,9 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
     caps.graphicsQueueCompute = graphicsQueueFamily < familyCount
         && (families[graphicsQueueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
 
-    // Vulkan 1.1 entry points; the Android API 24 loader stub does not export them.
-    auto getFeatures2 = reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceFeatures2"));
-    auto getProperties2 = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties2"));
+    // Vulkan 1.1 entry points; resolved through volk's instance table after volkLoadInstance.
+    auto getFeatures2 = vkGetPhysicalDeviceFeatures2;
+    auto getProperties2 = vkGetPhysicalDeviceProperties2;
 
     VkPhysicalDeviceMultiviewFeatures multiviewFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES};
     VkPhysicalDeviceShaderDrawParametersFeatures drawParameters{

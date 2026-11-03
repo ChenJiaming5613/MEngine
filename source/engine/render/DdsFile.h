@@ -2,7 +2,7 @@
 
 // DDS parser ported from NVIDIA Donut (see DdsFile.cpp); these types stand in for Donut's TextureCache.h and nvrhi ones.
 
-#include <vulkan/vulkan.h>
+#include <volk.h>
 
 #include <cstddef>
 #include <cstdint>

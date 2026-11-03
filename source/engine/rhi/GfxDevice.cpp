@@ -213,12 +213,15 @@ void GfxDevice::Init(const GfxDeviceCreateInfo& createInfo)
     m_pipelines.Init(kPipelinePoolSize);
     m_renderPasses.Init(kRenderPassPoolSize);
 
+    // Loads every Vulkan function pointer via the platform loader; vk* calls below resolve through volk's tables.
+    CheckVk(volkInitialize(), "volkInitialize");
     CreateInstance();
+    volkLoadInstance(m_instance);
     m_swapchain.Init(SwapchainContext{.window = m_window, .instance = m_instance});
     m_swapchain.CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
-    LoadDebugUtilsFunctions();
+    volkLoadDevice(m_device);
     CreateAllocator();
     CreatePipelineCache();
     m_swapchain.Init(SwapchainContext{
@@ -277,13 +280,11 @@ void GfxDevice::Init(const GfxDeviceCreateInfo& createInfo)
 
 void GfxDevice::CreateInstance()
 {
-    // Looked up at runtime because the Android API 24 loader stub only exports Vulkan 1.0 symbols.
-    auto enumerateInstanceVersion =
-        reinterpret_cast<PFN_vkEnumerateInstanceVersion>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
+    // Resolved through volk's global table after volkInitialize(); null when the loader predates Vulkan 1.1.
     uint32_t loaderVersion = VK_API_VERSION_1_0;
-    if (enumerateInstanceVersion != nullptr)
+    if (vkEnumerateInstanceVersion != nullptr)
     {
-        CheckVk(enumerateInstanceVersion(&loaderVersion), "vkEnumerateInstanceVersion");
+        CheckVk(vkEnumerateInstanceVersion(&loaderVersion), "vkEnumerateInstanceVersion");
     }
     if (loaderVersion < kRequiredVulkanVersion)
     {
@@ -342,11 +343,10 @@ void GfxDevice::CreateInstance()
 
     if (m_validationEnabled)
     {
-        auto createDebugMessenger =
-            reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(m_instance, "vkCreateDebugUtilsMessengerEXT"));
-        if (createDebugMessenger != nullptr)
+        // vkCreateDebugUtilsMessengerEXT is null until volkLoadInstance resolved the debug utils extension.
+        if (vkCreateDebugUtilsMessengerEXT != nullptr)
         {
-            CheckVk(createDebugMessenger(m_instance, &debugMessengerInfo, nullptr, &m_debugMessenger), "vkCreateDebugUtilsMessengerEXT");
+            CheckVk(vkCreateDebugUtilsMessengerEXT(m_instance, &debugMessengerInfo, nullptr, &m_debugMessenger), "vkCreateDebugUtilsMessengerEXT");
         }
     }
 }
@@ -485,14 +485,13 @@ std::vector<HeapUsage> GfxDevice::QueryHeapUsage() const
     // Physical-device-level functionality of a supported device extension; usable without enabling it (API 1.1).
     if (m_capabilities.memoryBudget)
     {
-        auto getMemoryProperties2 = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties2>(
-            vkGetInstanceProcAddr(m_instance, "vkGetPhysicalDeviceMemoryProperties2"));
-        if (getMemoryProperties2 != nullptr)
+        // vkGetPhysicalDeviceMemoryProperties2 is resolved by volkLoadInstance for Vulkan 1.1+ loaders.
+        if (vkGetPhysicalDeviceMemoryProperties2 != nullptr)
         {
             VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
             VkPhysicalDeviceMemoryProperties2 properties2{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
                 .pNext = &budget};
-            getMemoryProperties2(m_physicalDevice, &properties2);
+            vkGetPhysicalDeviceMemoryProperties2(m_physicalDevice, &properties2);
             for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
             {
                 heaps[heap].budget = budget.heapBudget[heap];
@@ -501,17 +500,6 @@ std::vector<HeapUsage> GfxDevice::QueryHeapUsage() const
         }
     }
     return heaps;
-}
-
-void GfxDevice::LoadDebugUtilsFunctions()
-{
-    if (!m_debugUtilsEnabled)
-    {
-        return;
-    }
-    m_setObjectName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetInstanceProcAddr(m_instance, "vkSetDebugUtilsObjectNameEXT"));
-    m_cmdBeginLabel = reinterpret_cast<PFN_vkCmdBeginDebugUtilsLabelEXT>(vkGetInstanceProcAddr(m_instance, "vkCmdBeginDebugUtilsLabelEXT"));
-    m_cmdEndLabel = reinterpret_cast<PFN_vkCmdEndDebugUtilsLabelEXT>(vkGetInstanceProcAddr(m_instance, "vkCmdEndDebugUtilsLabelEXT"));
 }
 
 void GfxDevice::CreateAllocator()
@@ -802,11 +790,10 @@ void GfxDevice::Shutdown()
 
     if (m_debugMessenger != VK_NULL_HANDLE)
     {
-        auto destroyDebugMessenger =
-            reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT"));
-        if (destroyDebugMessenger != nullptr)
+        // vkDestroyDebugUtilsMessengerEXT is null until volkLoadInstance resolved the debug utils extension.
+        if (vkDestroyDebugUtilsMessengerEXT != nullptr)
         {
-            destroyDebugMessenger(m_instance, m_debugMessenger, nullptr);
+            vkDestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
         }
         m_debugMessenger = VK_NULL_HANDLE;
     }
@@ -2597,7 +2584,8 @@ void GfxDevice::EndFrame()
 
 void GfxDevice::SetResourceName(VkObjectType type, uint64_t handle, const char* name)
 {
-    if (m_setObjectName == nullptr || name == nullptr || name[0] == '\0' || handle == 0)
+    // vkSetDebugUtilsObjectNameEXT is null until volkLoadDevice resolved the debug utils extension.
+    if (vkSetDebugUtilsObjectNameEXT == nullptr || name == nullptr || name[0] == '\0' || handle == 0)
     {
         return;
     }
@@ -2607,12 +2595,12 @@ void GfxDevice::SetResourceName(VkObjectType type, uint64_t handle, const char* 
         .objectHandle = handle,
         .pObjectName = name,
     };
-    m_setObjectName(m_device, &nameInfo);
+    vkSetDebugUtilsObjectNameEXT(m_device, &nameInfo);
 }
 
 void GfxDevice::CmdBeginLabel(VkCommandBuffer commandBuffer, const char* name)
 {
-    if (m_cmdBeginLabel == nullptr)
+    if (vkCmdBeginDebugUtilsLabelEXT == nullptr)
     {
         return;
     }
@@ -2621,14 +2609,14 @@ void GfxDevice::CmdBeginLabel(VkCommandBuffer commandBuffer, const char* name)
         .pLabelName = name,
         .color = {1.0f, 1.0f, 1.0f, 1.0f},
     };
-    m_cmdBeginLabel(commandBuffer, &label);
+    vkCmdBeginDebugUtilsLabelEXT(commandBuffer, &label);
 }
 
 void GfxDevice::CmdEndLabel(VkCommandBuffer commandBuffer)
 {
-    if (m_cmdEndLabel != nullptr)
+    if (vkCmdEndDebugUtilsLabelEXT != nullptr)
     {
-        m_cmdEndLabel(commandBuffer);
+        vkCmdEndDebugUtilsLabelEXT(commandBuffer);
     }
 }
 
