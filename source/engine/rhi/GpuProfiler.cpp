@@ -126,8 +126,8 @@ void GpuProfiler::Resolve(uint32_t frameSlot)
         return;
     }
 
-    const VkResult result = vkGetQueryPoolResults(m_device, m_queryPool, frameSlot * m_queriesPerFrame, slot.queryCount,
-        slot.queryCount * sizeof(uint64_t), m_readback.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+    const VkResult result = vkGetQueryPoolResults(m_device, m_queryPool, frameSlot * m_queriesPerFrame, slot.queryCount, slot.queryCount * sizeof(uint64_t),
+        m_readback.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
     if (result != VK_SUCCESS)
     {
         return;

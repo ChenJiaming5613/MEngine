@@ -47,19 +47,40 @@ public:
     void RequestScene(std::string_view assetPath);
     // Once per frame, outside BeginFrame / EndFrame: uploads part of a scene in flight.
     SceneLoadStatus UpdateSceneLoad();
-    SceneLoadProgress GetSceneLoadProgress() const { return m_sceneLoader.GetProgress(); }
-    bool IsSceneLoading() const { return m_sceneLoader.IsLoading(); }
+    SceneLoadProgress GetSceneLoadProgress() const
+    {
+        return m_sceneLoader.GetProgress();
+    }
+    bool IsSceneLoading() const
+    {
+        return m_sceneLoader.IsLoading();
+    }
     // Replaces the environment; falls back to a uniform environment when loading fails.
     void LoadEnvironment(std::optional<std::string_view> directory);
 
-    const Scene& GetScene() const { return m_scene; }
-    const Environment& GetEnvironment() const { return m_environment; }
+    const Scene& GetScene() const
+    {
+        return m_scene;
+    }
+    const Environment& GetEnvironment() const
+    {
+        return m_environment;
+    }
     // Pass toggles and the compile snapshot for debug UI; changes are compiled at the next Render.
-    FrameGraph& GetFrameGraph() { return m_graph; }
+    FrameGraph& GetFrameGraph()
+    {
+        return m_graph;
+    }
     // Lines added before Render (after GfxDevice::BeginFrame or earlier) are drawn this frame, then cleared.
-    DebugDraw& GetDebugDraw() { return m_debugDraw; }
+    DebugDraw& GetDebugDraw()
+    {
+        return m_debugDraw;
+    }
     // Frustum culling result of the last Render.
-    const CullingStats& GetCullingStats() const { return m_cullingStats; }
+    const CullingStats& GetCullingStats() const
+    {
+        return m_cullingStats;
+    }
 
     // Records the frame between GfxDevice::BeginFrame and EndFrame. ImGui (if any) must have finished its frame.
     void Render(const mengine::camera::Camera& camera, const RenderSettings& settings, ImGuiLayer* imGui);

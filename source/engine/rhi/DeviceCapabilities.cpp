@@ -49,12 +49,16 @@ std::vector<VkExtensionProperties> EnumerateInstanceExtensions()
 class Chain
 {
 public:
-    template <typename T> void Add(T& structure)
+    template <typename T>
+    void Add(T& structure)
     {
         structure.pNext = m_head;
         m_head = &structure;
     }
-    void* Head() const { return m_head; }
+    void* Head() const
+    {
+        return m_head;
+    }
 
 private:
     void* m_head = nullptr;
@@ -107,9 +111,12 @@ const char* DeviceTierName(DeviceTier tier)
 {
     switch (tier)
     {
-    case DeviceTier::T0: return "T0";
-    case DeviceTier::T1: return "T1";
-    case DeviceTier::T2: return "T2";
+    case DeviceTier::T0:
+        return "T0";
+    case DeviceTier::T1:
+        return "T1";
+    case DeviceTier::T2:
+        return "T2";
     }
     return "?";
 }
@@ -118,9 +125,12 @@ const char* DeviceTierDescription(DeviceTier tier)
 {
     switch (tier)
     {
-    case DeviceTier::T0: return "Baseline";
-    case DeviceTier::T1: return "Extensions";
-    case DeviceTier::T2: return "Desktop";
+    case DeviceTier::T0:
+        return "Baseline";
+    case DeviceTier::T1:
+        return "Extensions";
+    case DeviceTier::T2:
+        return "Desktop";
     }
     return "?";
 }
@@ -129,18 +139,30 @@ const char* VendorName(uint32_t vendorId)
 {
     switch (vendorId)
     {
-    case 0x1002: return "AMD";
-    case 0x1010: return "ImgTec";
-    case 0x10DE: return "NVIDIA";
-    case 0x13B5: return "ARM";
-    case 0x5143: return "Qualcomm";
-    case 0x8086: return "Intel";
-    case 0x106B: return "Apple";
-    case 0x144D: return "Samsung";
-    case 0x19E5: return "Huawei";
-    case 0x1AE0: return "Google";
-    case 0x10005: return "Mesa";
-    default: return "Unknown";
+    case 0x1002:
+        return "AMD";
+    case 0x1010:
+        return "ImgTec";
+    case 0x10DE:
+        return "NVIDIA";
+    case 0x13B5:
+        return "ARM";
+    case 0x5143:
+        return "Qualcomm";
+    case 0x8086:
+        return "Intel";
+    case 0x106B:
+        return "Apple";
+    case 0x144D:
+        return "Samsung";
+    case 0x19E5:
+        return "Huawei";
+    case 0x1AE0:
+        return "Google";
+    case 0x10005:
+        return "Mesa";
+    default:
+        return "Unknown";
     }
 }
 
@@ -148,19 +170,23 @@ const char* DeviceTypeName(VkPhysicalDeviceType type)
 {
     switch (type)
     {
-    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "Integrated GPU";
-    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "Discrete GPU";
-    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "Virtual GPU";
-    case VK_PHYSICAL_DEVICE_TYPE_CPU: return "CPU";
-    default: return "Other";
+    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+        return "Integrated GPU";
+    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+        return "Discrete GPU";
+    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+        return "Virtual GPU";
+    case VK_PHYSICAL_DEVICE_TYPE_CPU:
+        return "CPU";
+    default:
+        return "Other";
     }
 }
 
 std::string ApiVersionString(uint32_t version)
 {
     char text[32];
-    std::snprintf(text, sizeof(text), "%u.%u.%u", VK_API_VERSION_MAJOR(version), VK_API_VERSION_MINOR(version),
-        VK_API_VERSION_PATCH(version));
+    std::snprintf(text, sizeof(text), "%u.%u.%u", VK_API_VERSION_MAJOR(version), VK_API_VERSION_MINOR(version), VK_API_VERSION_PATCH(version));
     return text;
 }
 
@@ -169,8 +195,8 @@ std::string DriverVersionString(uint32_t vendorId, uint32_t driverVersion)
     char text[32];
     if (vendorId == 0x10DE)
     {
-        std::snprintf(text, sizeof(text), "%u.%u.%u.%u", (driverVersion >> 22) & 0x3FFu, (driverVersion >> 14) & 0xFFu,
-            (driverVersion >> 6) & 0xFFu, driverVersion & 0x3Fu);
+        std::snprintf(text, sizeof(text), "%u.%u.%u.%u", (driverVersion >> 22) & 0x3FFu, (driverVersion >> 14) & 0xFFu, (driverVersion >> 6) & 0xFFu,
+            driverVersion & 0x3Fu);
     }
 #if defined(_WIN32)
     else if (vendorId == 0x8086)
@@ -189,8 +215,7 @@ void MarkEnabledExtensions(std::vector<ExtensionInfo>& extensions, const std::ve
 {
     for (ExtensionInfo& extension : extensions)
     {
-        extension.enabled = std::any_of(enabled.begin(), enabled.end(),
-            [&](const char* name) { return name != nullptr && extension.name == name; });
+        extension.enabled = std::any_of(enabled.begin(), enabled.end(), [&](const char* name) { return name != nullptr && extension.name == name; });
     }
 }
 
@@ -217,8 +242,7 @@ std::vector<CapabilityCheck> DeviceCapabilities::TierChecks(DeviceTier target) c
             AppendMissing(indexing.detail, descriptorIndexing.runtimeDescriptorArray, "runtimeDescriptorArray");
             AppendMissing(indexing.detail, descriptorIndexing.partiallyBound, "partiallyBound");
             AppendMissing(indexing.detail, descriptorIndexing.sampledImageUpdateAfterBind, "sampledImageUpdateAfterBind");
-            AppendMissing(indexing.detail, descriptorIndexing.sampledImageArrayNonUniformIndexing,
-                "sampledImageArrayNonUniformIndexing");
+            AppendMissing(indexing.detail, descriptorIndexing.sampledImageArrayNonUniformIndexing, "sampledImageArrayNonUniformIndexing");
         }
         checks.push_back(std::move(indexing));
         checks.push_back({.name = "Draw indirect count", .met = drawIndirectCount});
@@ -270,8 +294,8 @@ std::vector<CapabilityCheck> DeviceCapabilities::BaselineChecks() const
     return checks;
 }
 
-DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice physicalDevice, uint32_t instanceVersion,
-    uint32_t graphicsQueueFamily, VkSurfaceKHR surface)
+DeviceCapabilities QueryDeviceCapabilities(
+    VkInstance instance, VkPhysicalDevice physicalDevice, uint32_t instanceVersion, uint32_t graphicsQueueFamily, VkSurfaceKHR surface)
 {
     DeviceCapabilities caps;
     caps.instanceVersion = instanceVersion;
@@ -308,57 +332,39 @@ DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice
         caps.dedicatedComputeQueue |= compute && !graphics;
         caps.dedicatedTransferQueue |= transfer && !compute && !graphics;
     }
-    caps.graphicsQueueCompute = graphicsQueueFamily < familyCount
-        && (families[graphicsQueueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
+    caps.graphicsQueueCompute = graphicsQueueFamily < familyCount && (families[graphicsQueueFamily].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
 
     // Vulkan 1.1 entry points; resolved through volk's instance table after volkLoadInstance.
     auto getFeatures2 = vkGetPhysicalDeviceFeatures2;
     auto getProperties2 = vkGetPhysicalDeviceProperties2;
 
     VkPhysicalDeviceMultiviewFeatures multiviewFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES};
-    VkPhysicalDeviceShaderDrawParametersFeatures drawParameters{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES};
+    VkPhysicalDeviceShaderDrawParametersFeatures drawParameters{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES};
     VkPhysicalDevice16BitStorageFeatures storage16{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES};
-    VkPhysicalDeviceSamplerYcbcrConversionFeatures ycbcr{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES};
+    VkPhysicalDeviceSamplerYcbcrConversionFeatures ycbcr{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES};
     VkPhysicalDeviceSubgroupProperties subgroup{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
     VkPhysicalDeviceMultiviewProperties multiviewProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES};
     VkPhysicalDeviceMaintenance3Properties maintenance3{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES};
 
     // Extension structs: chained only when the device lists the extension.
-    VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexingFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT};
-    VkPhysicalDeviceDescriptorIndexingPropertiesEXT indexingProperties{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT};
-    VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timelineFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR};
-    VkPhysicalDeviceTimelineSemaphorePropertiesKHR timelineProperties{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES_KHR};
-    VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT minmaxProperties{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_FILTER_MINMAX_PROPERTIES_EXT};
+    VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexingFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT};
+    VkPhysicalDeviceDescriptorIndexingPropertiesEXT indexingProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES_EXT};
+    VkPhysicalDeviceTimelineSemaphoreFeaturesKHR timelineFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES_KHR};
+    VkPhysicalDeviceTimelineSemaphorePropertiesKHR timelineProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_PROPERTIES_KHR};
+    VkPhysicalDeviceSamplerFilterMinmaxPropertiesEXT minmaxProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_FILTER_MINMAX_PROPERTIES_EXT};
     VkPhysicalDeviceMeshShaderFeaturesEXT meshFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
-    VkPhysicalDeviceMeshShaderPropertiesEXT meshProperties{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
-    VkPhysicalDeviceFragmentShadingRateFeaturesKHR shadingRateFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR};
-    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
-    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
-    VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingProperties{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+    VkPhysicalDeviceMeshShaderPropertiesEXT meshProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
+    VkPhysicalDeviceFragmentShadingRateFeaturesKHR shadingRateFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR};
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
     VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
-    VkPhysicalDeviceBufferDeviceAddressFeaturesKHR addressFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR};
+    VkPhysicalDeviceBufferDeviceAddressFeaturesKHR addressFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR};
     VkPhysicalDeviceDriverPropertiesKHR driverProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR};
-    VkPhysicalDeviceSynchronization2FeaturesKHR sync2Features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR};
-    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
-    VkPhysicalDeviceShaderFloat16Int8FeaturesKHR float16Int8Features{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR};
-    VkPhysicalDeviceHostQueryResetFeaturesEXT hostQueryResetFeatures{
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT};
+    VkPhysicalDeviceSynchronization2FeaturesKHR sync2Features{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR};
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
+    VkPhysicalDeviceShaderFloat16Int8FeaturesKHR float16Int8Features{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES_KHR};
+    VkPhysicalDeviceHostQueryResetFeaturesEXT hostQueryResetFeatures{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT};
 
     const bool hasIndexing = has(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
     const bool hasTimeline = has(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);

@@ -298,8 +298,7 @@ std::optional<Ktx2Image> DecodeKtx2(std::span<const uint8_t> bytes, std::string*
         const size_t entry = kHeaderSize + kLevelIndexEntrySize * level;
         const uint64_t offset = ReadU64(bytes, entry);
         const uint64_t size = ReadU64(bytes, entry + 8);
-        if (size != ExpectedLevelSize(*format, image.width, image.height, image.faceCount, level) || offset > bytes.size()
-            || size > bytes.size() - offset)
+        if (size != ExpectedLevelSize(*format, image.width, image.height, image.faceCount, level) || offset > bytes.size() || size > bytes.size() - offset)
         {
             SetError(error, "level data out of range or of unexpected size");
             return std::nullopt;

@@ -45,8 +45,8 @@ constexpr VkDeviceSize kStagingSegmentSize = VkDeviceSize{24} << 20;
 // is never all in host visible memory at once.
 constexpr VkDeviceSize kDedicatedStagingBudget = VkDeviceSize{128} << 20;
 
-VKAPI_ATTR VkBool32 VKAPI_CALL OnValidationMessage(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-    VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void*)
+VKAPI_ATTR VkBool32 VKAPI_CALL OnValidationMessage(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void*)
 {
     SDL_LogPriority priority = SDL_LOG_PRIORITY_INFO;
     if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
@@ -66,8 +66,8 @@ VkDebugUtilsMessengerCreateInfoEXT MakeDebugMessengerCreateInfo()
     return VkDebugUtilsMessengerCreateInfoEXT{
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
-            | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .messageType =
+            VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
         .pfnUserCallback = OnValidationMessage,
     };
 }
@@ -87,8 +87,7 @@ VkDebugUtilsMessengerCreateInfoEXT MakeDebugMessengerCreateInfo()
     vkEnumerateInstanceExtensionProperties(layerName, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> extensions(extensionCount);
     vkEnumerateInstanceExtensionProperties(layerName, &extensionCount, extensions.data());
-    return std::any_of(extensions.begin(), extensions.end(),
-        [&](const VkExtensionProperties& extension) { return extensionName == extension.extensionName; });
+    return std::any_of(extensions.begin(), extensions.end(), [&](const VkExtensionProperties& extension) { return extensionName == extension.extensionName; });
 }
 
 bool IsDeviceExtensionAvailable(VkPhysicalDevice physicalDevice, std::string_view extensionName)
@@ -97,8 +96,7 @@ bool IsDeviceExtensionAvailable(VkPhysicalDevice physicalDevice, std::string_vie
     vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> extensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, extensions.data());
-    return std::any_of(extensions.begin(), extensions.end(),
-        [&](const VkExtensionProperties& extension) { return extensionName == extension.extensionName; });
+    return std::any_of(extensions.begin(), extensions.end(), [&](const VkExtensionProperties& extension) { return extensionName == extension.extensionName; });
 }
 
 std::optional<uint32_t> FindGraphicsPresentQueueFamily(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface)
@@ -177,14 +175,13 @@ VkImageAspectFlags AspectOf(VkFormat format)
 
 bool IsBufferDescriptor(VkDescriptorType type)
 {
-    return type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
-        || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+    return type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+        || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
 }
 
 bool IsImageDescriptor(VkDescriptorType type)
 {
-    return type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-        || type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    return type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 }
 
 const char* TextureTypeName(TextureType type)
@@ -414,8 +411,7 @@ void GfxDevice::CreateLogicalDevice()
 
     const std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-    m_capabilities =
-        QueryDeviceCapabilities(m_instance, m_physicalDevice, m_instanceVersion, m_queueFamily, m_swapchain.Surface());
+    m_capabilities = QueryDeviceCapabilities(m_instance, m_physicalDevice, m_instanceVersion, m_queueFamily, m_swapchain.Surface());
     MarkEnabledExtensions(m_capabilities.deviceExtensions, deviceExtensions);
     MarkEnabledExtensions(m_capabilities.instanceExtensions, m_enabledInstanceExtensions);
 
@@ -433,15 +429,14 @@ void GfxDevice::CreateLogicalDevice()
     m_enabledFeatures = enabled;
 
     m_computeSupported = m_capabilities.graphicsQueueCompute;
-    MENGINE_LOG_INFO("Queue family %u: compute %s, multiDrawIndirect %s, drawIndirectFirstInstance %s", m_queueFamily,
-        m_computeSupported ? "yes" : "no", m_multiDrawIndirect ? "yes" : "no", m_drawIndirectFirstInstance ? "yes" : "no");
+    MENGINE_LOG_INFO("Queue family %u: compute %s, multiDrawIndirect %s, drawIndirectFirstInstance %s", m_queueFamily, m_computeSupported ? "yes" : "no",
+        m_multiDrawIndirect ? "yes" : "no", m_drawIndirectFirstInstance ? "yes" : "no");
     MENGINE_LOG_INFO("Device tier %s (%s): %zu device extensions, bindless %s, drawIndirectCount %s, timeline %s, "
                      "async compute %s, mesh %s, ray tracing %s",
-        DeviceTierName(m_capabilities.tier), DeviceTierDescription(m_capabilities.tier),
-        m_capabilities.deviceExtensions.size(), m_capabilities.descriptorIndexing.Bindless() ? "yes" : "no",
-        m_capabilities.drawIndirectCount ? "yes" : "no", m_capabilities.timelineSemaphore ? "yes" : "no",
-        m_capabilities.dedicatedComputeQueue ? "yes" : "no", m_capabilities.meshShading.Available() ? "yes" : "no",
-        m_capabilities.rayTracingPipeline && m_capabilities.accelerationStructure ? "yes" : "no");
+        DeviceTierName(m_capabilities.tier), DeviceTierDescription(m_capabilities.tier), m_capabilities.deviceExtensions.size(),
+        m_capabilities.descriptorIndexing.Bindless() ? "yes" : "no", m_capabilities.drawIndirectCount ? "yes" : "no",
+        m_capabilities.timelineSemaphore ? "yes" : "no", m_capabilities.dedicatedComputeQueue ? "yes" : "no",
+        m_capabilities.meshShading.Available() ? "yes" : "no", m_capabilities.rayTracingPipeline && m_capabilities.accelerationStructure ? "yes" : "no");
 
     const VkDeviceCreateInfo deviceInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -489,8 +484,7 @@ std::vector<HeapUsage> GfxDevice::QueryHeapUsage() const
         if (vkGetPhysicalDeviceMemoryProperties2 != nullptr)
         {
             VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
-            VkPhysicalDeviceMemoryProperties2 properties2{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2,
-                .pNext = &budget};
+            VkPhysicalDeviceMemoryProperties2 properties2{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2, .pNext = &budget};
             vkGetPhysicalDeviceMemoryProperties2(m_physicalDevice, &properties2);
             for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
             {
@@ -721,25 +715,32 @@ void GfxDevice::Shutdown()
     {
         std::vector<BufferHandle> buffers;
         m_buffers.ForEachAlive([&](BufferHandle handle, Buffer&) { buffers.push_back(handle); });
-        for (BufferHandle handle : buffers) DestroyBuffer(handle);
+        for (BufferHandle handle : buffers)
+            DestroyBuffer(handle);
         std::vector<TextureHandle> textures;
         m_textures.ForEachAlive([&](TextureHandle handle, Texture&) { textures.push_back(handle); });
-        for (TextureHandle handle : textures) DestroyTexture(handle);
+        for (TextureHandle handle : textures)
+            DestroyTexture(handle);
         std::vector<SamplerHandle> samplers;
         m_samplers.ForEachAlive([&](SamplerHandle handle, Sampler&) { samplers.push_back(handle); });
-        for (SamplerHandle handle : samplers) DestroySampler(handle);
+        for (SamplerHandle handle : samplers)
+            DestroySampler(handle);
         std::vector<DescriptorSetHandle> sets;
         m_descriptorSets.ForEachAlive([&](DescriptorSetHandle handle, DescriptorSet&) { sets.push_back(handle); });
-        for (DescriptorSetHandle handle : sets) DestroyDescriptorSet(handle);
+        for (DescriptorSetHandle handle : sets)
+            DestroyDescriptorSet(handle);
         std::vector<DescriptorSetLayoutHandle> layouts;
         m_descriptorSetLayouts.ForEachAlive([&](DescriptorSetLayoutHandle handle, DescriptorSetLayout&) { layouts.push_back(handle); });
-        for (DescriptorSetLayoutHandle handle : layouts) DestroyDescriptorSetLayout(handle);
+        for (DescriptorSetLayoutHandle handle : layouts)
+            DestroyDescriptorSetLayout(handle);
         std::vector<PipelineHandle> pipelines;
         m_pipelines.ForEachAlive([&](PipelineHandle handle, Pipeline&) { pipelines.push_back(handle); });
-        for (PipelineHandle handle : pipelines) DestroyPipeline(handle);
+        for (PipelineHandle handle : pipelines)
+            DestroyPipeline(handle);
         std::vector<RenderPassHandle> passes;
         m_renderPasses.ForEachAlive([&](RenderPassHandle handle, RenderPass&) { passes.push_back(handle); });
-        for (RenderPassHandle handle : passes) DestroyRenderPass(handle);
+        for (RenderPassHandle handle : passes)
+            DestroyRenderPass(handle);
     }
     ProcessPendingDestructions(true);
 
@@ -931,11 +932,10 @@ void GfxDevice::SubmitUploadCommands()
         const VkMemoryBarrier buffersReady{
             .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
             .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT
-                | VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT
+                | VK_ACCESS_SHADER_READ_BIT,
         };
-        vkCmdPipelineBarrier(slot.commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages, 0, 1, &buffersReady, 0, nullptr,
-            0, nullptr);
+        vkCmdPipelineBarrier(slot.commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages, 0, 1, &buffersReady, 0, nullptr, 0, nullptr);
     }
 
     CheckVk(vkEndCommandBuffer(slot.commandBuffer), "vkEndCommandBuffer");
@@ -983,8 +983,7 @@ GfxDevice::StagingBuffer GfxDevice::CreateStagingBuffer(VkDeviceSize size)
     {
         const UploadSlot& slot = m_uploadSlots[m_uploadSlot];
         const bool segmentFull = fitsSegment && AlignUp(slot.stagingUsed, kStagingLevelAlignment) + size > kStagingSegmentSize;
-        const bool dedicatedFull =
-            !fitsSegment && !slot.dedicatedStaging.empty() && slot.dedicatedStagingBytes + size > kDedicatedStagingBudget;
+        const bool dedicatedFull = !fitsSegment && !slot.dedicatedStaging.empty() && slot.dedicatedStagingBytes + size > kDedicatedStagingBudget;
         if (segmentFull || dedicatedFull)
         {
             // Every command recorded so far is complete, so the batch can be submitted here and continued in the next slot.
@@ -1067,8 +1066,7 @@ BufferHandle GfxDevice::CreateBuffer(const BufferCreateInfo& createInfo)
 
     Buffer buffer;
     VmaAllocationInfo info{};
-    const VkResult result =
-        vmaCreateBuffer(m_allocator, &bufferInfo, &allocationInfo, &buffer.buffer, &buffer.allocation, &info);
+    const VkResult result = vmaCreateBuffer(m_allocator, &bufferInfo, &allocationInfo, &buffer.buffer, &buffer.allocation, &info);
     if (result != VK_SUCCESS)
     {
         m_buffers.Release(handle);
@@ -1118,9 +1116,7 @@ void GfxDevice::DestroyBuffer(BufferHandle handle)
     {
         return;
     }
-    Defer([allocator = m_allocator, vkBuffer = buffer->buffer, allocation = buffer->allocation] {
-        vmaDestroyBuffer(allocator, vkBuffer, allocation);
-    });
+    Defer([allocator = m_allocator, vkBuffer = buffer->buffer, allocation = buffer->allocation] { vmaDestroyBuffer(allocator, vkBuffer, allocation); });
     m_buffers.Release(handle);
 }
 
@@ -1209,13 +1205,14 @@ void GfxDevice::CreateTextureObjects(Texture& texture)
         .image = texture.image,
         .viewType = cube ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
         .format = texture.format,
-        .subresourceRange = {
-            .aspectMask = AspectOf(texture.format),
-            .baseMipLevel = 0,
-            .levelCount = texture.mipLevels,
-            .baseArrayLayer = 0,
-            .layerCount = texture.layerCount,
-        },
+        .subresourceRange =
+            {
+                .aspectMask = AspectOf(texture.format),
+                .baseMipLevel = 0,
+                .levelCount = texture.mipLevels,
+                .baseArrayLayer = 0,
+                .layerCount = texture.layerCount,
+            },
     };
     const VkResult viewResult = vkCreateImageView(m_device, &viewInfo, nullptr, &texture.view);
     if (viewResult != VK_SUCCESS)
@@ -1251,8 +1248,8 @@ TextureHandle GfxDevice::CreateTexture(const TextureCreateInfo& createInfo)
     }
     if ((createInfo.flags & kTextureUsageStorage) != 0 && !SupportsStorageImage(createInfo.format))
     {
-        throw std::runtime_error("CreateTexture: format " + std::to_string(static_cast<int>(createInfo.format)) + " of " + name
-            + " cannot be a storage image on this GPU");
+        throw std::runtime_error(
+            "CreateTexture: format " + std::to_string(static_cast<int>(createInfo.format)) + " of " + name + " cannot be a storage image on this GPU");
     }
 
     Texture texture;
@@ -1324,15 +1321,13 @@ void GfxDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
     VkDeviceSize stagingSize = 0;
     for (uint32_t level = 0; level < providedLevels; ++level)
     {
-        levelSizes[level] = FormatLevelSize(texture.format, MipExtent(texture.width, level), MipExtent(texture.height, level))
-            * texture.layerCount;
+        levelSizes[level] = FormatLevelSize(texture.format, MipExtent(texture.width, level), MipExtent(texture.height, level)) * texture.layerCount;
         sourceSize += levelSizes[level];
         stagingSize = AlignUp(stagingSize, kStagingLevelAlignment) + levelSizes[level];
     }
     if (dataSize < sourceSize)
     {
-        throw std::runtime_error("UploadTexture: " + texture.name + " needs " + std::to_string(sourceSize) + " bytes, got "
-            + std::to_string(dataSize));
+        throw std::runtime_error("UploadTexture: " + texture.name + " needs " + std::to_string(sourceSize) + " bytes, got " + std::to_string(dataSize));
     }
 
     UploadBatchScope batch(*this);
@@ -1363,8 +1358,8 @@ void GfxDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
     }
     vmaFlushAllocation(m_allocator, staging.allocation, staging.offset, stagingSize);
 
-    const auto barrier = [&](uint32_t baseLevel, uint32_t levelCount, VkImageLayout oldLayout, VkImageLayout newLayout,
-                             VkAccessFlags srcAccess, VkAccessFlags dstAccess, VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage) {
+    const auto barrier = [&](uint32_t baseLevel, uint32_t levelCount, VkImageLayout oldLayout, VkImageLayout newLayout, VkAccessFlags srcAccess,
+                             VkAccessFlags dstAccess, VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage) {
         const VkImageMemoryBarrier imageBarrier{
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             .srcAccessMask = srcAccess,
@@ -1374,21 +1369,22 @@ void GfxDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = texture.image,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = baseLevel,
-                .levelCount = levelCount,
-                .baseArrayLayer = 0,
-                .layerCount = texture.layerCount,
-            },
+            .subresourceRange =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = baseLevel,
+                    .levelCount = levelCount,
+                    .baseArrayLayer = 0,
+                    .layerCount = texture.layerCount,
+                },
         };
         vkCmdPipelineBarrier(commandBuffer, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
     };
 
     barrier(0, texture.mipLevels, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT,
         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-    vkCmdCopyBufferToImage(commandBuffer, staging.buffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        static_cast<uint32_t>(copies.size()), copies.data());
+    vkCmdCopyBufferToImage(
+        commandBuffer, staging.buffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<uint32_t>(copies.size()), copies.data());
 
     if (generateMips)
     {
@@ -1402,22 +1398,21 @@ void GfxDevice::UploadTexture(Texture& texture, const void* data, size_t dataSiz
                 .srcOffsets = {{0, 0, 0},
                     {static_cast<int32_t>(MipExtent(texture.width, level - 1)), static_cast<int32_t>(MipExtent(texture.height, level - 1)), 1}},
                 .dstSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = level, .baseArrayLayer = 0, .layerCount = texture.layerCount},
-                .dstOffsets = {{0, 0, 0},
-                    {static_cast<int32_t>(MipExtent(texture.width, level)), static_cast<int32_t>(MipExtent(texture.height, level)), 1}},
+                .dstOffsets = {{0, 0, 0}, {static_cast<int32_t>(MipExtent(texture.width, level)), static_cast<int32_t>(MipExtent(texture.height, level)), 1}},
             };
-            vkCmdBlitImage(commandBuffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture.image,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+            vkCmdBlitImage(commandBuffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                VK_FILTER_LINEAR);
 
             barrier(level - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_READ_BIT,
                 VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
         }
-        barrier(texture.mipLevels - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
+        barrier(texture.mipLevels - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
     }
     else
     {
-        barrier(0, texture.mipLevels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
+        barrier(0, texture.mipLevels, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
+            VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, kUploadConsumerStages);
     }
     texture.state = kResourceStateShaderResource;
     batch.End();
@@ -1435,16 +1430,16 @@ void GfxDevice::TransitionToShaderRead(Texture& texture)
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = texture.image,
-        .subresourceRange = {
-            .aspectMask = BarrierAspectOf(texture.format),
-            .baseMipLevel = 0,
-            .levelCount = texture.mipLevels,
-            .baseArrayLayer = 0,
-            .layerCount = texture.layerCount,
-        },
+        .subresourceRange =
+            {
+                .aspectMask = BarrierAspectOf(texture.format),
+                .baseMipLevel = 0,
+                .levelCount = texture.mipLevels,
+                .baseArrayLayer = 0,
+                .layerCount = texture.layerCount,
+            },
     };
-    vkCmdPipelineBarrier(UploadCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, kUploadConsumerStages, 0, 0, nullptr, 0, nullptr, 1,
-        &imageBarrier);
+    vkCmdPipelineBarrier(UploadCommandBuffer(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, kUploadConsumerStages, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier);
     texture.state = kResourceStateShaderResource;
     batch.End();
 }
@@ -1617,8 +1612,7 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
         if (resource.arrayElement >= binding->count)
         {
             throw std::runtime_error("Descriptor set " + std::string(createInfo.name ? createInfo.name : "<unnamed>") + " writes element "
-                + std::to_string(resource.arrayElement) + " of binding " + std::to_string(resource.binding) + ", which has "
-                + std::to_string(binding->count));
+                + std::to_string(resource.arrayElement) + " of binding " + std::to_string(resource.binding) + ", which has " + std::to_string(binding->count));
         }
 
         VkWriteDescriptorSet& write = writes[writeCount];
@@ -1648,8 +1642,8 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             const Texture* texture = m_textures.Access(resource.texture);
             if (texture == nullptr || (texture->flags & kTextureUsageStorage) == 0)
             {
-                throw std::runtime_error("Descriptor set binding " + std::to_string(resource.binding)
-                    + " needs a valid texture created with kTextureUsageStorage");
+                throw std::runtime_error(
+                    "Descriptor set binding " + std::to_string(resource.binding) + " needs a valid texture created with kTextureUsageStorage");
             }
             imageInfos[writeCount] = VkDescriptorImageInfo{.imageView = texture->view, .imageLayout = VK_IMAGE_LAYOUT_GENERAL};
             write.pImageInfo = &imageInfos[writeCount];
@@ -1663,8 +1657,8 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
             }
             else if (texture->type != binding->textureType)
             {
-                throw std::runtime_error("Descriptor set binding " + std::to_string(resource.binding) + " expects a "
-                    + TextureTypeName(binding->textureType) + ", got " + texture->name + " (" + TextureTypeName(texture->type) + ")");
+                throw std::runtime_error("Descriptor set binding " + std::to_string(resource.binding) + " expects a " + TextureTypeName(binding->textureType)
+                    + ", got " + texture->name + " (" + TextureTypeName(texture->type) + ")");
             }
             SamplerHandle samplerHandle = resource.sampler;
             if (!m_samplers.IsAlive(samplerHandle))
@@ -1698,8 +1692,7 @@ void GfxDevice::WriteDescriptorSet(VkDescriptorSet set, const DescriptorSetLayou
         if (writtenElements < binding.count)
         {
             throw std::runtime_error("Descriptor set " + std::string(createInfo.name ? createInfo.name : "<unnamed>") + " writes "
-                + std::to_string(writtenElements) + " of the " + std::to_string(binding.count) + " elements of binding "
-                + std::to_string(binding.index));
+                + std::to_string(writtenElements) + " of the " + std::to_string(binding.count) + " elements of binding " + std::to_string(binding.index));
         }
     }
 
@@ -1804,8 +1797,7 @@ VkRenderPass GfxDevice::GetVulkanRenderPass(const RenderPassOutput& output)
     const bool hasDepth = output.depthFormat != VK_FORMAT_UNDEFINED;
     if (hasDepth)
     {
-        const VkImageLayout depthFinalLayout =
-            output.sampleDepth ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        const VkImageLayout depthFinalLayout = output.sampleDepth ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         attachments[attachmentCount] = VkAttachmentDescription{
             .format = output.depthFormat,
             .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -1827,8 +1819,8 @@ VkRenderPass GfxDevice::GetVulkanRenderPass(const RenderPassOutput& output)
         .pDepthStencilAttachment = hasDepth ? &depthReference : nullptr,
     };
 
-    constexpr VkPipelineStageFlags kAttachmentStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-        | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    constexpr VkPipelineStageFlags kAttachmentStages =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     constexpr VkAccessFlags kAttachmentWrites = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     const std::array<VkSubpassDependency, 2> dependencies = {{
         // Earlier attachment writes and shader reads (write-after-read on reused targets) complete before this pass
@@ -1839,8 +1831,8 @@ VkRenderPass GfxDevice::GetVulkanRenderPass(const RenderPassOutput& output)
             .srcStageMask = kAttachmentStages | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             .dstStageMask = kAttachmentStages | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             .srcAccessMask = kAttachmentWrites,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+                | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
         },
         // This pass's outputs become visible to later passes that sample or load them.
         {
@@ -1849,8 +1841,8 @@ VkRenderPass GfxDevice::GetVulkanRenderPass(const RenderPassOutput& output)
             .srcStageMask = kAttachmentStages,
             .dstStageMask = kAttachmentStages | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             .srcAccessMask = kAttachmentWrites,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+                | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT,
         },
     }};
 
@@ -2180,8 +2172,8 @@ void GfxDevice::ValidatePipelineInterface(const PipelineCreateInfo& createInfo, 
     {
         if (perStage[index].stages != static_cast<VkShaderStageFlags>(shaders.stages[index].stage))
         {
-            report("stage " + std::to_string(index) + " is declared as " + StageNames(static_cast<VkShaderStageFlags>(shaders.stages[index].stage)) +
-                " but its entry point is " + StageNames(perStage[index].stages));
+            report("stage " + std::to_string(index) + " is declared as " + StageNames(static_cast<VkShaderStageFlags>(shaders.stages[index].stage))
+                + " but its entry point is " + StageNames(perStage[index].stages));
         }
     }
 
@@ -2222,25 +2214,23 @@ void GfxDevice::ValidatePipelineInterface(const PipelineCreateInfo& createInfo, 
         }
         if (IsImageDescriptor(binding.type) && found->textureType != binding.textureType)
         {
-            report(where + "layout declares a " + TextureTypeName(found->textureType) + " view, shader samples a "
-                + TextureTypeName(binding.textureType));
+            report(where + "layout declares a " + TextureTypeName(found->textureType) + " view, shader samples a " + TextureTypeName(binding.textureType));
         }
         if ((found->stages & binding.stages) != binding.stages)
         {
-            report(where + "layout stages " + StageNames(found->stages) + " miss " + StageNames(binding.stages & ~found->stages) +
-                " that use it");
+            report(where + "layout stages " + StageNames(found->stages) + " miss " + StageNames(binding.stages & ~found->stages) + " that use it");
         }
     }
 
     if (merged.pushConstantSize > createInfo.pushConstantSize)
     {
-        report("push constants: shaders use " + std::to_string(merged.pushConstantSize) + " bytes, the pipeline declares " +
-            std::to_string(createInfo.pushConstantSize));
+        report("push constants: shaders use " + std::to_string(merged.pushConstantSize) + " bytes, the pipeline declares "
+            + std::to_string(createInfo.pushConstantSize));
     }
     else if (merged.pushConstantSize > 0 && (pushConstantStages & merged.pushConstantStages) != merged.pushConstantStages)
     {
-        report("push constants: range stages " + StageNames(pushConstantStages) + " miss " +
-            StageNames(merged.pushConstantStages & ~pushConstantStages) + " that use them");
+        report("push constants: range stages " + StageNames(pushConstantStages) + " miss " + StageNames(merged.pushConstantStages & ~pushConstantStages)
+            + " that use them");
     }
 
     for (uint32_t index = 0; index < createInfo.specializationConstantCount; ++index)
@@ -2266,8 +2256,7 @@ void GfxDevice::ValidatePipelineInterface(const PipelineCreateInfo& createInfo, 
 
 void GfxDevice::RecordPipelineCreation(uint64_t startTicks)
 {
-    const double milliseconds =
-        static_cast<double>(SDL_GetPerformanceCounter() - startTicks) * 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
+    const double milliseconds = static_cast<double>(SDL_GetPerformanceCounter() - startTicks) * 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
     ++m_pipelineStats.created;
     m_pipelineStats.totalMilliseconds += milliseconds;
     m_pipelineStats.lastMilliseconds = milliseconds;
@@ -2285,8 +2274,7 @@ void GfxDevice::CreateComputePipeline(const VkPipelineShaderStageCreateInfo& sta
     RecordPipelineCreation(start);
 }
 
-void GfxDevice::CreateGraphicsPipeline(
-    const PipelineCreateInfo& createInfo, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline)
+void GfxDevice::CreateGraphicsPipeline(const PipelineCreateInfo& createInfo, std::span<const VkPipelineShaderStageCreateInfo> stages, Pipeline& pipeline)
 {
     std::array<VkVertexInputBindingDescription, kMaxVertexStreams> vertexBindings{};
     for (uint32_t index = 0; index < createInfo.vertexInput.streamCount; ++index)
@@ -2527,8 +2515,8 @@ DynamicAllocation GfxDevice::DynamicAllocate(uint32_t size)
     const auto offset = static_cast<uint32_t>(AlignUp(m_dynamicUsed, m_properties.limits.minUniformBufferOffsetAlignment));
     if (offset + size > m_dynamicBytesPerFrame)
     {
-        throw std::runtime_error("Dynamic uniform ring exhausted: " + std::to_string(offset + size) + " of "
-            + std::to_string(m_dynamicBytesPerFrame) + " bytes this frame");
+        throw std::runtime_error(
+            "Dynamic uniform ring exhausted: " + std::to_string(offset + size) + " of " + std::to_string(m_dynamicBytesPerFrame) + " bytes this frame");
     }
     m_dynamicUsed = offset + size;
     Buffer* buffer = m_buffers.Access(m_dynamicBuffer);

@@ -23,8 +23,14 @@ public:
     void Update(const CpuProfiler& cpuProfiler, const rhi::GpuProfiler& gpuProfiler);
     void Draw();
 
-    bool IsOpen() const { return m_open; }
-    void SetOpen(bool open) { m_open = open; }
+    bool IsOpen() const
+    {
+        return m_open;
+    }
+    void SetOpen(bool open)
+    {
+        m_open = open;
+    }
     // (x, y) in window points, against the window drawn last frame.
     bool Contains(float x, float y) const;
 
@@ -41,8 +47,14 @@ private:
     public:
         void Reset(size_t window);
         void Add(uint64_t nanoseconds);
-        size_t Count() const { return m_count; }
-        uint64_t Last() const { return m_last; }
+        size_t Count() const
+        {
+            return m_count;
+        }
+        uint64_t Last() const
+        {
+            return m_last;
+        }
         double Average() const;
         uint64_t Min() const;
         uint64_t Max() const;

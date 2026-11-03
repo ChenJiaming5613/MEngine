@@ -26,9 +26,15 @@ public:
     // Publishes the frame's closed scopes to Timings().
     void EndFrame();
 
-    const std::vector<ScopeTiming>& Timings() const { return m_timings; }
+    const std::vector<ScopeTiming>& Timings() const
+    {
+        return m_timings;
+    }
     // Frame number passed to the BeginFrame of Timings(); ~0 before the first EndFrame.
-    uint64_t TimingsFrame() const { return m_timingsFrame; }
+    uint64_t TimingsFrame() const
+    {
+        return m_timingsFrame;
+    }
     // Resolution of the underlying counter (100 ns for QueryPerformanceCounter on most Windows machines).
     static double TickNanoseconds();
 

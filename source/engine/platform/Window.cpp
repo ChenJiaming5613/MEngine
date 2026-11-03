@@ -14,8 +14,8 @@ Window::~Window()
 
 bool Window::Create(const WindowCreateInfo& createInfo)
 {
-    m_window = SDL_CreateWindow(createInfo.title, createInfo.width, createInfo.height,
-        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    m_window =
+        SDL_CreateWindow(createInfo.title, createInfo.width, createInfo.height, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (m_window == nullptr)
     {
         MENGINE_LOG_ERROR("SDL_CreateWindow failed: %s", SDL_GetError());

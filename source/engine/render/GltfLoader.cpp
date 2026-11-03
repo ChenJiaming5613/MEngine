@@ -40,7 +40,10 @@ struct GltfParsedModel
     tg3_model model{};
     tg3_error_stack errors{};
 
-    GltfParsedModel() { tg3_error_stack_init(&errors); }
+    GltfParsedModel()
+    {
+        tg3_error_stack_init(&errors);
+    }
     ~GltfParsedModel()
     {
         tg3_model_free(&model);
@@ -383,11 +386,10 @@ const uint8_t* BufferViewBytes(const tg3_model& model, int32_t bufferViewIndex, 
         throw GltfError("buffer view " + std::to_string(bufferViewIndex) + " references invalid buffer");
     }
     const tg3_buffer& buffer = model.buffers[view.buffer];
-    if (buffer.data.data == nullptr || view.byte_offset > buffer.data.count ||
-        view.byte_length > buffer.data.count - view.byte_offset)
+    if (buffer.data.data == nullptr || view.byte_offset > buffer.data.count || view.byte_length > buffer.data.count - view.byte_offset)
     {
-        throw GltfError("buffer view " + std::to_string(bufferViewIndex) + " exceeds buffer " +
-                        std::to_string(view.buffer) + " (" + std::to_string(buffer.data.count) + " bytes loaded)");
+        throw GltfError("buffer view " + std::to_string(bufferViewIndex) + " exceeds buffer " + std::to_string(view.buffer) + " ("
+            + std::to_string(buffer.data.count) + " bytes loaded)");
     }
     *length = view.byte_length;
     return buffer.data.data + view.byte_offset;
@@ -495,21 +497,18 @@ void PrepareDds(PreparedTexture& prepared, bool srgb, bool bcSupported)
     {
         if (format != VK_FORMAT_BC7_UNORM_BLOCK && format != VK_FORMAT_BC7_SRGB_BLOCK)
         {
-            prepared.error = "BC format " + std::to_string(static_cast<int>(format)) +
-                             " needs textureCompressionBC (only BC7 is decoded on the CPU)";
+            prepared.error = "BC format " + std::to_string(static_cast<int>(format)) + " needs textureCompressionBC (only BC7 is decoded on the CPU)";
             return;
         }
         uint32_t level = 0;
-        while (level + 1 < info.mipLevels &&
-               std::max(asset::MipExtent(info.width, level), asset::MipExtent(info.height, level)) > kMaxDecodedBcExtent)
+        while (level + 1 < info.mipLevels && std::max(asset::MipExtent(info.width, level), asset::MipExtent(info.height, level)) > kMaxDecodedBcExtent)
         {
             ++level;
         }
         prepared.width = asset::MipExtent(info.width, level);
         prepared.height = asset::MipExtent(info.height, level);
         std::vector<uint8_t> rgba = asset::DecodeBc7(
-            std::span<const uint8_t>(prepared.bytes.data() + levels[level].dataOffset, levels[level].dataSize),
-            prepared.width, prepared.height);
+            std::span<const uint8_t>(prepared.bytes.data() + levels[level].dataOffset, levels[level].dataSize), prepared.width, prepared.height);
         prepared.bytes = std::move(rgba);
         prepared.dataOffset = 0;
         prepared.dataSize = prepared.bytes.size();
@@ -555,10 +554,7 @@ void PrepareEncodedImage(PreparedTexture& prepared, bool srgb)
 class GltfSceneParser
 {
 public:
-    explicit GltfSceneParser(GltfSceneData& data)
-        : m_model(data.model->model)
-        , m_data(data)
-        , m_path(data.path)
+    explicit GltfSceneParser(GltfSceneData& data) : m_model(data.model->model), m_data(data), m_path(data.path)
     {
     }
 
@@ -637,8 +633,8 @@ private:
         const AccessorLayout layout = Layout(accessorIndex);
         if (layout.components != expectedComponents)
         {
-            throw GltfError("accessor " + std::to_string(accessorIndex) + " has " + std::to_string(layout.components) +
-                            " components, expected " + std::to_string(expectedComponents));
+            throw GltfError("accessor " + std::to_string(accessorIndex) + " has " + std::to_string(layout.components) + " components, expected "
+                + std::to_string(expectedComponents));
         }
         std::vector<float> values(accessor.count * expectedComponents, 0.0f);
         if (layout.data != nullptr)
@@ -648,8 +644,7 @@ private:
                 const uint8_t* element = layout.data + i * layout.stride;
                 for (uint32_t c = 0; c < expectedComponents; ++c)
                 {
-                    values[i * expectedComponents + c] =
-                        ReadComponent(element + c * layout.componentSize, accessor.component_type, accessor.normalized != 0);
+                    values[i * expectedComponents + c] = ReadComponent(element + c * layout.componentSize, accessor.component_type, accessor.normalized != 0);
                 }
             }
         }
@@ -664,8 +659,8 @@ private:
             uint64_t valueLength = 0;
             const uint8_t* indexData = BufferViewData(sparseIndices.buffer_view, &indexLength);
             const uint8_t* valueData = BufferViewData(sparseValues.buffer_view, &valueLength);
-            if (indexSize <= 0 || sparseIndices.byte_offset + count * indexSize > indexLength ||
-                sparseValues.byte_offset + count * layout.elementSize > valueLength)
+            if (indexSize <= 0 || sparseIndices.byte_offset + count * indexSize > indexLength
+                || sparseValues.byte_offset + count * layout.elementSize > valueLength)
             {
                 throw GltfError("sparse accessor " + std::to_string(accessorIndex) + " exceeds its buffer views");
             }
@@ -680,9 +675,8 @@ private:
                 }
                 for (uint32_t c = 0; c < expectedComponents; ++c)
                 {
-                    values[target * expectedComponents + c] = ReadComponent(valueData + i * layout.elementSize +
-                                                                                c * layout.componentSize,
-                        accessor.component_type, accessor.normalized != 0);
+                    values[target * expectedComponents + c] =
+                        ReadComponent(valueData + i * layout.elementSize + c * layout.componentSize, accessor.component_type, accessor.normalized != 0);
                 }
             }
         }
@@ -759,16 +753,15 @@ private:
         const tg3_accessor& accessor = Accessor(accessorIndex);
         if (accessor.count != vertexCount)
         {
-            throw GltfError(std::string(name) + " accessor has " + std::to_string(accessor.count) + " elements, POSITION has " +
-                            std::to_string(vertexCount));
+            throw GltfError(std::string(name) + " accessor has " + std::to_string(accessor.count) + " elements, POSITION has " + std::to_string(vertexCount));
         }
         const AccessorLayout layout = Layout(accessorIndex);
         if (layout.components != components)
         {
             throw GltfError(std::string(name) + " accessor has an unexpected type");
         }
-        if (accessor.component_type == TG3_COMPONENT_TYPE_FLOAT && !accessor.sparse.is_sparse && layout.data != nullptr &&
-            layout.stride == layout.elementSize && accessor.byte_offset % 4 == 0)
+        if (accessor.component_type == TG3_COMPONENT_TYPE_FLOAT && !accessor.sparse.is_sparse && layout.data != nullptr && layout.stride == layout.elementSize
+            && accessor.byte_offset % 4 == 0)
         {
             return {BufferViewBuffer(accessor.buffer_view), accessor.byte_offset};
         }
@@ -783,8 +776,7 @@ private:
 
     IndexBinding CreateIndexStream(const std::vector<uint32_t>& indices)
     {
-        return {AddConvertedBuffer(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indices, "glTF indices"), 0, VK_INDEX_TYPE_UINT32,
-            static_cast<uint32_t>(indices.size())};
+        return {AddConvertedBuffer(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indices, "glTF indices"), 0, VK_INDEX_TYPE_UINT32, static_cast<uint32_t>(indices.size())};
     }
 
     IndexBinding AcquireIndexStream(int32_t accessorIndex, uint64_t vertexCount)
@@ -800,10 +792,8 @@ private:
         }
 
         const AccessorLayout layout = Layout(accessorIndex);
-        const bool direct = !accessor.sparse.is_sparse && layout.data != nullptr && accessor.type == TG3_TYPE_SCALAR &&
-                            layout.stride == layout.elementSize &&
-                            (accessor.component_type == TG3_COMPONENT_TYPE_UNSIGNED_SHORT ||
-                                accessor.component_type == TG3_COMPONENT_TYPE_UNSIGNED_INT);
+        const bool direct = !accessor.sparse.is_sparse && layout.data != nullptr && accessor.type == TG3_TYPE_SCALAR && layout.stride == layout.elementSize
+            && (accessor.component_type == TG3_COMPONENT_TYPE_UNSIGNED_SHORT || accessor.component_type == TG3_COMPONENT_TYPE_UNSIGNED_INT);
         if (direct && accessor.byte_offset % layout.componentSize == 0)
         {
             return {BufferViewBuffer(accessor.buffer_view), accessor.byte_offset,
@@ -871,8 +861,7 @@ private:
         const std::pair<uint32_t, bool> key{static_cast<uint32_t>(image), srgb};
         if (m_requestIndices.emplace(key, m_data.textureRequests.size()).second)
         {
-            m_data.textureRequests.push_back(
-                {key.first, srgb, Describe(m_model.images[image].name, "image", static_cast<uint32_t>(image))});
+            m_data.textureRequests.push_back({key.first, srgb, Describe(m_model.images[image].name, "image", static_cast<uint32_t>(image))});
         }
     }
 
@@ -956,8 +945,7 @@ private:
         }
         if (texCoord != 0)
         {
-            MENGINE_LOG_WARN("%s: %s uses TEXCOORD_%d, only TEXCOORD_0 is supported", m_path.c_str(), materialLabel.c_str(),
-                texCoord);
+            MENGINE_LOG_WARN("%s: %s uses TEXCOORD_%d, only TEXCOORD_0 is supported", m_path.c_str(), materialLabel.c_str(), texCoord);
         }
         const tg3_texture& texture = m_model.textures[textureIndex];
         const int32_t image = TextureImage(textureIndex);
@@ -998,9 +986,7 @@ private:
         material.name = source != nullptr ? Describe(source->name, "material", index) : std::string("default material");
 
         MaterialData& data = material.constants;
-        auto slot = [&](MaterialBinding binding) -> GltfTextureSlot& {
-            return material.textures[binding - kMaterialBindingBaseColor];
-        };
+        auto slot = [&](MaterialBinding binding) -> GltfTextureSlot& { return material.textures[binding - kMaterialBindingBaseColor]; };
         GltfTextureSlot& baseColor = slot(kMaterialBindingBaseColor);
         GltfTextureSlot& metallicRoughness = slot(kMaterialBindingMetallicRoughness);
         GltfTextureSlot& normal = slot(kMaterialBindingNormal);
@@ -1009,11 +995,10 @@ private:
         if (source != nullptr)
         {
             const tg3_pbr_metallic_roughness& pbr = source->pbr_metallic_roughness;
-            data.baseColorFactor = glm::vec4(static_cast<float>(pbr.base_color_factor[0]),
-                static_cast<float>(pbr.base_color_factor[1]), static_cast<float>(pbr.base_color_factor[2]),
-                static_cast<float>(pbr.base_color_factor[3]));
-            data.emissiveFactor = glm::vec4(static_cast<float>(source->emissive_factor[0]),
-                static_cast<float>(source->emissive_factor[1]), static_cast<float>(source->emissive_factor[2]), 0.0f);
+            data.baseColorFactor = glm::vec4(static_cast<float>(pbr.base_color_factor[0]), static_cast<float>(pbr.base_color_factor[1]),
+                static_cast<float>(pbr.base_color_factor[2]), static_cast<float>(pbr.base_color_factor[3]));
+            data.emissiveFactor = glm::vec4(static_cast<float>(source->emissive_factor[0]), static_cast<float>(source->emissive_factor[1]),
+                static_cast<float>(source->emissive_factor[2]), 0.0f);
             data.metallicFactor = static_cast<float>(pbr.metallic_factor);
             data.roughnessFactor = static_cast<float>(pbr.roughness_factor);
             data.normalScale = static_cast<float>(source->normal_texture.scale);
@@ -1028,14 +1013,12 @@ private:
             else if (alphaMode == "BLEND")
             {
                 material.alphaMode = AlphaMode::Blend;
-                MENGINE_LOG_WARN("%s: %s uses alphaMode BLEND, rendered as MASK (cutoff %.2f)", m_path.c_str(),
-                    material.name.c_str(), data.alphaCutoff);
+                MENGINE_LOG_WARN("%s: %s uses alphaMode BLEND, rendered as MASK (cutoff %.2f)", m_path.c_str(), material.name.c_str(), data.alphaCutoff);
             }
             material.doubleSided = source->double_sided != 0;
 
             baseColor = ResolveTexture(pbr.base_color_texture.index, pbr.base_color_texture.tex_coord, true, material.name);
-            metallicRoughness = ResolveTexture(pbr.metallic_roughness_texture.index, pbr.metallic_roughness_texture.tex_coord,
-                false, material.name);
+            metallicRoughness = ResolveTexture(pbr.metallic_roughness_texture.index, pbr.metallic_roughness_texture.tex_coord, false, material.name);
             normal = ResolveTexture(source->normal_texture.index, source->normal_texture.tex_coord, false, material.name);
             occlusion = ResolveTexture(source->occlusion_texture.index, source->occlusion_texture.tex_coord, false, material.name);
             emissive = ResolveTexture(source->emissive_texture.index, source->emissive_texture.tex_coord, true, material.name);
@@ -1052,8 +1035,7 @@ private:
                 data.specularGlossinessFactor.w = ReadFloat(FindMember(specularGlossiness, "glossinessFactor"), 1.0f);
 
                 const TextureReference diffuse = ReadTextureReference(FindMember(specularGlossiness, "diffuseTexture"));
-                const TextureReference specular =
-                    ReadTextureReference(FindMember(specularGlossiness, "specularGlossinessTexture"));
+                const TextureReference specular = ReadTextureReference(FindMember(specularGlossiness, "specularGlossinessTexture"));
                 baseColor = ResolveTexture(diffuse.index, diffuse.texCoord, true, material.name);
                 metallicRoughness = ResolveTexture(specular.index, specular.texCoord, true, material.name);
             }
@@ -1082,10 +1064,10 @@ private:
         const tg3_accessor& accessor = Accessor(positionAccessor);
         if (accessor.min_values_count == 3 && accessor.max_values_count == 3 && !accessor.sparse.is_sparse)
         {
-            primitive.boundsMin = glm::vec3(static_cast<float>(accessor.min_values[0]),
-                static_cast<float>(accessor.min_values[1]), static_cast<float>(accessor.min_values[2]));
-            primitive.boundsMax = glm::vec3(static_cast<float>(accessor.max_values[0]),
-                static_cast<float>(accessor.max_values[1]), static_cast<float>(accessor.max_values[2]));
+            primitive.boundsMin =
+                glm::vec3(static_cast<float>(accessor.min_values[0]), static_cast<float>(accessor.min_values[1]), static_cast<float>(accessor.min_values[2]));
+            primitive.boundsMax =
+                glm::vec3(static_cast<float>(accessor.max_values[0]), static_cast<float>(accessor.max_values[1]), static_cast<float>(accessor.max_values[2]));
             return;
         }
         std::vector<float> loaded;
@@ -1135,8 +1117,7 @@ private:
         const int32_t mode = source.mode < 0 ? TG3_MODE_TRIANGLES : source.mode;
         if (mode != TG3_MODE_TRIANGLES)
         {
-            MENGINE_LOG_WARN("%s: %s skipped: primitive mode %d is not supported (TRIANGLES only)", m_path.c_str(),
-                label.c_str(), mode);
+            MENGINE_LOG_WARN("%s: %s skipped: primitive mode %d is not supported (TRIANGLES only)", m_path.c_str(), label.c_str(), mode);
             return std::nullopt;
         }
         const int32_t positionAccessor = FindAttribute(source, "POSITION");
@@ -1154,9 +1135,8 @@ private:
         const int32_t texCoordAccessor = FindAttribute(source, "TEXCOORD_0");
 
         ScenePrimitive primitive;
-        primitive.material = source.material >= 0 && static_cast<uint32_t>(source.material) < m_model.materials_count
-                                 ? static_cast<uint32_t>(source.material)
-                                 : DefaultMaterial();
+        primitive.material = source.material >= 0 && static_cast<uint32_t>(source.material) < m_model.materials_count ? static_cast<uint32_t>(source.material)
+                                                                                                                      : DefaultMaterial();
 
         if (normalAccessor < 0)
         {
@@ -1212,8 +1192,7 @@ private:
 
     // glTF 2.0 3.7.2.1: without normals the client must use flat normals and ignore tangents, so the triangles are
     // expanded to unshared vertices.
-    void ParseFlatPrimitive(const tg3_primitive& source, int32_t positionAccessor, int32_t texCoordAccessor,
-        ScenePrimitive& primitive)
+    void ParseFlatPrimitive(const tg3_primitive& source, int32_t positionAccessor, int32_t texCoordAccessor, ScenePrimitive& primitive)
     {
         const std::vector<float> positions = ReadFloats(positionAccessor, 3);
         const uint64_t vertexCount = positions.size() / 3;
@@ -1306,12 +1285,10 @@ private:
             }
             return matrix;
         }
-        const glm::vec3 translation(static_cast<float>(node.translation[0]), static_cast<float>(node.translation[1]),
-            static_cast<float>(node.translation[2]));
-        const glm::quat rotation(static_cast<float>(node.rotation[3]), static_cast<float>(node.rotation[0]),
-            static_cast<float>(node.rotation[1]), static_cast<float>(node.rotation[2]));
-        const glm::vec3 scale(static_cast<float>(node.scale[0]), static_cast<float>(node.scale[1]),
-            static_cast<float>(node.scale[2]));
+        const glm::vec3 translation(static_cast<float>(node.translation[0]), static_cast<float>(node.translation[1]), static_cast<float>(node.translation[2]));
+        const glm::quat rotation(static_cast<float>(node.rotation[3]), static_cast<float>(node.rotation[0]), static_cast<float>(node.rotation[1]),
+            static_cast<float>(node.rotation[2]));
+        const glm::vec3 scale(static_cast<float>(node.scale[0]), static_cast<float>(node.scale[1]), static_cast<float>(node.scale[2]));
         glm::mat4 matrix = glm::mat4_cast(rotation);
         matrix[0] *= scale.x;
         matrix[1] *= scale.y;
@@ -1384,8 +1361,7 @@ private:
             for (int corner = 0; corner < 8; ++corner)
             {
                 const glm::vec3 local((corner & 1) ? primitive.boundsMax.x : primitive.boundsMin.x,
-                    (corner & 2) ? primitive.boundsMax.y : primitive.boundsMin.y,
-                    (corner & 4) ? primitive.boundsMax.z : primitive.boundsMin.z);
+                    (corner & 2) ? primitive.boundsMax.y : primitive.boundsMin.y, (corner & 4) ? primitive.boundsMax.z : primitive.boundsMin.z);
                 const glm::vec3 point = glm::vec3(world * glm::vec4(local, 1.0f));
                 draw.boundsMin = glm::min(draw.boundsMin, point);
                 draw.boundsMax = glm::max(draw.boundsMax, point);
@@ -1401,10 +1377,9 @@ private:
         std::vector<int32_t> roots;
         if (m_model.scenes_count > 0)
         {
-            const uint32_t sceneIndex =
-                m_model.default_scene >= 0 && static_cast<uint32_t>(m_model.default_scene) < m_model.scenes_count
-                    ? static_cast<uint32_t>(m_model.default_scene)
-                    : 0u;
+            const uint32_t sceneIndex = m_model.default_scene >= 0 && static_cast<uint32_t>(m_model.default_scene) < m_model.scenes_count
+                ? static_cast<uint32_t>(m_model.default_scene)
+                : 0u;
             const tg3_scene& scene = m_model.scenes[sceneIndex];
             roots.assign(scene.nodes, scene.nodes + scene.nodes_count);
         }
@@ -1437,8 +1412,8 @@ private:
         }
         if (m_skippedTransmissiveDraws > 0)
         {
-            MENGINE_LOG_WARN("%s: KHR_materials_transmission is not supported, skipped %zu transmissive (glass) draws",
-                m_path.c_str(), m_skippedTransmissiveDraws);
+            MENGINE_LOG_WARN(
+                "%s: KHR_materials_transmission is not supported, skipped %zu transmissive (glass) draws", m_path.c_str(), m_skippedTransmissiveDraws);
         }
 
         std::stable_sort(m_data.draws.begin(), m_data.draws.end(), [](const SceneDraw& a, const SceneDraw& b) {
@@ -1458,15 +1433,14 @@ private:
 
     void WarnAboutExtensions() const
     {
-        static constexpr std::array<std::string_view, 3> kSupported{
-            kExtensionSpecularGlossiness, kExtensionTextureDds, kExtensionTransmission};
+        static constexpr std::array<std::string_view, 3> kSupported{kExtensionSpecularGlossiness, kExtensionTextureDds, kExtensionTransmission};
         for (uint32_t i = 0; i < m_model.extensions_required_count; ++i)
         {
             const std::string_view name = ToView(m_model.extensions_required[i]);
             if (std::find(kSupported.begin(), kSupported.end(), name) == kSupported.end())
             {
-                MENGINE_LOG_WARN("%s: required extension %.*s is not supported, the scene may render incorrectly",
-                    m_path.c_str(), static_cast<int>(name.size()), name.data());
+                MENGINE_LOG_WARN("%s: required extension %.*s is not supported, the scene may render incorrectly", m_path.c_str(),
+                    static_cast<int>(name.size()), name.data());
             }
         }
     }
@@ -1509,8 +1483,8 @@ std::unique_ptr<GltfSceneData> ParseGltfScene(std::string_view assetPath, const 
     parseOptions.fs.free_file = FreeFileCallback;
     parseOptions.images_as_is = 1;
 
-    const tg3_error_code result = tg3_parse_auto(&parsed.model, &parsed.errors, bytes->data(), bytes->size(),
-        data->baseDirectory.c_str(), static_cast<uint32_t>(data->baseDirectory.size()), &parseOptions);
+    const tg3_error_code result = tg3_parse_auto(&parsed.model, &parsed.errors, bytes->data(), bytes->size(), data->baseDirectory.c_str(),
+        static_cast<uint32_t>(data->baseDirectory.size()), &parseOptions);
     for (uint32_t i = 0; i < parsed.errors.count; ++i)
     {
         const tg3_error_entry& entry = parsed.errors.entries[i];
@@ -1573,14 +1547,9 @@ PreparedTexture PrepareGltfTexture(const GltfSceneData& data, size_t requestInde
     return prepared;
 }
 
-GltfSceneUploader::GltfSceneUploader(rhi::GfxDevice& device, const GltfSceneData& data,
-    rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene)
-    : m_device(device)
-    , m_data(data)
-    , m_materialLayout(materialLayout)
-    , m_scene(scene)
-    , m_textures(data.textureRequests.size())
-    , m_textureHandled(data.textureRequests.size(), false)
+GltfSceneUploader::GltfSceneUploader(rhi::GfxDevice& device, const GltfSceneData& data, rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene)
+    : m_device(device), m_data(data), m_materialLayout(materialLayout), m_scene(scene), m_textures(data.textureRequests.size()),
+      m_textureHandled(data.textureRequests.size(), false)
 {
     MENGINE_ASSERT(scene.buffers.empty() && scene.textures.empty() && scene.samplers.empty() && scene.materials.empty());
     for (const GltfBufferData& buffer : data.buffers)
@@ -1614,9 +1583,9 @@ bool GltfSceneUploader::UploadBuffers(VkDeviceSize byteBudget)
         ++m_nextBuffer;
         uploaded += bytes.size();
         m_uploadedBufferBytes += bytes.size();
-    } while (m_nextBuffer < buffers.size() && uploaded < byteBudget &&
-             buffers[m_nextBuffer].Bytes().size() <= byteBudget - uploaded &&
-             m_device.UploadBatchHasRoomFor(buffers[m_nextBuffer].Bytes().size()));
+    }
+    while (m_nextBuffer < buffers.size() && uploaded < byteBudget && buffers[m_nextBuffer].Bytes().size() <= byteBudget - uploaded
+        && m_device.UploadBatchHasRoomFor(buffers[m_nextBuffer].Bytes().size()));
     batch.End();
     return m_nextBuffer == buffers.size();
 }
@@ -1632,8 +1601,8 @@ void GltfSceneUploader::UploadTexture(size_t requestIndex, PreparedTexture&& tex
     const std::string& label = m_data.textureRequests[requestIndex].label;
     if (prepared.format == VK_FORMAT_UNDEFINED)
     {
-        MENGINE_LOG_WARN("%s: %s: %s, using a fallback texture", m_data.path.c_str(), label.c_str(),
-            prepared.error.empty() ? "no image data" : prepared.error.c_str());
+        MENGINE_LOG_WARN(
+            "%s: %s: %s, using a fallback texture", m_data.path.c_str(), label.c_str(), prepared.error.empty() ? "no image data" : prepared.error.c_str());
         return;
     }
     m_decodedBcCount += prepared.decodedBc ? 1 : 0;
@@ -1669,8 +1638,8 @@ void GltfSceneUploader::Finish()
     m_finished = true;
     if (m_decodedBcCount > 0)
     {
-        MENGINE_LOG_INFO("%s: the device lacks textureCompressionBC, decoded %zu BC7 textures to RGBA8 (at most %ux%u)",
-            m_data.path.c_str(), m_decodedBcCount, kMaxDecodedBcExtent, kMaxDecodedBcExtent);
+        MENGINE_LOG_INFO("%s: the device lacks textureCompressionBC, decoded %zu BC7 textures to RGBA8 (at most %ux%u)", m_data.path.c_str(), m_decodedBcCount,
+            kMaxDecodedBcExtent, kMaxDecodedBcExtent);
     }
 
     rhi::UploadBatchScope batch(m_device);
@@ -1699,10 +1668,9 @@ void GltfSceneUploader::Finish()
     {
         MENGINE_LOG_WARN("%s: the scene contains nothing renderable", m_data.path.c_str());
     }
-    const double milliseconds =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_data.loadStart).count();
-    MENGINE_LOG_INFO("Loaded %s in %.0f ms: %zu primitives, %zu materials, %zu textures, %zu draws", m_data.path.c_str(),
-        milliseconds, m_scene.primitives.size(), m_scene.materials.size(), m_scene.textures.size(), m_scene.draws.size());
+    const double milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_data.loadStart).count();
+    MENGINE_LOG_INFO("Loaded %s in %.0f ms: %zu primitives, %zu materials, %zu textures, %zu draws", m_data.path.c_str(), milliseconds,
+        m_scene.primitives.size(), m_scene.materials.size(), m_scene.textures.size(), m_scene.draws.size());
 }
 
 void GltfSceneUploader::CreateMaterial(size_t materialIndex, const std::vector<rhi::SamplerHandle>& samplers)

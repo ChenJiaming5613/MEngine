@@ -54,8 +54,12 @@ void FormatDuration(char* out, size_t size, double nanoseconds, int unit)
         std::snprintf(out + written, size - written, " ns");
         break;
     }
-    case 1: std::snprintf(out, size, "%.3f us", nanoseconds * 1e-3); break;
-    default: std::snprintf(out, size, "%.6f ms", nanoseconds * 1e-6); break;
+    case 1:
+        std::snprintf(out, size, "%.3f us", nanoseconds * 1e-3);
+        break;
+    default:
+        std::snprintf(out, size, "%.6f ms", nanoseconds * 1e-6);
+        break;
     }
 }
 
@@ -327,8 +331,8 @@ void ProfilerPanel::DrawValue(const RollingStats& stats, bool current, bool aver
 
 void ProfilerPanel::DrawTable()
 {
-    constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable
-        | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
+    constexpr ImGuiTableFlags kFlags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
     if (!ImGui::BeginTable("Timings", 5, kFlags))
     {
         return;

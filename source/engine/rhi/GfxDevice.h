@@ -82,16 +82,37 @@ public:
     void DestroyPipeline(PipelineHandle handle);
     void DestroyRenderPass(RenderPassHandle handle);
 
-    Buffer* AccessBuffer(BufferHandle handle) { return m_buffers.Access(handle); }
+    Buffer* AccessBuffer(BufferHandle handle)
+    {
+        return m_buffers.Access(handle);
+    }
     // Makes host writes through a dynamic buffer's mapping visible to the device (no-op on coherent memory). The
     // uniform ring is flushed by EndFrame; other dynamic buffers flush what they wrote before the submit.
     void FlushBuffer(BufferHandle handle, VkDeviceSize offset, VkDeviceSize size);
-    Texture* AccessTexture(TextureHandle handle) { return m_textures.Access(handle); }
-    Sampler* AccessSampler(SamplerHandle handle) { return m_samplers.Access(handle); }
-    DescriptorSetLayout* AccessDescriptorSetLayout(DescriptorSetLayoutHandle handle) { return m_descriptorSetLayouts.Access(handle); }
-    DescriptorSet* AccessDescriptorSet(DescriptorSetHandle handle) { return m_descriptorSets.Access(handle); }
-    Pipeline* AccessPipeline(PipelineHandle handle) { return m_pipelines.Access(handle); }
-    RenderPass* AccessRenderPass(RenderPassHandle handle) { return m_renderPasses.Access(handle); }
+    Texture* AccessTexture(TextureHandle handle)
+    {
+        return m_textures.Access(handle);
+    }
+    Sampler* AccessSampler(SamplerHandle handle)
+    {
+        return m_samplers.Access(handle);
+    }
+    DescriptorSetLayout* AccessDescriptorSetLayout(DescriptorSetLayoutHandle handle)
+    {
+        return m_descriptorSetLayouts.Access(handle);
+    }
+    DescriptorSet* AccessDescriptorSet(DescriptorSetHandle handle)
+    {
+        return m_descriptorSets.Access(handle);
+    }
+    Pipeline* AccessPipeline(PipelineHandle handle)
+    {
+        return m_pipelines.Access(handle);
+    }
+    RenderPass* AccessRenderPass(RenderPassHandle handle)
+    {
+        return m_renderPasses.Access(handle);
+    }
 
     // Default sampler used by descriptor sets that do not name one.
     void LinkTextureSampler(TextureHandle texture, SamplerHandle sampler);
@@ -115,74 +136,173 @@ public:
     // Returns false when nothing can be rendered this iteration (minimized, out of date, surface lost).
     bool BeginFrame();
     // The frame's command buffer, already begun. Valid between BeginFrame and EndFrame.
-    CommandBuffer& GetCommandBuffer() { return m_commandBuffer; }
+    CommandBuffer& GetCommandBuffer()
+    {
+        return m_commandBuffer;
+    }
     void EndFrame();
 
     // Per-frame uniform data in the shared UNIFORM_BUFFER_DYNAMIC ring. Valid between BeginFrame and EndFrame.
     DynamicAllocation DynamicAllocate(uint32_t size);
-    BufferHandle GetDynamicBuffer() const { return m_dynamicBuffer; }
+    BufferHandle GetDynamicBuffer() const
+    {
+        return m_dynamicBuffer;
+    }
 
     // True once after the swapchain was (re)created with a possibly different extent.
-    bool ConsumeSwapchainResized() { return std::exchange(m_swapchainResized, false); }
+    bool ConsumeSwapchainResized()
+    {
+        return std::exchange(m_swapchainResized, false);
+    }
 
     void SetSuspended(bool suspended);
-    void MarkSwapchainDirty() { m_swapchainDirty = true; }
+    void MarkSwapchainDirty()
+    {
+        m_swapchainDirty = true;
+    }
     void SetVsync(bool enabled);
-    bool IsVsync() const { return m_vsync; }
-    VkPresentModeKHR GetPresentMode() const { return m_swapchain.PresentMode(); }
+    bool IsVsync() const
+    {
+        return m_vsync;
+    }
+    VkPresentModeKHR GetPresentMode() const
+    {
+        return m_swapchain.PresentMode();
+    }
 
-    RenderPassHandle GetSwapchainPass() const { return m_swapchainPass; }
-    const RenderPassOutput& GetSwapchainOutput() const { return m_swapchainOutput; }
-    VkExtent2D GetSwapchainExtent() const { return m_swapchain.Extent(); }
-    bool IsSwapchainSrgb() const { return IsSrgbFormat(m_swapchain.SurfaceFormat().format); }
+    RenderPassHandle GetSwapchainPass() const
+    {
+        return m_swapchainPass;
+    }
+    const RenderPassOutput& GetSwapchainOutput() const
+    {
+        return m_swapchainOutput;
+    }
+    VkExtent2D GetSwapchainExtent() const
+    {
+        return m_swapchain.Extent();
+    }
+    bool IsSwapchainSrgb() const
+    {
+        return IsSrgbFormat(m_swapchain.SurfaceFormat().format);
+    }
 
-    VkFormat GetDepthFormat() const { return m_depthFormat; }
+    VkFormat GetDepthFormat() const
+    {
+        return m_depthFormat;
+    }
     // BC1-BC7 sampling: desktop GPUs, rare on Android.
-    bool SupportsTextureCompressionBc() const { return m_textureCompressionBc; }
+    bool SupportsTextureCompressionBc() const
+    {
+        return m_textureCompressionBc;
+    }
     bool SupportsLinearBlit(VkFormat format) const;
     // Linear filtering of sampled images; for depth formats this enables hardware 2x2 PCF with compare samplers.
     bool SupportsLinearFilter(VkFormat format) const;
     // kTextureUsageStorage needs this for the texture's format.
     bool SupportsStorageImage(VkFormat format) const;
     // The graphics queue also runs compute; compute pipelines and Dispatch need it.
-    bool SupportsCompute() const { return m_computeSupported; }
+    bool SupportsCompute() const
+    {
+        return m_computeSupported;
+    }
     // Indirect draws with drawCount > 1.
-    bool SupportsMultiDrawIndirect() const { return m_multiDrawIndirect; }
+    bool SupportsMultiDrawIndirect() const
+    {
+        return m_multiDrawIndirect;
+    }
     // Indirect draw records with a non-zero firstInstance.
-    bool SupportsDrawIndirectFirstInstance() const { return m_drawIndirectFirstInstance; }
+    bool SupportsDrawIndirectFirstInstance() const
+    {
+        return m_drawIndirectFirstInstance;
+    }
 
-    TextureHandle GetDummyTexture() const { return m_dummyTexture; }
-    TextureHandle GetDummyCubeTexture() const { return m_dummyCubeTexture; }
-    SamplerHandle GetDefaultSampler() const { return m_defaultSampler; }
+    TextureHandle GetDummyTexture() const
+    {
+        return m_dummyTexture;
+    }
+    TextureHandle GetDummyCubeTexture() const
+    {
+        return m_dummyCubeTexture;
+    }
+    SamplerHandle GetDefaultSampler() const
+    {
+        return m_defaultSampler;
+    }
 
-    GpuProfiler& GetProfiler() { return m_profiler; }
-    const GpuProfiler& GetProfiler() const { return m_profiler; }
-    uint64_t GetAbsoluteFrame() const { return m_absoluteFrame; }
-    uint32_t GetFrameSlot() const { return m_frameSlot; }
-    const VkPhysicalDeviceProperties& GetProperties() const { return m_properties; }
+    GpuProfiler& GetProfiler()
+    {
+        return m_profiler;
+    }
+    const GpuProfiler& GetProfiler() const
+    {
+        return m_profiler;
+    }
+    uint64_t GetAbsoluteFrame() const
+    {
+        return m_absoluteFrame;
+    }
+    uint32_t GetFrameSlot() const
+    {
+        return m_frameSlot;
+    }
+    const VkPhysicalDeviceProperties& GetProperties() const
+    {
+        return m_properties;
+    }
     // What the physical device supports, queried once at Init. Supported is not enabled: GetEnabledFeatures and
     // ExtensionInfo::enabled say what the device was created with.
-    const DeviceCapabilities& GetCapabilities() const { return m_capabilities; }
-    const VkPhysicalDeviceFeatures& GetEnabledFeatures() const { return m_enabledFeatures; }
+    const DeviceCapabilities& GetCapabilities() const
+    {
+        return m_capabilities;
+    }
+    const VkPhysicalDeviceFeatures& GetEnabledFeatures() const
+    {
+        return m_enabledFeatures;
+    }
     // Per memory heap: the driver's budget and usage (VK_EXT_memory_budget, else 0) and MEngine's VMA statistics.
     std::vector<HeapUsage> QueryHeapUsage() const;
 
     // One cache shared by every pipeline, including ImGui's.
-    VkPipelineCache GetPipelineCache() const { return m_pipelineCache; }
+    VkPipelineCache GetPipelineCache() const
+    {
+        return m_pipelineCache;
+    }
     // Writes the cache file (atomically); a no-op without a path or when the data size did not change since the last save.
     void SavePipelineCache();
-    const PipelineStats& GetPipelineStats() const { return m_pipelineStats; }
+    const PipelineStats& GetPipelineStats() const
+    {
+        return m_pipelineStats;
+    }
 
     // Cached per distinct output; owned by the device.
     VkRenderPass GetVulkanRenderPass(const RenderPassOutput& output);
     VkFramebuffer GetFramebuffer(const RenderPass& renderPass) const;
 
-    VkInstance GetInstance() const { return m_instance; }
-    VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
-    VkDevice GetDevice() const { return m_device; }
-    VkQueue GetQueue() const { return m_queue; }
-    uint32_t GetQueueFamily() const { return m_queueFamily; }
-    VmaAllocator GetAllocator() const { return m_allocator; }
+    VkInstance GetInstance() const
+    {
+        return m_instance;
+    }
+    VkPhysicalDevice GetPhysicalDevice() const
+    {
+        return m_physicalDevice;
+    }
+    VkDevice GetDevice() const
+    {
+        return m_device;
+    }
+    VkQueue GetQueue() const
+    {
+        return m_queue;
+    }
+    uint32_t GetQueueFamily() const
+    {
+        return m_queueFamily;
+    }
+    VmaAllocator GetAllocator() const
+    {
+        return m_allocator;
+    }
 
     void WaitIdle();
     // Outside a frame: waits for the GPU and destroys every deferred object at once, so a scene switch does not hold
@@ -195,7 +315,10 @@ public:
     void CmdEndLabel(VkCommandBuffer commandBuffer);
 
 private:
-    void AssertOwnerThread() const { MENGINE_ASSERT(std::this_thread::get_id() == m_ownerThread); }
+    void AssertOwnerThread() const
+    {
+        MENGINE_ASSERT(std::this_thread::get_id() == m_ownerThread);
+    }
 
     struct FrameData
     {
@@ -357,7 +480,10 @@ private:
 class UploadBatchScope
 {
 public:
-    explicit UploadBatchScope(GfxDevice& device) : m_device(device) { m_device.BeginUploadBatch(); }
+    explicit UploadBatchScope(GfxDevice& device) : m_device(device)
+    {
+        m_device.BeginUploadBatch();
+    }
     ~UploadBatchScope();
     // Submits now (for the outermost scope), so submission errors reach the caller.
     void End();

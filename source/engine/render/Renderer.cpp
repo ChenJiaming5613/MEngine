@@ -32,12 +32,14 @@ void Renderer::Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks)
     rhi::DescriptorSetLayoutCreateInfo frameLayout;
     frameLayout.name = "FrameLayout";
     frameLayout.setIndex = 0;
-    frameLayout
-        .AddBinding({.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, .index = 0,
-            .stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT})
-        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 1, .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+    frameLayout.AddBinding({.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, .index = 0, .stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT})
+        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .index = 1,
+            .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
             .textureType = rhi::TextureType::TextureCube})
-        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 2, .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .index = 2,
+            .stages = VK_SHADER_STAGE_FRAGMENT_BIT,
             .textureType = rhi::TextureType::TextureCube})
         .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 3, .stages = VK_SHADER_STAGE_FRAGMENT_BIT})
         .AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = 4, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
@@ -46,12 +48,10 @@ void Renderer::Init(rhi::GfxDevice& device, enki::TaskScheduler& tasks)
     rhi::DescriptorSetLayoutCreateInfo materialLayout;
     materialLayout.name = "MaterialLayout";
     materialLayout.setIndex = 1;
-    materialLayout.AddBinding(
-        {.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .index = kMaterialBindingData, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
+    materialLayout.AddBinding({.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .index = kMaterialBindingData, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
     for (uint32_t binding = kMaterialBindingBaseColor; binding <= kMaterialBindingEmissive; ++binding)
     {
-        materialLayout.AddBinding(
-            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = binding, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
+        materialLayout.AddBinding({.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .index = binding, .stages = VK_SHADER_STAGE_FRAGMENT_BIT});
     }
     m_materialLayout = device.CreateDescriptorSetLayout(materialLayout);
     m_sceneLoader.Init(device, tasks, m_materialLayout);
@@ -137,8 +137,7 @@ Renderer::ShadowView Renderer::FitShadowView(const glm::vec3& direction) const
     glm::vec3 lightMax(std::numeric_limits<float>::lowest());
     for (uint32_t corner = 0; corner < 8; ++corner)
     {
-        const glm::vec3 position((corner & 1) != 0 ? m_scene.boundsMax.x : m_scene.boundsMin.x,
-            (corner & 2) != 0 ? m_scene.boundsMax.y : m_scene.boundsMin.y,
+        const glm::vec3 position((corner & 1) != 0 ? m_scene.boundsMax.x : m_scene.boundsMin.x, (corner & 2) != 0 ? m_scene.boundsMax.y : m_scene.boundsMin.y,
             (corner & 4) != 0 ? m_scene.boundsMax.z : m_scene.boundsMin.z);
         const glm::vec3 lightPosition(view * glm::vec4(position, 1.0f));
         lightMin = glm::min(lightMin, lightPosition);
@@ -150,8 +149,8 @@ Renderer::ShadowView Renderer::FitShadowView(const glm::vec3& direction) const
     const float border = 2.0f * extent / static_cast<float>(ShadowPass::kSize);
     const float depthMargin = 0.01f * std::max(lightMax.z - lightMin.z, 1e-3f);
     // The view looks down -Z, so near / far are the negated maximum / minimum z.
-    glm::mat4 projection = glm::orthoRH_ZO(lightMin.x - border, lightMax.x + border, lightMin.y - border, lightMax.y + border,
-        -lightMax.z - depthMargin, -lightMin.z + depthMargin);
+    glm::mat4 projection = glm::orthoRH_ZO(
+        lightMin.x - border, lightMax.x + border, lightMin.y - border, lightMax.y + border, -lightMax.z - depthMargin, -lightMin.z + depthMargin);
     projection[1][1] *= -1.0f;
 
     ShadowView shadowView;
@@ -200,13 +199,12 @@ void Renderer::Render(const mengine::camera::Camera& camera, const RenderSetting
     constants.cameraPosition = glm::vec4(camera.position, 1.0f);
     constants.lightPositionRadius = glm::vec4(settings.light.position, std::max(settings.light.radius, 1e-3f));
     constants.lightColorIntensity = glm::vec4(settings.light.color, settings.light.intensity);
-    constants.iblParams = glm::vec4(settings.iblIntensity, static_cast<float>(m_environment.specularMipCount),
-        glm::clamp(settings.skyboxBlur, 0.0f, 1.0f), 0.0f);
+    constants.iblParams =
+        glm::vec4(settings.iblIntensity, static_cast<float>(m_environment.specularMipCount), glm::clamp(settings.skyboxBlur, 0.0f, 1.0f), 0.0f);
 
     const DirectionalLight& directional = settings.directional;
     const float directionLength = glm::length(directional.direction);
-    const glm::vec3 direction =
-        directionLength > 1e-6f ? directional.direction / directionLength : glm::vec3(0.0f, -1.0f, 0.0f);
+    const glm::vec3 direction = directionLength > 1e-6f ? directional.direction / directionLength : glm::vec3(0.0f, -1.0f, 0.0f);
     const bool castShadows = directional.castShadows && !m_scene.IsEmpty() && m_scene.HasBounds();
     // A disabled Shadow node leaves the imported shadow map with whatever it last drew; sampling it would show stale
     // shadows that no longer follow the light or the scene.
@@ -273,8 +271,7 @@ void Renderer::Render(const mengine::camera::Camera& camera, const RenderSetting
             next += visible ? 1 : 0;
             if (draw.boundsMin.x <= draw.boundsMax.x)
             {
-                m_debugDraw.Aabb(draw.boundsMin, draw.boundsMax,
-                    visible ? glm::vec4(0.2f, 1.0f, 0.3f, 1.0f) : glm::vec4(1.0f, 0.15f, 0.15f, 1.0f));
+                m_debugDraw.Aabb(draw.boundsMin, draw.boundsMax, visible ? glm::vec4(0.2f, 1.0f, 0.3f, 1.0f) : glm::vec4(1.0f, 0.15f, 0.15f, 1.0f));
             }
         }
         if (m_cullingFrozen)

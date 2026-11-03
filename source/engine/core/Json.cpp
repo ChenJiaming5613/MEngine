@@ -102,7 +102,9 @@ JsonDocument::~JsonDocument()
     }
 }
 
-JsonDocument::JsonDocument(JsonDocument&& other) noexcept : m_root(std::move(other.m_root)) {}
+JsonDocument::JsonDocument(JsonDocument&& other) noexcept : m_root(std::move(other.m_root))
+{
+}
 
 JsonDocument& JsonDocument::operator=(JsonDocument&& other) noexcept
 {
@@ -125,9 +127,7 @@ std::optional<JsonDocument> JsonDocument::Parse(std::string_view text, std::stri
     {
         if (error != nullptr)
         {
-            const size_t offset = errorPosition != nullptr && errorPosition >= text.data()
-                ? static_cast<size_t>(errorPosition - text.data())
-                : 0;
+            const size_t offset = errorPosition != nullptr && errorPosition >= text.data() ? static_cast<size_t>(errorPosition - text.data()) : 0;
             *error = "JSON syntax error at byte " + std::to_string(offset);
         }
         return std::nullopt;

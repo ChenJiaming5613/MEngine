@@ -61,10 +61,19 @@ public:
         return handle.index < m_items.size() && m_alive[handle.index] && m_generations[handle.index] == handle.generation;
     }
 
-    T* Access(HandleT handle) { return IsAlive(handle) ? &m_items[handle.index] : nullptr; }
-    const T* Access(HandleT handle) const { return IsAlive(handle) ? &m_items[handle.index] : nullptr; }
+    T* Access(HandleT handle)
+    {
+        return IsAlive(handle) ? &m_items[handle.index] : nullptr;
+    }
+    const T* Access(HandleT handle) const
+    {
+        return IsAlive(handle) ? &m_items[handle.index] : nullptr;
+    }
 
-    uint32_t UsedCount() const { return m_usedCount; }
+    uint32_t UsedCount() const
+    {
+        return m_usedCount;
+    }
 
     template <typename Callback>
     void ForEachAlive(Callback callback)

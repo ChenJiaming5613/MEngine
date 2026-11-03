@@ -10,9 +10,7 @@ namespace mengine::render {
 Frustum Frustum::FromViewProjection(const glm::mat4& viewProjection)
 {
     // glm is column major: row i of the matrix is (m[0][i], m[1][i], m[2][i], m[3][i]).
-    const auto row = [&viewProjection](int i) {
-        return glm::vec4(viewProjection[0][i], viewProjection[1][i], viewProjection[2][i], viewProjection[3][i]);
-    };
+    const auto row = [&viewProjection](int i) { return glm::vec4(viewProjection[0][i], viewProjection[1][i], viewProjection[2][i], viewProjection[3][i]); };
     const glm::vec4 x = row(0);
     const glm::vec4 y = row(1);
     const glm::vec4 z = row(2);

@@ -42,8 +42,7 @@ public:
     SpvReflectResult Create(std::span<const uint32_t> code)
     {
         // NO_COPY: the module reads the caller's words, which outlive the guard.
-        const SpvReflectResult result =
-            spvReflectCreateShaderModule2(SPV_REFLECT_MODULE_FLAG_NO_COPY, code.size_bytes(), code.data(), &module);
+        const SpvReflectResult result = spvReflectCreateShaderModule2(SPV_REFLECT_MODULE_FLAG_NO_COPY, code.size_bytes(), code.data(), &module);
         m_created = result == SPV_REFLECT_RESULT_SUCCESS;
         return result;
     }
@@ -131,8 +130,8 @@ bool ReflectShader(std::span<const uint32_t> code, ShaderReflection& out, std::s
     }
     for (const SpvReflectDescriptorBinding* binding : bindings)
     {
-        const std::string where = "set " + std::to_string(binding->set) + " binding " + std::to_string(binding->binding) +
-            " (" + (binding->name != nullptr ? binding->name : "") + ")";
+        const std::string where = "set " + std::to_string(binding->set) + " binding " + std::to_string(binding->binding) + " ("
+            + (binding->name != nullptr ? binding->name : "") + ")";
         if (!IsSupportedDescriptorType(binding->descriptor_type))
         {
             error = where + ": unsupported descriptor type " + std::to_string(static_cast<int>(binding->descriptor_type));
@@ -243,9 +242,9 @@ bool MergeReflections(std::span<const ShaderReflection> stages, ShaderReflection
             }
             if (existing->type != binding.type || existing->count != binding.count)
             {
-                error = "set " + std::to_string(binding.set) + " binding " + std::to_string(binding.binding) +
-                    ": stages disagree (" + DescriptorTypeName(existing->type) + " x" + std::to_string(existing->count) +
-                    " vs " + DescriptorTypeName(binding.type) + " x" + std::to_string(binding.count) + ")";
+                error = "set " + std::to_string(binding.set) + " binding " + std::to_string(binding.binding) + ": stages disagree ("
+                    + DescriptorTypeName(existing->type) + " x" + std::to_string(existing->count) + " vs " + DescriptorTypeName(binding.type) + " x"
+                    + std::to_string(binding.count) + ")";
                 return false;
             }
             existing->stages |= binding.stages;
@@ -254,8 +253,7 @@ bool MergeReflections(std::span<const ShaderReflection> stages, ShaderReflection
     std::sort(merged.bindings.begin(), merged.bindings.end(), BindingLess);
     std::sort(merged.specializationConstantIds.begin(), merged.specializationConstantIds.end());
     merged.specializationConstantIds.erase(
-        std::unique(merged.specializationConstantIds.begin(), merged.specializationConstantIds.end()),
-        merged.specializationConstantIds.end());
+        std::unique(merged.specializationConstantIds.begin(), merged.specializationConstantIds.end()), merged.specializationConstantIds.end());
     return true;
 }
 
@@ -272,11 +270,11 @@ DescriptorSetLayoutCreateInfo BuildDescriptorSetLayout(const ShaderReflection& m
         }
         if (createInfo.bindingCount >= kMaxDescriptorsPerSet)
         {
-            throw std::runtime_error(std::string("BuildDescriptorSetLayout: more than ") + std::to_string(kMaxDescriptorsPerSet) +
-                " bindings in set " + std::to_string(setIndex) + " of " + (name != nullptr ? name : "<unnamed>"));
+            throw std::runtime_error(std::string("BuildDescriptorSetLayout: more than ") + std::to_string(kMaxDescriptorsPerSet) + " bindings in set "
+                + std::to_string(setIndex) + " of " + (name != nullptr ? name : "<unnamed>"));
         }
-        createInfo.AddBinding({.type = binding.type, .index = binding.binding, .count = binding.count, .stages = binding.stages,
-            .textureType = binding.textureType});
+        createInfo.AddBinding(
+            {.type = binding.type, .index = binding.binding, .count = binding.count, .stages = binding.stages, .textureType = binding.textureType});
     }
     return createInfo;
 }
@@ -310,18 +308,30 @@ const char* DescriptorTypeName(VkDescriptorType type)
 {
     switch (type)
     {
-    case VK_DESCRIPTOR_TYPE_SAMPLER: return "SAMPLER";
-    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: return "COMBINED_IMAGE_SAMPLER";
-    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: return "SAMPLED_IMAGE";
-    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE: return "STORAGE_IMAGE";
-    case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER: return "UNIFORM_TEXEL_BUFFER";
-    case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER: return "STORAGE_TEXEL_BUFFER";
-    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER: return "UNIFORM_BUFFER";
-    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER: return "STORAGE_BUFFER";
-    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC: return "UNIFORM_BUFFER_DYNAMIC";
-    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: return "STORAGE_BUFFER_DYNAMIC";
-    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: return "INPUT_ATTACHMENT";
-    default: return "UNKNOWN";
+    case VK_DESCRIPTOR_TYPE_SAMPLER:
+        return "SAMPLER";
+    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+        return "COMBINED_IMAGE_SAMPLER";
+    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+        return "SAMPLED_IMAGE";
+    case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+        return "STORAGE_IMAGE";
+    case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+        return "UNIFORM_TEXEL_BUFFER";
+    case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+        return "STORAGE_TEXEL_BUFFER";
+    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+        return "UNIFORM_BUFFER";
+    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+        return "STORAGE_BUFFER";
+    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+        return "UNIFORM_BUFFER_DYNAMIC";
+    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+        return "STORAGE_BUFFER_DYNAMIC";
+    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+        return "INPUT_ATTACHMENT";
+    default:
+        return "UNKNOWN";
     }
 }
 

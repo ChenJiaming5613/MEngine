@@ -22,8 +22,14 @@ public:
     void Init(GfxDevice* device, VkCommandBuffer commandBuffer);
     void Reset();
 
-    VkCommandBuffer Handle() const { return m_commandBuffer; }
-    bool IsInsidePass() const { return m_insidePass; }
+    VkCommandBuffer Handle() const
+    {
+        return m_commandBuffer;
+    }
+    bool IsInsidePass() const
+    {
+        return m_insidePass;
+    }
 
     void SetClearColor(uint32_t attachmentIndex, const glm::vec4& color);
     void SetClearDepth(float depth);
@@ -45,15 +51,12 @@ public:
 
     // Draws: inside a pass with a graphics pipeline bound.
     void Draw(uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstVertex = 0, uint32_t firstInstance = 0);
-    void DrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t vertexOffset = 0,
-        uint32_t firstInstance = 0);
+    void DrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0, int32_t vertexOffset = 0, uint32_t firstInstance = 0);
     // The buffer needs VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT and holds VkDrawIndirectCommand / VkDrawIndexedIndirectCommand
     // records. drawCount > 1 needs GfxDevice::SupportsMultiDrawIndirect(); a non-zero firstInstance in a record needs
     // SupportsDrawIndirectFirstInstance().
-    void DrawIndirect(BufferHandle buffer, VkDeviceSize offset = 0, uint32_t drawCount = 1,
-        uint32_t stride = sizeof(VkDrawIndirectCommand));
-    void DrawIndexedIndirect(BufferHandle buffer, VkDeviceSize offset = 0, uint32_t drawCount = 1,
-        uint32_t stride = sizeof(VkDrawIndexedIndirectCommand));
+    void DrawIndirect(BufferHandle buffer, VkDeviceSize offset = 0, uint32_t drawCount = 1, uint32_t stride = sizeof(VkDrawIndirectCommand));
+    void DrawIndexedIndirect(BufferHandle buffer, VkDeviceSize offset = 0, uint32_t drawCount = 1, uint32_t stride = sizeof(VkDrawIndexedIndirectCommand));
 
     // Dispatches: outside a pass with a compute pipeline bound.
     void Dispatch(uint32_t groupCountX, uint32_t groupCountY = 1, uint32_t groupCountZ = 1);
@@ -83,8 +86,8 @@ public:
 private:
     void PrepareAttachments(const RenderPass& renderPass);
     void UpdateAttachmentStates(const RenderPass& renderPass);
-    const Buffer* AccessIndirectBuffer(BufferHandle handle, VkDeviceSize offset, VkDeviceSize recordSize, uint32_t drawCount,
-        uint32_t stride, const char* command) const;
+    const Buffer* AccessIndirectBuffer(
+        BufferHandle handle, VkDeviceSize offset, VkDeviceSize recordSize, uint32_t drawCount, uint32_t stride, const char* command) const;
 
     GfxDevice* m_device = nullptr;
     VkCommandBuffer m_commandBuffer = VK_NULL_HANDLE;

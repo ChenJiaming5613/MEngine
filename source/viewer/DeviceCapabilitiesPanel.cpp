@@ -44,9 +44,12 @@ ImU32 TierColor(DeviceTier tier)
 {
     switch (tier)
     {
-    case DeviceTier::T0: return IM_COL32(0x1F, 0x3A, 0x93, 255);
-    case DeviceTier::T1: return IM_COL32(0x1B, 0x5E, 0x20, 255);
-    case DeviceTier::T2: return IM_COL32(0x6A, 0x1B, 0x9A, 255);
+    case DeviceTier::T0:
+        return IM_COL32(0x1F, 0x3A, 0x93, 255);
+    case DeviceTier::T1:
+        return IM_COL32(0x1B, 0x5E, 0x20, 255);
+    case DeviceTier::T2:
+        return IM_COL32(0x6A, 0x1B, 0x9A, 255);
     }
     return kMuted;
 }
@@ -66,17 +69,13 @@ void StatusMark(bool met)
     const float pad = size * 0.2f;
     if (met)
     {
-        drawList->AddLine(ImVec2(position.x + pad, position.y + size * 0.55f), ImVec2(position.x + size * 0.42f, position.y + size - pad),
-            kYes, thickness);
-        drawList->AddLine(ImVec2(position.x + size * 0.42f, position.y + size - pad), ImVec2(position.x + size - pad, position.y + pad),
-            kYes, thickness);
+        drawList->AddLine(ImVec2(position.x + pad, position.y + size * 0.55f), ImVec2(position.x + size * 0.42f, position.y + size - pad), kYes, thickness);
+        drawList->AddLine(ImVec2(position.x + size * 0.42f, position.y + size - pad), ImVec2(position.x + size - pad, position.y + pad), kYes, thickness);
     }
     else
     {
-        drawList->AddLine(ImVec2(position.x + pad, position.y + pad), ImVec2(position.x + size - pad, position.y + size - pad), kNo,
-            thickness);
-        drawList->AddLine(ImVec2(position.x + size - pad, position.y + pad), ImVec2(position.x + pad, position.y + size - pad), kNo,
-            thickness);
+        drawList->AddLine(ImVec2(position.x + pad, position.y + pad), ImVec2(position.x + size - pad, position.y + size - pad), kNo, thickness);
+        drawList->AddLine(ImVec2(position.x + size - pad, position.y + pad), ImVec2(position.x + pad, position.y + size - pad), kNo, thickness);
     }
     ImGui::Dummy(ImVec2(size, size));
 }
@@ -232,9 +231,8 @@ bool ContainsInsensitive(std::string_view text, const char* pattern)
     {
         return true;
     }
-    const auto it = std::search(text.begin(), text.end(), needle.begin(), needle.end(), [](char a, char b) {
-        return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-    });
+    const auto it = std::search(text.begin(), text.end(), needle.begin(), needle.end(),
+        [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); });
     return it != text.end();
 }
 
@@ -252,8 +250,8 @@ void SectionRow(const char* title, int columns)
     }
 }
 
-constexpr ImGuiTableFlags kTableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersOuterH
-    | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX;
+constexpr ImGuiTableFlags kTableFlags =
+    ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX;
 
 struct FeatureRow
 {
@@ -263,21 +261,20 @@ struct FeatureRow
     const char* tier;            // "" when not a tier requirement
 };
 
-#define MENGINE_CORE_FEATURES(X)                                                                                         \
-    X(robustBufferAccess) X(fullDrawIndexUint32) X(imageCubeArray) X(independentBlend) X(geometryShader)                \
-    X(tessellationShader) X(sampleRateShading) X(dualSrcBlend) X(logicOp) X(multiDrawIndirect)                         \
-    X(drawIndirectFirstInstance) X(depthClamp) X(depthBiasClamp) X(fillModeNonSolid) X(depthBounds) X(wideLines)       \
-    X(largePoints) X(alphaToOne) X(multiViewport) X(samplerAnisotropy) X(textureCompressionETC2)                       \
-    X(textureCompressionASTC_LDR) X(textureCompressionBC) X(occlusionQueryPrecise) X(pipelineStatisticsQuery)          \
-    X(vertexPipelineStoresAndAtomics) X(fragmentStoresAndAtomics) X(shaderTessellationAndGeometryPointSize)            \
-    X(shaderImageGatherExtended) X(shaderStorageImageExtendedFormats) X(shaderStorageImageMultisample)                 \
-    X(shaderStorageImageReadWithoutFormat) X(shaderStorageImageWriteWithoutFormat)                                     \
-    X(shaderUniformBufferArrayDynamicIndexing) X(shaderSampledImageArrayDynamicIndexing)                               \
-    X(shaderStorageBufferArrayDynamicIndexing) X(shaderStorageImageArrayDynamicIndexing) X(shaderClipDistance)         \
-    X(shaderCullDistance) X(shaderFloat64) X(shaderInt64) X(shaderInt16) X(shaderResourceResidency)                    \
-    X(shaderResourceMinLod) X(sparseBinding) X(sparseResidencyBuffer) X(sparseResidencyImage2D)                        \
-    X(sparseResidencyImage3D) X(sparseResidency2Samples) X(sparseResidency4Samples) X(sparseResidency8Samples)         \
-    X(sparseResidency16Samples) X(sparseResidencyAliased) X(variableMultisampleRate) X(inheritedQueries)
+#define MENGINE_CORE_FEATURES(X)                                                                                                                               \
+    X(robustBufferAccess)                                                                                                                                      \
+    X(fullDrawIndexUint32) X(imageCubeArray) X(independentBlend) X(geometryShader) X(tessellationShader) X(sampleRateShading) X(dualSrcBlend) X(logicOp)       \
+        X(multiDrawIndirect) X(drawIndirectFirstInstance) X(depthClamp) X(depthBiasClamp) X(fillModeNonSolid) X(depthBounds) X(wideLines) X(largePoints)       \
+            X(alphaToOne) X(multiViewport) X(samplerAnisotropy) X(textureCompressionETC2) X(textureCompressionASTC_LDR) X(textureCompressionBC)                \
+                X(occlusionQueryPrecise) X(pipelineStatisticsQuery) X(vertexPipelineStoresAndAtomics) X(fragmentStoresAndAtomics)                              \
+                    X(shaderTessellationAndGeometryPointSize) X(shaderImageGatherExtended) X(shaderStorageImageExtendedFormats)                                \
+                        X(shaderStorageImageMultisample) X(shaderStorageImageReadWithoutFormat) X(shaderStorageImageWriteWithoutFormat)                        \
+                            X(shaderUniformBufferArrayDynamicIndexing) X(shaderSampledImageArrayDynamicIndexing) X(shaderStorageBufferArrayDynamicIndexing)    \
+                                X(shaderStorageImageArrayDynamicIndexing) X(shaderClipDistance) X(shaderCullDistance) X(shaderFloat64) X(shaderInt64)          \
+                                    X(shaderInt16) X(shaderResourceResidency) X(shaderResourceMinLod) X(sparseBinding) X(sparseResidencyBuffer)                \
+                                        X(sparseResidencyImage2D) X(sparseResidencyImage3D) X(sparseResidency2Samples) X(sparseResidency4Samples)              \
+                                            X(sparseResidency8Samples) X(sparseResidency16Samples) X(sparseResidencyAliased) X(variableMultisampleRate)        \
+                                                X(inheritedQueries)
 
 const char* CoreFeatureTier(std::string_view name)
 {
@@ -295,8 +292,7 @@ const char* CoreFeatureTier(std::string_view name)
 std::vector<FeatureRow> CoreFeatureRows(const VkPhysicalDeviceFeatures& supported, const VkPhysicalDeviceFeatures& enabled)
 {
     std::vector<FeatureRow> rows;
-#define MENGINE_CORE_FEATURE_ROW(member)                                                                                  \
-    rows.push_back({#member, supported.member == VK_TRUE, enabled.member == VK_TRUE, CoreFeatureTier(#member)});
+#define MENGINE_CORE_FEATURE_ROW(member) rows.push_back({#member, supported.member == VK_TRUE, enabled.member == VK_TRUE, CoreFeatureTier(#member)});
     MENGINE_CORE_FEATURES(MENGINE_CORE_FEATURE_ROW)
 #undef MENGINE_CORE_FEATURE_ROW
     return rows;
@@ -320,8 +316,7 @@ std::vector<FeatureRow> ExtensionFeatureRows(const DeviceCapabilities& caps)
         {"descriptorIndexing: runtimeDescriptorArray", indexing.runtimeDescriptorArray, std::nullopt, "T1"},
         {"descriptorIndexing: partiallyBound", indexing.partiallyBound, std::nullopt, "T1"},
         {"descriptorIndexing: sampledImageUpdateAfterBind", indexing.sampledImageUpdateAfterBind, std::nullopt, "T1"},
-        {"descriptorIndexing: sampledImageArrayNonUniformIndexing", indexing.sampledImageArrayNonUniformIndexing, std::nullopt,
-            "T1"},
+        {"descriptorIndexing: sampledImageArrayNonUniformIndexing", indexing.sampledImageArrayNonUniformIndexing, std::nullopt, "T1"},
         {"descriptorIndexing: variableDescriptorCount", indexing.variableDescriptorCount, std::nullopt, ""},
         {"descriptorIndexing: storageBufferUpdateAfterBind", indexing.storageBufferUpdateAfterBind, std::nullopt, ""},
         {"drawIndirectCount", caps.drawIndirectCount, std::nullopt, "T1"},
@@ -480,14 +475,12 @@ void DeviceCapabilitiesPanel::DrawHeader(const rhi::GfxDevice& device)
 
     ImGui::PushStyleColor(ImGuiCol_Text, kSecondary);
     ImGui::Text("%s  |  %s (0x%04X:0x%04X)  |  Vulkan %s (loader %s)  |  Driver %s", rhi::DeviceTypeName(properties.deviceType),
-        rhi::VendorName(properties.vendorID), properties.vendorID, properties.deviceID,
-        rhi::ApiVersionString(properties.apiVersion).c_str(), rhi::ApiVersionString(caps.instanceVersion).c_str(),
-        rhi::DriverVersionString(properties.vendorID, properties.driverVersion).c_str());
+        rhi::VendorName(properties.vendorID), properties.vendorID, properties.deviceID, rhi::ApiVersionString(properties.apiVersion).c_str(),
+        rhi::ApiVersionString(caps.instanceVersion).c_str(), rhi::DriverVersionString(properties.vendorID, properties.driverVersion).c_str());
     if (!caps.driverName.empty())
     {
-        ImGui::Text("%s %s  |  conformance %u.%u.%u.%u", caps.driverName.c_str(), caps.driverInfo.c_str(),
-            caps.conformanceVersion.major, caps.conformanceVersion.minor, caps.conformanceVersion.subminor,
-            caps.conformanceVersion.patch);
+        ImGui::Text("%s %s  |  conformance %u.%u.%u.%u", caps.driverName.c_str(), caps.driverInfo.c_str(), caps.conformanceVersion.major,
+            caps.conformanceVersion.minor, caps.conformanceVersion.subminor, caps.conformanceVersion.patch);
     }
     ImGui::PopStyleColor();
 }
@@ -510,16 +503,15 @@ void DeviceCapabilitiesPanel::DrawOverview(const DeviceCapabilities& caps)
     ImGui::SeparatorText(title);
     CheckTable("T2", t2);
 
-    std::snprintf(title, sizeof(title), "T0 optional  (%zu / %zu, not guaranteed on the baseline)", MetCount(baseline),
-        baseline.size());
+    std::snprintf(title, sizeof(title), "T0 optional  (%zu / %zu, not guaranteed on the baseline)", MetCount(baseline), baseline.size());
     ImGui::SeparatorText(title);
     CheckTable("T0", baseline);
 
     ImGui::SeparatorText("Highlights");
     const VkPhysicalDeviceLimits& limits = caps.properties.limits;
     ImGui::Text("Subgroup: %u lanes (%s)", caps.subgroupSize, SubgroupOperationNames(caps.subgroupOperations).c_str());
-    ImGui::Text("Push constants: %u B   Bound sets: %u   Max 2D image: %u", limits.maxPushConstantsSize,
-        limits.maxBoundDescriptorSets, limits.maxImageDimension2D);
+    ImGui::Text(
+        "Push constants: %u B   Bound sets: %u   Max 2D image: %u", limits.maxPushConstantsSize, limits.maxBoundDescriptorSets, limits.maxImageDimension2D);
     ImGui::Text("Timestamp period: %.3f ns   Max anisotropy: %.0f", limits.timestampPeriod, limits.maxSamplerAnisotropy);
 }
 
@@ -588,8 +580,8 @@ void DeviceCapabilitiesPanel::DrawExtensions(const DeviceCapabilities& caps)
     ImGui::InputTextWithHint("##filter", "Filter", m_filter, sizeof(m_filter));
 
     const std::vector<rhi::ExtensionInfo>& extensions = m_extensionList == 1 ? caps.instanceExtensions : caps.deviceExtensions;
-    const size_t enabled = static_cast<size_t>(
-        std::count_if(extensions.begin(), extensions.end(), [](const rhi::ExtensionInfo& extension) { return extension.enabled; }));
+    const size_t enabled =
+        static_cast<size_t>(std::count_if(extensions.begin(), extensions.end(), [](const rhi::ExtensionInfo& extension) { return extension.enabled; }));
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(ToVec4(kSecondary), "%zu supported, %zu enabled", extensions.size(), enabled);
@@ -773,8 +765,7 @@ void DeviceCapabilitiesPanel::DrawMemory(const rhi::GfxDevice& device)
 
     if (caps.memoryBudget)
     {
-        ImGui::TextColored(ToVec4(kSecondary), "Driver budget from VK_EXT_memory_budget, refreshed every %.1f s",
-            kHeapRefreshSeconds);
+        ImGui::TextColored(ToVec4(kSecondary), "Driver budget from VK_EXT_memory_budget, refreshed every %.1f s", kHeapRefreshSeconds);
     }
     else
     {
@@ -847,8 +838,8 @@ void DeviceCapabilitiesPanel::DrawMemory(const rhi::GfxDevice& device)
 
 void DeviceCapabilitiesPanel::DrawQueues(const DeviceCapabilities& caps)
 {
-    ImGui::Text("Dedicated compute queue: %s   Dedicated transfer queue: %s", caps.dedicatedComputeQueue ? "yes" : "no",
-        caps.dedicatedTransferQueue ? "yes" : "no");
+    ImGui::Text(
+        "Dedicated compute queue: %s   Dedicated transfer queue: %s", caps.dedicatedComputeQueue ? "yes" : "no", caps.dedicatedTransferQueue ? "yes" : "no");
     if (!ImGui::BeginTable("Queues", 6, kTableFlags))
     {
         return;

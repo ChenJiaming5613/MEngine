@@ -132,19 +132,16 @@ FrameGraphResourceId FrameGraphBuilder::ImportBackbuffer(std::string_view name)
     return {index};
 }
 
-FrameGraphResourceId FrameGraphBuilder::ColorAttachment(std::string_view name, rhi::RenderPassOperation operation,
-    const glm::vec4& clearColor)
+FrameGraphResourceId FrameGraphBuilder::ColorAttachment(std::string_view name, rhi::RenderPassOperation operation, const glm::vec4& clearColor)
 {
     return m_graph.AddAccess(m_node, name,
-        {.kind = FrameGraph::AccessKind::ColorAttachment, .state = rhi::kResourceStateRenderTarget, .operation = operation,
-            .clearColor = clearColor});
+        {.kind = FrameGraph::AccessKind::ColorAttachment, .state = rhi::kResourceStateRenderTarget, .operation = operation, .clearColor = clearColor});
 }
 
 FrameGraphResourceId FrameGraphBuilder::DepthAttachment(std::string_view name, rhi::RenderPassOperation operation, float clearDepth)
 {
     return m_graph.AddAccess(m_node, name,
-        {.kind = FrameGraph::AccessKind::DepthAttachment, .state = rhi::kResourceStateDepthWrite, .operation = operation,
-            .clearDepth = clearDepth});
+        {.kind = FrameGraph::AccessKind::DepthAttachment, .state = rhi::kResourceStateDepthWrite, .operation = operation, .clearDepth = clearDepth});
 }
 
 FrameGraphResourceId FrameGraphBuilder::Read(std::string_view name, rhi::ResourceStates state)
@@ -413,8 +410,7 @@ void FrameGraph::Compile()
     }
     MENGINE_LOG_INFO("FrameGraph: %zu passes scheduled, %u culled, %u disabled or skipped; %zu render passes; %zu textures "
                      "for %u transients (%ux%u)",
-        m_order.size(), culled, skipped, m_groups.size(), m_physicalTextures.size(), transients, m_extent.width,
-        m_extent.height);
+        m_order.size(), culled, skipped, m_groups.size(), m_physicalTextures.size(), transients, m_extent.width, m_extent.height);
 
     for (const uint32_t node : m_order)
     {
@@ -582,9 +578,8 @@ void FrameGraph::ResolveAvailability()
         changed = false;
         for (Resource& resource : m_resources)
         {
-            resource.available = resource.kind == ResourceKind::Transient
-                ? resource.owner != kNone && m_nodes[resource.owner].active
-                : resource.kind != ResourceKind::Unresolved && !resource.importDestroyed;
+            resource.available = resource.kind == ResourceKind::Transient ? resource.owner != kNone && m_nodes[resource.owner].active
+                                                                          : resource.kind != ResourceKind::Unresolved && !resource.importDestroyed;
         }
         for (Node& node : m_nodes)
         {
@@ -598,9 +593,8 @@ void FrameGraph::ResolveAvailability()
                 if (!resource.available && !access.optional)
                 {
                     node.active = false;
-                    node.status = resource.importDestroyed
-                        ? "skipped: '" + resource.name + "' is a destroyed import"
-                        : "skipped: needs '" + resource.name + "' of disabled pass '"
+                    node.status = resource.importDestroyed ? "skipped: '" + resource.name + "' is a destroyed import"
+                                                           : "skipped: needs '" + resource.name + "' of disabled pass '"
                             + (resource.owner != kNone ? m_nodes[resource.owner].name : std::string("?")) + "'";
                     changed = true;
                     break;
@@ -672,8 +666,8 @@ void FrameGraph::CullAndSchedule()
         for (const Access& access : node.accesses)
         {
             const bool attachment = access.kind == AccessKind::ColorAttachment || access.kind == AccessKind::DepthAttachment;
-            const bool reads = access.kind == AccessKind::Read || access.kind == AccessKind::ReadWrite
-                || (attachment && access.operation == RenderPassOperation::Load);
+            const bool reads =
+                access.kind == AccessKind::Read || access.kind == AccessKind::ReadWrite || (attachment && access.operation == RenderPassOperation::Load);
             if (reads && lastWriter[access.resource] != kNone)
             {
                 dependencies[index].push_back(lastWriter[access.resource]);
@@ -755,8 +749,7 @@ void FrameGraph::CullAndSchedule()
                 }
                 continue;
             }
-            if (access.resource == group.depth
-                || std::find(group.colors.begin(), group.colors.end(), access.resource) != group.colors.end())
+            if (access.resource == group.depth || std::find(group.colors.begin(), group.colors.end(), access.resource) != group.colors.end())
             {
                 return false;
             }
@@ -786,8 +779,7 @@ void FrameGraph::CullAndSchedule()
             continue;
         }
         attachmentsOf(node, colors, depth);
-        if (!m_schedule.empty() && m_schedule.back().group != kNone
-            && m_groups[m_schedule.back().group].nodes.size() < kMaxPassesPerGroup
+        if (!m_schedule.empty() && m_schedule.back().group != kNone && m_groups[m_schedule.back().group].nodes.size() < kMaxPassesPerGroup
             && canMerge(m_groups[m_schedule.back().group], node, colors, depth))
         {
             RenderPassGroup& group = m_groups[m_schedule.back().group];
@@ -868,8 +860,8 @@ void FrameGraph::CreateTextures()
             {
                 reusable = std::find_if(freeTextures.begin(), freeTextures.end(), [&](uint32_t candidate) {
                     const PhysicalTexture& texture = m_physicalTextures[candidate];
-                    return texture.format == resource.desc.format && texture.width == resource.width
-                        && texture.height == resource.height && texture.flags == resource.textureFlags;
+                    return texture.format == resource.desc.format && texture.width == resource.width && texture.height == resource.height
+                        && texture.flags == resource.textureFlags;
                 });
             }
             if (reusable != freeTextures.end())
@@ -942,8 +934,7 @@ void FrameGraph::BuildRenderPasses()
             {
                 if (!firstColor && access.operation != colorOperation)
                 {
-                    MENGINE_LOG_WARN("FrameGraph: render pass '%s' applies %s to every color attachment", group.name.c_str(),
-                        OperationName(colorOperation));
+                    MENGINE_LOG_WARN("FrameGraph: render pass '%s' applies %s to every color attachment", group.name.c_str(), OperationName(colorOperation));
                 }
                 colorOperation = firstColor ? access.operation : colorOperation;
                 firstColor = false;
@@ -1041,8 +1032,8 @@ void FrameGraph::BuildDebugInfo()
         for (const Access& access : node.accesses)
         {
             const bool attachment = access.kind == AccessKind::ColorAttachment || access.kind == AccessKind::DepthAttachment;
-            const bool reads = access.kind == AccessKind::Read || access.kind == AccessKind::ReadWrite
-                || (attachment && access.operation == RenderPassOperation::Load);
+            const bool reads =
+                access.kind == AccessKind::Read || access.kind == AccessKind::ReadWrite || (attachment && access.operation == RenderPassOperation::Load);
             if (!reads)
             {
                 continue;
@@ -1134,7 +1125,9 @@ void FrameGraph::BuildDebugInfo()
             if (group.output.depthFormat != VK_FORMAT_UNDEFINED)
             {
                 operations += std::string(", depth ") + OperationName(group.output.depthOperation)
-                    + (group.output.sampleDepth ? " / sampled" : group.output.storeDepth ? " / stored" : " / discarded");
+                    + (group.output.sampleDepth       ? " / sampled"
+                            : group.output.storeDepth ? " / stored"
+                                                      : " / discarded");
             }
         }
         info.renderPasses.push_back({.name = group.name, .operations = std::move(operations)});
@@ -1208,8 +1201,7 @@ namespace {
 class ProfileScope
 {
 public:
-    ProfileScope(rhi::CommandBuffer& commandBuffer, CpuProfiler& cpuProfiler, const char* name)
-        : m_commandBuffer(commandBuffer), m_cpuProfiler(cpuProfiler)
+    ProfileScope(rhi::CommandBuffer& commandBuffer, CpuProfiler& cpuProfiler, const char* name) : m_commandBuffer(commandBuffer), m_cpuProfiler(cpuProfiler)
     {
         m_cpuProfiler.Push(name);
         m_commandBuffer.PushTimestamp(name);

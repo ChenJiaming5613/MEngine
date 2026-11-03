@@ -107,8 +107,7 @@ struct DeviceCapabilities
         // What bindless textures need (Raptor chapter 2).
         bool Bindless() const
         {
-            return extension && runtimeDescriptorArray && partiallyBound && sampledImageUpdateAfterBind
-                && sampledImageArrayNonUniformIndexing;
+            return extension && runtimeDescriptorArray && partiallyBound && sampledImageUpdateAfterBind && sampledImageArrayNonUniformIndexing;
         }
     } descriptorIndexing;
     bool drawIndirectCount = false; // VK_KHR_draw_indirect_count or VK_AMD_draw_indirect_count
@@ -128,14 +127,20 @@ struct DeviceCapabilities
         uint32_t maxMeshOutputPrimitives = 0;
         uint32_t maxMeshWorkGroupInvocations = 0;
         uint32_t maxTaskWorkGroupInvocations = 0;
-        bool Available() const { return (extTask && extMesh) || nvExtension; }
+        bool Available() const
+        {
+            return (extTask && extMesh) || nvExtension;
+        }
     } meshShading;
     struct FragmentShadingRate
     {
         bool pipeline = false;
         bool primitive = false;
         bool attachment = false;
-        bool Available() const { return pipeline || primitive || attachment; }
+        bool Available() const
+        {
+            return pipeline || primitive || attachment;
+        }
     } fragmentShadingRate;
     bool accelerationStructure = false;
     bool rayTracingPipeline = false;
@@ -172,8 +177,8 @@ struct DeviceCapabilities
 };
 
 // `surface` may be VK_NULL_HANDLE; no family then reports present.
-DeviceCapabilities QueryDeviceCapabilities(VkInstance instance, VkPhysicalDevice physicalDevice, uint32_t instanceVersion,
-    uint32_t graphicsQueueFamily, VkSurfaceKHR surface);
+DeviceCapabilities QueryDeviceCapabilities(
+    VkInstance instance, VkPhysicalDevice physicalDevice, uint32_t instanceVersion, uint32_t graphicsQueueFamily, VkSurfaceKHR surface);
 
 // Enabled names that are not in `extensions` are ignored.
 void MarkEnabledExtensions(std::vector<ExtensionInfo>& extensions, const std::vector<const char*>& enabled);

@@ -59,7 +59,7 @@ enum ResourceState : uint32_t
 using ResourceStates = uint32_t;
 
 // A barrier between two equal states is only needed when they write (write-after-write).
-constexpr ResourceStates kResourceStateWriteMask = kResourceStateRenderTarget | kResourceStateUnorderedAccess
-    | kResourceStateDepthWrite | kResourceStateCopyDest | kResourceStateCommon;
+constexpr ResourceStates kResourceStateWriteMask =
+    kResourceStateRenderTarget | kResourceStateUnorderedAccess | kResourceStateDepthWrite | kResourceStateCopyDest | kResourceStateCommon;
 
 } // namespace mengine::rhi

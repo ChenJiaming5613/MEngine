@@ -39,14 +39,23 @@ public:
 
     void Setup(FrameGraphBuilder& builder) override;
     void Execute(FrameGraphContext& context) override;
-    bool IsActive() const override { return m_dirty; }
+    bool IsActive() const override
+    {
+        return m_dirty;
+    }
     void OnCompiled(const FrameGraphResources& resources) override;
     // PassInspectors.cpp.
     const char* Description() const override;
     bool DrawInspector(RenderSettings& settings) override;
 
-    rhi::TextureHandle Texture() const { return m_texture; }
-    rhi::SamplerHandle Sampler() const { return m_sampler; }
+    rhi::TextureHandle Texture() const
+    {
+        return m_texture;
+    }
+    rhi::SamplerHandle Sampler() const
+    {
+        return m_sampler;
+    }
 
 private:
     static constexpr uint32_t kKeyMask = kPipelineKeyAlphaMask | kPipelineKeyDoubleSided | kPipelineKeyMirrored;

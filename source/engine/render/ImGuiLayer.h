@@ -23,7 +23,10 @@ public:
     void Init(rhi::GfxDevice& device, Window& window);
     void Shutdown();
 
-    bool IsReady() const { return m_initialized; }
+    bool IsReady() const
+    {
+        return m_initialized;
+    }
     void ProcessEvent(const SDL_Event& event);
 
     void NewFrame();
@@ -46,12 +49,21 @@ class ImGuiPass final : public FrameGraphPass
 {
 public:
     // Null skips the pass, e.g. for applications without UI.
-    void SetLayer(ImGuiLayer* layer) { m_layer = layer; }
+    void SetLayer(ImGuiLayer* layer)
+    {
+        m_layer = layer;
+    }
 
     void Setup(FrameGraphBuilder& builder) override;
     void Execute(FrameGraphContext& context) override;
-    bool IsActive() const override { return m_layer != nullptr && m_layer->IsReady(); }
-    const char* Description() const override { return "Draws the Dear ImGui user interface over the backbuffer."; }
+    bool IsActive() const override
+    {
+        return m_layer != nullptr && m_layer->IsReady();
+    }
+    const char* Description() const override
+    {
+        return "Draws the Dear ImGui user interface over the backbuffer.";
+    }
 
 private:
     ImGuiLayer* m_layer = nullptr;

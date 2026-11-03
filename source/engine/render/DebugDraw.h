@@ -47,10 +47,22 @@ public:
     // Forgets this frame's lines (after the frame is recorded).
     void Clear();
 
-    uint32_t VertexCount() const { return m_uploadedVertices; }
-    uint32_t LineCount() const { return static_cast<uint32_t>(m_vertices.size() / 2); }
-    rhi::BufferHandle Buffer() const { return m_buffer; }
-    VkDeviceSize BufferOffset() const { return m_uploadedOffset; }
+    uint32_t VertexCount() const
+    {
+        return m_uploadedVertices;
+    }
+    uint32_t LineCount() const
+    {
+        return static_cast<uint32_t>(m_vertices.size() / 2);
+    }
+    rhi::BufferHandle Buffer() const
+    {
+        return m_buffer;
+    }
+    VkDeviceSize BufferOffset() const
+    {
+        return m_uploadedOffset;
+    }
 
     static uint32_t PackColor(const glm::vec4& color);
 

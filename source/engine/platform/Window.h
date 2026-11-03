@@ -24,7 +24,10 @@ public:
     bool Create(const WindowCreateInfo& createInfo);
     void Destroy();
 
-    SDL_Window* NativeHandle() const { return m_window; }
+    SDL_Window* NativeHandle() const
+    {
+        return m_window;
+    }
 
     void GetPixelSize(uint32_t& width, uint32_t& height) const;
     void GetSize(int& width, int& height) const;

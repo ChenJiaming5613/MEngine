@@ -37,19 +37,32 @@ const char* FormatName(VkFormat format)
 {
     switch (format)
     {
-    case VK_FORMAT_UNDEFINED: return "-";
-    case VK_FORMAT_R16G16B16A16_SFLOAT: return "RGBA16F";
-    case VK_FORMAT_R8G8B8A8_UNORM: return "RGBA8";
-    case VK_FORMAT_R8G8B8A8_SRGB: return "RGBA8 sRGB";
-    case VK_FORMAT_B8G8R8A8_UNORM: return "BGRA8";
-    case VK_FORMAT_B8G8R8A8_SRGB: return "BGRA8 sRGB";
-    case VK_FORMAT_A2B10G10R10_UNORM_PACK32: return "A2BGR10";
-    case VK_FORMAT_D16_UNORM: return "D16";
-    case VK_FORMAT_D32_SFLOAT: return "D32F";
-    case VK_FORMAT_D24_UNORM_S8_UINT: return "D24S8";
-    case VK_FORMAT_D32_SFLOAT_S8_UINT: return "D32FS8";
-    case VK_FORMAT_X8_D24_UNORM_PACK32: return "X8D24";
-    default: return "other";
+    case VK_FORMAT_UNDEFINED:
+        return "-";
+    case VK_FORMAT_R16G16B16A16_SFLOAT:
+        return "RGBA16F";
+    case VK_FORMAT_R8G8B8A8_UNORM:
+        return "RGBA8";
+    case VK_FORMAT_R8G8B8A8_SRGB:
+        return "RGBA8 sRGB";
+    case VK_FORMAT_B8G8R8A8_UNORM:
+        return "BGRA8";
+    case VK_FORMAT_B8G8R8A8_SRGB:
+        return "BGRA8 sRGB";
+    case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+        return "A2BGR10";
+    case VK_FORMAT_D16_UNORM:
+        return "D16";
+    case VK_FORMAT_D32_SFLOAT:
+        return "D32F";
+    case VK_FORMAT_D24_UNORM_S8_UINT:
+        return "D24S8";
+    case VK_FORMAT_D32_SFLOAT_S8_UINT:
+        return "D32FS8";
+    case VK_FORMAT_X8_D24_UNORM_PACK32:
+        return "X8D24";
+    default:
+        return "other";
     }
 }
 
@@ -205,8 +218,7 @@ void ViewerApplication::LoadSceneAt(size_t index)
 
 void ViewerApplication::ResetCameraAndLights()
 {
-    const SceneConfig* sceneConfig =
-        m_config && m_currentScene < m_config->scenes.size() ? &m_config->scenes[m_currentScene] : nullptr;
+    const SceneConfig* sceneConfig = m_config && m_currentScene < m_config->scenes.size() ? &m_config->scenes[m_currentScene] : nullptr;
     const render::Scene& scene = m_renderer.GetScene();
     camera::CameraScene cameraScene;
     cameraScene.hasBounds = scene.HasBounds();
@@ -323,8 +335,8 @@ void ViewerApplication::BuildPanel()
     {
         ImGui::Text("Scene: %s", scene.path.empty() ? "<none>" : scene.path.c_str());
     }
-    ImGui::Text("Draws: %zu (%u visible)  Materials: %zu  Textures: %zu", scene.draws.size(),
-        m_renderer.GetCullingStats().visible, scene.materials.size(), scene.textures.size());
+    ImGui::Text("Draws: %zu (%u visible)  Materials: %zu  Textures: %zu", scene.draws.size(), m_renderer.GetCullingStats().visible, scene.materials.size(),
+        scene.textures.size());
     ImGui::Text("Environment: %s", environment.isFallback ? "<uniform fallback>" : environment.directory.c_str());
 
     if (ImGui::CollapsingHeader("Device"))
@@ -349,8 +361,8 @@ void ViewerApplication::BuildPanel()
         ImGui::Text("Present Mode: %s", rhi::PresentModeName(m_device.GetPresentMode()));
         ImGui::Text("FPS: %.1f (%.2f ms)", m_displayedFramesPerSecond, m_displayedFrameMilliseconds);
         const rhi::PipelineStats& pipelineStats = m_device.GetPipelineStats();
-        ImGui::Text("Pipelines: %u created, %.1f ms (cache loaded %zu KB)", pipelineStats.created,
-            pipelineStats.totalMilliseconds, pipelineStats.loadedCacheBytes / 1024);
+        ImGui::Text("Pipelines: %u created, %.1f ms (cache loaded %zu KB)", pipelineStats.created, pipelineStats.totalMilliseconds,
+            pipelineStats.loadedCacheBytes / 1024);
         bool showProfiler = m_profilerPanel.IsOpen();
         if (ImGui::Checkbox("Show Profiler", &showProfiler))
         {
@@ -390,8 +402,7 @@ void ViewerApplication::BuildPanel()
         ImGui::SeparatorText("Point Light");
         ImGui::DragFloat3("Position", &m_settings.light.position.x, 0.05f);
         ImGui::ColorEdit3("Color", &m_settings.light.color.x);
-        ImGui::DragFloat("Intensity", &m_settings.light.intensity, 0.5f, 0.0f, 100000.0f, "%.1f",
-            ImGuiSliderFlags_Logarithmic);
+        ImGui::DragFloat("Intensity", &m_settings.light.intensity, 0.5f, 0.0f, 100000.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
         ImGui::DragFloat("Radius", &m_settings.light.radius, 0.1f, 0.01f, 10000.0f, "%.2f");
         if (ImGui::Button("Move Light To Camera"))
         {
@@ -485,13 +496,12 @@ void ViewerApplication::DrawSceneLoadOverlay()
     const render::SceneLoadProgress progress = m_renderer.GetSceneLoadProgress();
     const ImGuiIO& io = ImGui::GetIO();
     const float fontSize = ImGui::GetFontSize();
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - fontSize * 2.0f), ImGuiCond_Always,
-        ImVec2(0.5f, 1.0f));
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - fontSize * 2.0f), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
     // Height 0: fit the content.
     ImGui::SetNextWindowSize(ImVec2(std::min(io.DisplaySize.x * 0.6f, fontSize * 32.0f), 0.0f));
     ImGui::SetNextWindowBgAlpha(0.85f);
-    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs
-        | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings
+        | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
     if (ImGui::Begin("##SceneLoad", nullptr, kFlags))
     {
         ImGui::Text("Loading %s", CurrentSceneName());
@@ -517,10 +527,8 @@ void ViewerApplication::DrawSceneLoadOverlay()
         }
         else
         {
-            ImGui::Text("Geometry %.0f / %.0f MB   Textures %zu / %zu   %.1f s",
-                static_cast<double>(progress.geometryBytesUploaded) / kMegabyte,
-                static_cast<double>(progress.geometryBytes) / kMegabyte, progress.texturesUploaded, progress.textureCount,
-                progress.elapsedSeconds);
+            ImGui::Text("Geometry %.0f / %.0f MB   Textures %zu / %zu   %.1f s", static_cast<double>(progress.geometryBytesUploaded) / kMegabyte,
+                static_cast<double>(progress.geometryBytes) / kMegabyte, progress.texturesUploaded, progress.textureCount, progress.elapsedSeconds);
         }
         ImGui::PopStyleColor();
     }
@@ -532,8 +540,7 @@ void ViewerApplication::BuildFrameGraphPanel()
 {
     render::FrameGraph& graph = m_renderer.GetFrameGraph();
     const render::FrameGraphDebugInfo& info = graph.GetDebugInfo();
-    ImGui::Text("Compiles: %u  Render passes: %zu  Textures: %u", info.compileCount, info.renderPasses.size(),
-        info.physicalTextures);
+    ImGui::Text("Compiles: %u  Render passes: %zu  Textures: %u", info.compileCount, info.renderPasses.size(), info.physicalTextures);
     bool aliasing = graph.IsAliasingEnabled();
     if (ImGui::Checkbox("Texture Aliasing", &aliasing))
     {
@@ -645,7 +652,10 @@ void ViewerApplication::BuildFrameGraphPanel()
     }
 }
 
-camera::CameraController& ViewerApplication::ActiveCameraController() { return *m_cameraControllers[m_cameraMode]; }
+camera::CameraController& ViewerApplication::ActiveCameraController()
+{
+    return *m_cameraControllers[m_cameraMode];
+}
 
 void ViewerApplication::SetCameraMode(size_t mode)
 {

@@ -22,8 +22,14 @@ public:
     float mouseDegreesPerPixel = 0.15f;
     float touchDegreesPerPixel = 0.25f;
 
-    const char* Name() const override { return "Fly"; }
-    const char* Help() const override { return "RMB + WASD/QE; touch: left half joystick, right half look"; }
+    const char* Name() const override
+    {
+        return "Fly";
+    }
+    const char* Help() const override
+    {
+        return "RMB + WASD/QE; touch: left half joystick, right half look";
+    }
 
     void SetScene(const CameraScene& scene) override;
     // The configured pose, otherwise the bounding sphere framed from +Z looking down -Z.

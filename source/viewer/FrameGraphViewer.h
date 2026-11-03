@@ -42,19 +42,24 @@ public:
     // `lockedPass` names a pass that cannot be disabled (the one drawing the UI).
     void Draw(render::FrameGraph& graph, render::RenderSettings& settings, std::string_view lockedPass, const Input& input);
 
-    bool IsOpen() const { return m_open; }
-    void SetOpen(bool open) { m_open = open; }
+    bool IsOpen() const
+    {
+        return m_open;
+    }
+    void SetOpen(bool open)
+    {
+        m_open = open;
+    }
     // In window pixels, against the window drawn this frame.
     bool Contains(float x, float y) const;
 
 private:
     void DrawToolbar(const render::FrameGraphDebugInfo& info);
-    void DrawCanvas(render::FrameGraph& graph, const render::FrameGraphDebugInfo& info, std::string_view lockedPass,
-        const Input& input, float width, float height);
+    void DrawCanvas(
+        render::FrameGraph& graph, const render::FrameGraphDebugInfo& info, std::string_view lockedPass, const Input& input, float width, float height);
     void DrawContextMenu(render::FrameGraph& graph, const render::FrameGraphDebugInfo& info, std::string_view lockedPass);
     void DrawTooltips(const render::FrameGraphDebugInfo& info);
-    void DrawInspector(render::FrameGraph& graph, const render::FrameGraphDebugInfo& info,
-        render::RenderSettings& settings, std::string_view lockedPass);
+    void DrawInspector(render::FrameGraph& graph, const render::FrameGraphDebugInfo& info, render::RenderSettings& settings, std::string_view lockedPass);
     void ApplyAutoLayout(const render::FrameGraphDebugInfo& info);
     void SyncSelection(const render::FrameGraphDebugInfo& info);
     bool CanvasContains(const glm::vec2& point) const;

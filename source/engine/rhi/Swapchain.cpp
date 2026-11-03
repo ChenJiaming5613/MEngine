@@ -166,8 +166,7 @@ bool Swapchain::Create(VkRenderPass renderPass, bool vsync)
     }
 
     VkSurfaceCapabilitiesKHR capabilities{};
-    CheckVk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_context.physicalDevice, m_surface, &capabilities),
-        "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+    CheckVk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_context.physicalDevice, m_surface, &capabilities), "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
 
     const VkExtent2D extent = ChooseExtent(capabilities);
     if (extent.width == 0 || extent.height == 0)
@@ -182,9 +181,8 @@ bool Swapchain::Create(VkRenderPass renderPass, bool vsync)
     }
 
     // Identity lets the compositor handle device rotation, so the renderer never has to pre-rotate.
-    const VkSurfaceTransformFlagBitsKHR preTransform = (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) != 0
-        ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
-        : capabilities.currentTransform;
+    const VkSurfaceTransformFlagBitsKHR preTransform =
+        (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) != 0 ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : capabilities.currentTransform;
 
     const VkPresentModeKHR presentMode = ChoosePresentMode(vsync);
 

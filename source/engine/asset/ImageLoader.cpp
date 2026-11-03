@@ -58,8 +58,7 @@ std::optional<Image8> DecodeImageRgba8(std::span<const uint8_t> encoded, std::st
     int height = 0;
     int sourceChannels = 0;
     std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
-        stbi_load_from_memory(encoded.data(), static_cast<int>(encoded.size()), &width, &height, &sourceChannels, STBI_rgb_alpha),
-        &stbi_image_free);
+        stbi_load_from_memory(encoded.data(), static_cast<int>(encoded.size()), &width, &height, &sourceChannels, STBI_rgb_alpha), &stbi_image_free);
     if (pixels == nullptr)
     {
         if (error != nullptr)
@@ -87,8 +86,7 @@ std::optional<ImageFloat> DecodeImageHdr(std::span<const uint8_t> encoded, std::
     int height = 0;
     int sourceChannels = 0;
     std::unique_ptr<float, decltype(&stbi_image_free)> pixels(
-        stbi_loadf_from_memory(encoded.data(), static_cast<int>(encoded.size()), &width, &height, &sourceChannels, STBI_rgb_alpha),
-        &stbi_image_free);
+        stbi_loadf_from_memory(encoded.data(), static_cast<int>(encoded.size()), &width, &height, &sourceChannels, STBI_rgb_alpha), &stbi_image_free);
     if (pixels == nullptr)
     {
         if (error != nullptr)

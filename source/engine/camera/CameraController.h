@@ -65,20 +65,30 @@ public:
     virtual const char* Help() const = 0;
 
     // Remembers the scene; does not touch the camera.
-    virtual void SetScene(const CameraScene& scene) { m_scene = scene; }
+    virtual void SetScene(const CameraScene& scene)
+    {
+        m_scene = scene;
+    }
     // Moves the camera to this mode's home view of the scene.
     virtual void ResetView(camera::Camera& camera) = 0;
 
     // The camera keeps its pose; the controller adopts it.
     virtual void Activate(camera::Camera& camera) = 0;
-    virtual void Deactivate(Window& window) { static_cast<void>(window); }
+    virtual void Deactivate(Window& window)
+    {
+        static_cast<void>(window);
+    }
 
     virtual void Update(camera::Camera& camera, const CameraInput& input, float deltaSeconds) = 0;
 
     // Inside the application's ImGui panel.
-    virtual void DrawSettings() {}
+    virtual void DrawSettings()
+    {
+    }
     // Between ImGui::NewFrame and EndFrame, outside any window: on-screen widgets (background draw list).
-    virtual void DrawOverlay() const {}
+    virtual void DrawOverlay() const
+    {
+    }
 
 protected:
     // Far plane that keeps the whole scene visible from the camera: twice the distance to the farthest bounding sphere

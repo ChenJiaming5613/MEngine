@@ -16,8 +16,14 @@ class DeviceCapabilitiesPanel
 public:
     void Draw(const rhi::GfxDevice& device);
 
-    bool IsOpen() const { return m_open; }
-    void SetOpen(bool open) { m_open = open; }
+    bool IsOpen() const
+    {
+        return m_open;
+    }
+    void SetOpen(bool open)
+    {
+        m_open = open;
+    }
     // (x, y) in window points, against the window drawn last frame.
     bool Contains(float x, float y) const;
 

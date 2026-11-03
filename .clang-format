@@ -1,0 +1,95 @@
+---
+# MEngine C++ style, reverse engineered from the existing sources.
+# Used by clangd / clang-format (Editor: Format On Save).
+#   clang-format -i -style=file <files>
+#   clang-format --dry-run --Werror -style=file <files>   # check only
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+# 4 spaces, no tabs, wrap at 160 columns.
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+ColumnLimit: 160
+
+# Allman braces for functions, types and control statements; namespace braces
+# stay on the namespace line (namespace mengine::render {). Lambdas keep the
+# brace on the capture line, else/catch/while go on their own line.
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterEnum: true
+  AfterFunction: true
+  AfterControlStatement: Always
+  AfterNamespace: false
+  AfterExternBlock: false
+  AfterCaseLabel: true
+  AfterObjCDeclaration: false
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: false
+  BeforeWhile: true
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: false
+
+# Members are indented, access specifiers are not; namespace bodies are not indented.
+AccessModifierOffset: -4
+IndentAccessModifiers: false
+NamespaceIndentation: None
+IndentCaseLabels: false
+
+# Never merge a function body onto the signature line. Every function keeps the
+# Allman layout, so an already multi-line body (free or in-class) is never
+# collapsed. Existing one-line accessors are expanded to multi-line as well.
+AllowShortFunctionsOnASingleLine: None
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AllowShortEnumsOnASingleLine: false
+
+# Braced lists are tight: {1, 2, 3}, T{.index = index}, x{0.0f}.
+Cpp11BracedListStyle: true
+SpaceBeforeCpp11BracedList: false
+
+# Wrapped arguments/parameters are block-indented by 4 instead of aligned after
+# '(', and continued expressions are indented by 4 too.
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeTernaryOperators: true
+BreakTemplateDeclarations: Yes
+BinPackArguments: true
+BinPackParameters: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# int* p, const T& value
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+SpacesBeforeTrailingComments: 1
+
+# Comments keep their existing line breaks (never rewrapped); namespace closing
+# braces still get the "// namespace x" comment.
+ReflowComments: false
+FixNamespaceComments: true
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# Includes are grouped by hand (own header, project, third-party, std); leave
+# the existing order alone instead of resorting it.
+SortIncludes: Never
+IncludeBlocks: Preserve
+...

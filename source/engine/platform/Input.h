@@ -30,7 +30,10 @@ public:
     // Returns true when (x, y) lies on UI; presses that start there are ignored.
     using UiHitTest = std::function<bool(float x, float y)>;
 
-    void SetUiHitTest(UiHitTest hitTest) { m_uiHitTest = std::move(hitTest); }
+    void SetUiHitTest(UiHitTest hitTest)
+    {
+        m_uiHitTest = std::move(hitTest);
+    }
 
     // Clears per-frame deltas; call once per frame after the deltas have been consumed.
     void EndFrame();
@@ -41,14 +44,26 @@ public:
 
     // True while the button is held, unless the press started over UI.
     bool IsMouseButtonHeld(uint8_t button) const;
-    glm::vec2 MouseDelta() const { return m_mouseDelta; }
+    glm::vec2 MouseDelta() const
+    {
+        return m_mouseDelta;
+    }
     // Wheel notches this frame, positive away from the user; wheel input over UI is dropped.
-    float WheelDelta() const { return m_wheelDelta; }
+    float WheelDelta() const
+    {
+        return m_wheelDelta;
+    }
 
-    const std::vector<Touch>& Touches() const { return m_touches; }
+    const std::vector<Touch>& Touches() const
+    {
+        return m_touches;
+    }
 
 private:
-    bool HitsUi(float x, float y) const { return m_uiHitTest && m_uiHitTest(x, y); }
+    bool HitsUi(float x, float y) const
+    {
+        return m_uiHitTest && m_uiHitTest(x, y);
+    }
 
     UiHitTest m_uiHitTest;
     std::array<bool, 8> m_mouseHeld{};

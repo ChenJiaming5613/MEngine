@@ -86,8 +86,14 @@ struct Scene
     glm::vec3 boundsMin{std::numeric_limits<float>::max()};
     glm::vec3 boundsMax{std::numeric_limits<float>::lowest()};
 
-    bool IsEmpty() const { return draws.empty(); }
-    bool HasBounds() const { return boundsMin.x <= boundsMax.x; }
+    bool IsEmpty() const
+    {
+        return draws.empty();
+    }
+    bool HasBounds() const
+    {
+        return boundsMin.x <= boundsMax.x;
+    }
 
     // Releases every GPU resource (deferred by the device) and leaves an empty scene.
     void Destroy(rhi::GfxDevice& device);

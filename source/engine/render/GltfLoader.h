@@ -57,8 +57,7 @@ class GltfSceneUploader
 {
 public:
     // materialLayout is the forward pass's set 1 layout; `scene` must be empty.
-    GltfSceneUploader(rhi::GfxDevice& device, const GltfSceneData& data, rhi::DescriptorSetLayoutHandle materialLayout,
-        Scene& scene);
+    GltfSceneUploader(rhi::GfxDevice& device, const GltfSceneData& data, rhi::DescriptorSetLayoutHandle materialLayout, Scene& scene);
 
     // Uploads the next buffers, at least one, stopping before the one that would take this call over byteBudget.
     // Returns true when every buffer has been uploaded.
@@ -69,8 +68,14 @@ public:
     // logs the load statistics.
     void Finish();
 
-    VkDeviceSize UploadedBufferBytes() const { return m_uploadedBufferBytes; }
-    VkDeviceSize TotalBufferBytes() const { return m_totalBufferBytes; }
+    VkDeviceSize UploadedBufferBytes() const
+    {
+        return m_uploadedBufferBytes;
+    }
+    VkDeviceSize TotalBufferBytes() const
+    {
+        return m_totalBufferBytes;
+    }
 
 private:
     void CreateMaterial(size_t materialIndex, const std::vector<rhi::SamplerHandle>& samplers);

@@ -12,8 +12,7 @@
 
 namespace mengine::render {
 
-void ShadowPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout,
-    rhi::DescriptorSetLayoutHandle materialLayout)
+void ShadowPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout)
 {
     m_device = &device;
     m_frameLayout = frameLayout;
@@ -85,8 +84,7 @@ rhi::PipelineHandle ShadowPass::GetOrCreatePipeline(uint32_t key)
         .AddAttribute({.location = 0, .binding = kVertexStreamPosition, .format = VK_FORMAT_R32G32B32_SFLOAT});
     if (alphaMask)
     {
-        createInfo.shaders
-            .AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexMaskCode.data(), m_vertexMaskCode.size() * sizeof(uint32_t))
+        createInfo.shaders.AddStage(VK_SHADER_STAGE_VERTEX_BIT, m_vertexMaskCode.data(), m_vertexMaskCode.size() * sizeof(uint32_t))
             .AddStage(VK_SHADER_STAGE_FRAGMENT_BIT, m_fragmentMaskCode.data(), m_fragmentMaskCode.size() * sizeof(uint32_t));
         createInfo.vertexInput.AddStream({.binding = kVertexStreamTexCoord, .stride = 2 * sizeof(float)})
             .AddAttribute({.location = 2, .binding = kVertexStreamTexCoord, .format = VK_FORMAT_R32G32_SFLOAT});
@@ -99,8 +97,7 @@ rhi::PipelineHandle ShadowPass::GetOrCreatePipeline(uint32_t key)
 
     // lightViewProjection flips Y like the camera, so the forward pass's winding rules apply unchanged.
     createInfo.rasterization.cullMode = (key & kPipelineKeyDoubleSided) != 0 ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
-    createInfo.rasterization.frontFace =
-        (key & kPipelineKeyMirrored) != 0 ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    createInfo.rasterization.frontFace = (key & kPipelineKeyMirrored) != 0 ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
     createInfo.rasterization.depthBiasEnable = true;
     createInfo.rasterization.depthBiasConstantFactor = 1.25f;
     createInfo.rasterization.depthBiasSlopeFactor = 1.75f;
@@ -186,12 +183,12 @@ void ShadowPass::Execute(FrameGraphContext& context)
             }
 
             const ScenePrimitive& primitive = scene.primitives[draw.primitive];
-            commandBuffer.BindVertexBuffer(scene.buffers[primitive.vertexBuffers[kVertexStreamPosition]], kVertexStreamPosition,
-                primitive.vertexOffsets[kVertexStreamPosition]);
+            commandBuffer.BindVertexBuffer(
+                scene.buffers[primitive.vertexBuffers[kVertexStreamPosition]], kVertexStreamPosition, primitive.vertexOffsets[kVertexStreamPosition]);
             if (alphaMask)
             {
-                commandBuffer.BindVertexBuffer(scene.buffers[primitive.vertexBuffers[kVertexStreamTexCoord]],
-                    kVertexStreamTexCoord, primitive.vertexOffsets[kVertexStreamTexCoord]);
+                commandBuffer.BindVertexBuffer(
+                    scene.buffers[primitive.vertexBuffers[kVertexStreamTexCoord]], kVertexStreamTexCoord, primitive.vertexOffsets[kVertexStreamTexCoord]);
             }
             commandBuffer.BindIndexBuffer(scene.buffers[primitive.indexBuffer], primitive.indexOffset, primitive.indexType);
             commandBuffer.PushConstants(&draw.constants, sizeof(DrawConstants));

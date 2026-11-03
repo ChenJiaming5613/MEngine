@@ -14,7 +14,10 @@ struct Handle
     uint32_t index = kInvalidIndex;
     uint32_t generation = 0;
 
-    bool IsValid() const { return index != kInvalidIndex; }
+    bool IsValid() const
+    {
+        return index != kInvalidIndex;
+    }
 
     friend bool operator==(const Handle&, const Handle&) = default;
 };

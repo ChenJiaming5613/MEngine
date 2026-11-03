@@ -77,7 +77,10 @@ public:
     // Main thread, outside BeginFrame / EndFrame. Call every frame, loading or not, to free cancelled tasks.
     SceneLoadStatus Update(VkDeviceSize uploadBudget);
 
-    bool IsLoading() const { return m_scene != nullptr; }
+    bool IsLoading() const
+    {
+        return m_scene != nullptr;
+    }
     SceneLoadProgress GetProgress() const;
 
 private:

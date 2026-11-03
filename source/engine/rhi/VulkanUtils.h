@@ -36,8 +36,13 @@ namespace mengine::rhi {
 class VulkanError : public std::runtime_error
 {
 public:
-    VulkanError(VkResult result, const std::string& message) : std::runtime_error(message), m_result(result) {}
-    VkResult Result() const { return m_result; }
+    VulkanError(VkResult result, const std::string& message) : std::runtime_error(message), m_result(result)
+    {
+    }
+    VkResult Result() const
+    {
+        return m_result;
+    }
     // Out of memory is survivable by dropping the resource; anything else (device lost, ...) leaves the device unusable.
     bool IsRecoverable() const;
 

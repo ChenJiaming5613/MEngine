@@ -17,24 +17,36 @@ namespace mengine::render {
 // Loading yields to frame work: a thread waiting for high priority tasks (parallel recording) never picks these up.
 struct SceneLoader::ParseTask : enki::ITaskSet
 {
-    ParseTask() { m_Priority = enki::TASK_PRIORITY_LOW; }
+    ParseTask()
+    {
+        m_Priority = enki::TASK_PRIORITY_LOW;
+    }
 
     std::string path;
     GltfParseOptions options;
     std::unique_ptr<GltfSceneData> result;
 
-    void ExecuteRange(enki::TaskSetPartition, uint32_t) override { result = ParseGltfScene(path, options); }
+    void ExecuteRange(enki::TaskSetPartition, uint32_t) override
+    {
+        result = ParseGltfScene(path, options);
+    }
 };
 
 struct SceneLoader::DecodeTask : enki::ITaskSet
 {
-    DecodeTask() { m_Priority = enki::TASK_PRIORITY_LOW; }
+    DecodeTask()
+    {
+        m_Priority = enki::TASK_PRIORITY_LOW;
+    }
 
     const GltfSceneData* data = nullptr;
     size_t requestIndex = 0;
     PreparedTexture result;
 
-    void ExecuteRange(enki::TaskSetPartition, uint32_t) override { result = PrepareGltfTexture(*data, requestIndex); }
+    void ExecuteRange(enki::TaskSetPartition, uint32_t) override
+    {
+        result = PrepareGltfTexture(*data, requestIndex);
+    }
 };
 
 struct SceneLoader::OrphanedTasks
@@ -45,8 +57,7 @@ struct SceneLoader::OrphanedTasks
 
     bool IsComplete() const
     {
-        return (!parse || parse->GetIsComplete())
-            && std::all_of(decoding.begin(), decoding.end(), [](const auto& task) { return task->GetIsComplete(); });
+        return (!parse || parse->GetIsComplete()) && std::all_of(decoding.begin(), decoding.end(), [](const auto& task) { return task->GetIsComplete(); });
     }
 };
 
@@ -229,8 +240,8 @@ SceneLoadStatus SceneLoader::Update(VkDeviceSize uploadBudget)
         }
         batch.End();
         ++m_updateCount;
-        m_longestUpdateMilliseconds = std::max(m_longestUpdateMilliseconds,
-            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - updateStart).count());
+        m_longestUpdateMilliseconds =
+            std::max(m_longestUpdateMilliseconds, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - updateStart).count());
         if (!done)
         {
             return SceneLoadStatus::Loading;

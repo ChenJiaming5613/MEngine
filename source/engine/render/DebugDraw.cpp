@@ -69,8 +69,7 @@ void DebugDraw::Aabb(const glm::vec3& min, const glm::vec3& max, const glm::vec4
     std::array<glm::vec3, 8> corners;
     for (uint32_t corner = 0; corner < 8; ++corner)
     {
-        corners[corner] = glm::vec3((corner & 1) != 0 ? max.x : min.x, (corner & 2) != 0 ? max.y : min.y,
-            (corner & 4) != 0 ? max.z : min.z);
+        corners[corner] = glm::vec3((corner & 1) != 0 ? max.x : min.x, (corner & 2) != 0 ? max.y : min.y, (corner & 4) != 0 ? max.z : min.z);
     }
     // Corners differing in exactly one bit share an edge.
     for (uint32_t corner = 0; corner < 8; ++corner)
@@ -108,8 +107,7 @@ void DebugDraw::Frustum(const glm::mat4& viewProjection, const glm::vec4& color)
     std::array<glm::vec3, 8> corners;
     for (uint32_t corner = 0; corner < 8; ++corner)
     {
-        const glm::vec4 clip((corner & 1) != 0 ? 1.0f : -1.0f, (corner & 2) != 0 ? 1.0f : -1.0f,
-            (corner & 4) != 0 ? 1.0f : 0.0f, 1.0f);
+        const glm::vec4 clip((corner & 1) != 0 ? 1.0f : -1.0f, (corner & 2) != 0 ? 1.0f : -1.0f, (corner & 4) != 0 ? 1.0f : 0.0f, 1.0f);
         const glm::vec4 world = inverse * clip;
         corners[corner] = glm::vec3(world) / world.w;
     }

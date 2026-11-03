@@ -52,26 +52,22 @@ DescriptorBinding* DescriptorSetLayoutCreateInfo::FindBinding(uint32_t index)
     return nullptr;
 }
 
-DescriptorSetCreateInfo& DescriptorSetCreateInfo::AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range,
-    uint32_t arrayElement)
+DescriptorSetCreateInfo& DescriptorSetCreateInfo::AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range, uint32_t arrayElement)
 {
     MENGINE_ASSERT(resourceCount < kMaxDescriptorsPerSet);
     if (resourceCount < kMaxDescriptorsPerSet)
     {
-        resources[resourceCount++] =
-            DescriptorResource{.binding = binding, .arrayElement = arrayElement, .buffer = buffer, .bufferRange = range};
+        resources[resourceCount++] = DescriptorResource{.binding = binding, .arrayElement = arrayElement, .buffer = buffer, .bufferRange = range};
     }
     return *this;
 }
 
-DescriptorSetCreateInfo& DescriptorSetCreateInfo::AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler,
-    uint32_t arrayElement)
+DescriptorSetCreateInfo& DescriptorSetCreateInfo::AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler, uint32_t arrayElement)
 {
     MENGINE_ASSERT(resourceCount < kMaxDescriptorsPerSet);
     if (resourceCount < kMaxDescriptorsPerSet)
     {
-        resources[resourceCount++] =
-            DescriptorResource{.binding = binding, .arrayElement = arrayElement, .texture = texture, .sampler = sampler};
+        resources[resourceCount++] = DescriptorResource{.binding = binding, .arrayElement = arrayElement, .texture = texture, .sampler = sampler};
     }
     return *this;
 }

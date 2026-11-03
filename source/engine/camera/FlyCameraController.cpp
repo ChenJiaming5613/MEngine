@@ -33,7 +33,7 @@ namespace {
 constexpr float kStickRadiusFraction = 0.15f; // of the shorter window side
 constexpr float kMinStickRadius = 40.0f;      // points
 constexpr float kMaxStickRadius = 120.0f;
-constexpr float kStickDeadZone = 0.08f;       // fraction of the radius
+constexpr float kStickDeadZone = 0.08f; // fraction of the radius
 
 const Input::Touch* FindTouch(const Input& input, SDL_FingerID id)
 {
@@ -107,8 +107,7 @@ glm::vec2 FlyCameraController::UpdateTouches(camera::Camera& camera, const Input
     int width = 0;
     int height = 0;
     window.GetSize(width, height);
-    const float radius =
-        std::clamp(kStickRadiusFraction * static_cast<float>(std::min(width, height)), kMinStickRadius, kMaxStickRadius);
+    const float radius = std::clamp(kStickRadiusFraction * static_cast<float>(std::min(width, height)), kMinStickRadius, kMaxStickRadius);
     m_joystick.radius = radius;
 
     if (m_stickFinger && FindTouch(input, *m_stickFinger) == nullptr)
@@ -261,8 +260,7 @@ void FlyCameraController::DrawOverlay() const
     }
     drawList->AddCircleFilled(center, m_joystick.radius, IM_COL32(0, 0, 0, 50), 48);
     drawList->AddCircle(center, m_joystick.radius, IM_COL32(255, 255, 255, 150), 48, thickness);
-    drawList->AddCircleFilled(ImVec2(m_joystick.knob.x, m_joystick.knob.y), m_joystick.radius * 0.35f,
-        IM_COL32(255, 255, 255, 140), 32);
+    drawList->AddCircleFilled(ImVec2(m_joystick.knob.x, m_joystick.knob.y), m_joystick.radius * 0.35f, IM_COL32(255, 255, 255, 140), 32);
 }
 
 } // namespace mengine::camera

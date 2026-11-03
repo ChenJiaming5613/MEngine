@@ -12,8 +12,7 @@
 
 namespace mengine::render {
 
-void ForwardPbrPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout,
-    rhi::DescriptorSetLayoutHandle materialLayout)
+void ForwardPbrPass::Init(rhi::GfxDevice& device, rhi::DescriptorSetLayoutHandle frameLayout, rhi::DescriptorSetLayoutHandle materialLayout)
 {
     m_device = &device;
     m_frameLayout = frameLayout;
@@ -93,8 +92,7 @@ rhi::PipelineHandle ForwardPbrPass::GetOrCreatePipeline(uint32_t key)
 
     // The projection flips Y, which keeps glTF's counter-clockwise front faces counter-clockwise on screen.
     createInfo.rasterization.cullMode = (key & kPipelineKeyDoubleSided) != 0 ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
-    createInfo.rasterization.frontFace =
-        (key & kPipelineKeyMirrored) != 0 ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    createInfo.rasterization.frontFace = (key & kPipelineKeyMirrored) != 0 ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
     createInfo.depthStencil = {.depthTestEnable = true, .depthWriteEnable = true, .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL};
     createInfo.renderPass = m_output;
     createInfo.AddDescriptorSetLayout(m_frameLayout).AddDescriptorSetLayout(m_materialLayout);
@@ -154,8 +152,7 @@ void ForwardPbrPass::Execute(FrameGraphContext& context)
         const uint32_t streamCount = primitive.hasTangents ? kVertexStreamCount : kVertexStreamTangent;
         for (uint32_t stream = 0; stream < streamCount; ++stream)
         {
-            commandBuffer.BindVertexBuffer(
-                scene.buffers[primitive.vertexBuffers[stream]], stream, primitive.vertexOffsets[stream]);
+            commandBuffer.BindVertexBuffer(scene.buffers[primitive.vertexBuffers[stream]], stream, primitive.vertexOffsets[stream]);
         }
         commandBuffer.BindIndexBuffer(scene.buffers[primitive.indexBuffer], primitive.indexOffset, primitive.indexType);
         commandBuffer.PushConstants(&draw.constants, sizeof(DrawConstants));

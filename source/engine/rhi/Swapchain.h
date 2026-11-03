@@ -29,31 +29,64 @@ struct SwapchainContext
 class Swapchain
 {
 public:
-    void Init(const SwapchainContext& context) { m_context = context; }
+    void Init(const SwapchainContext& context)
+    {
+        m_context = context;
+    }
 
     void CreateSurface();
     void DestroySurface();
-    bool HasSurface() const { return m_surface != VK_NULL_HANDLE; }
-    VkSurfaceKHR Surface() const { return m_surface; }
+    bool HasSurface() const
+    {
+        return m_surface != VK_NULL_HANDLE;
+    }
+    VkSurfaceKHR Surface() const
+    {
+        return m_surface;
+    }
 
     // Picks the format once; the swapchain render pass is built for it.
     VkSurfaceFormatKHR ChooseSurfaceFormat() const;
-    void SetSurfaceFormat(VkSurfaceFormatKHR format) { m_surfaceFormat = format; }
-    VkSurfaceFormatKHR SurfaceFormat() const { return m_surfaceFormat; }
+    void SetSurfaceFormat(VkSurfaceFormatKHR format)
+    {
+        m_surfaceFormat = format;
+    }
+    VkSurfaceFormatKHR SurfaceFormat() const
+    {
+        return m_surfaceFormat;
+    }
 
     // Returns false when the window has no area (minimized); the caller retries later. Needs an idle device.
     bool Create(VkRenderPass renderPass, bool vsync);
     void Destroy();
-    bool IsValid() const { return m_swapchain != VK_NULL_HANDLE; }
+    bool IsValid() const
+    {
+        return m_swapchain != VK_NULL_HANDLE;
+    }
 
     SwapchainStatus Acquire(VkSemaphore imageAvailable, uint32_t& imageIndex);
     SwapchainStatus Present(VkQueue queue, uint32_t imageIndex);
 
-    VkSemaphore RenderFinishedSemaphore(uint32_t imageIndex) const { return m_renderFinishedSemaphores[imageIndex]; }
-    VkFramebuffer Framebuffer(uint32_t imageIndex) const { return m_framebuffers[imageIndex]; }
-    VkExtent2D Extent() const { return m_extent; }
-    VkPresentModeKHR PresentMode() const { return m_presentMode; }
-    uint32_t ImageCount() const { return static_cast<uint32_t>(m_images.size()); }
+    VkSemaphore RenderFinishedSemaphore(uint32_t imageIndex) const
+    {
+        return m_renderFinishedSemaphores[imageIndex];
+    }
+    VkFramebuffer Framebuffer(uint32_t imageIndex) const
+    {
+        return m_framebuffers[imageIndex];
+    }
+    VkExtent2D Extent() const
+    {
+        return m_extent;
+    }
+    VkPresentModeKHR PresentMode() const
+    {
+        return m_presentMode;
+    }
+    uint32_t ImageCount() const
+    {
+        return static_cast<uint32_t>(m_images.size());
+    }
 
 private:
     VkExtent2D ChooseExtent(const VkSurfaceCapabilitiesKHR& capabilities) const;

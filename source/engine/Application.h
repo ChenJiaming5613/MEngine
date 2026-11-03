@@ -30,14 +30,31 @@ protected:
     virtual void OnShutdown() = 0;
     // Exceptions thrown here end the application with SDL_APP_FAILURE.
     virtual void OnTick(double deltaSeconds) = 0;
-    virtual SDL_AppResult OnEvent(const SDL_Event&) { return SDL_APP_CONTINUE; }
-    virtual void OnSuspendChanged(bool) {}
+    virtual SDL_AppResult OnEvent(const SDL_Event&)
+    {
+        return SDL_APP_CONTINUE;
+    }
+    virtual void OnSuspendChanged(bool)
+    {
+    }
 
-    Window& GetWindow() { return m_window; }
-    Input& GetInput() { return m_input; }
+    Window& GetWindow()
+    {
+        return m_window;
+    }
+    Input& GetInput()
+    {
+        return m_input;
+    }
     // Worker threads for CPU work only: tasks must not touch GfxDevice (see Architecture.md, threading).
-    enki::TaskScheduler& GetTaskScheduler() { return m_taskScheduler; }
-    bool IsSuspended() const { return m_suspended; }
+    enki::TaskScheduler& GetTaskScheduler()
+    {
+        return m_taskScheduler;
+    }
+    bool IsSuspended() const
+    {
+        return m_suspended;
+    }
 
 private:
     Window m_window;

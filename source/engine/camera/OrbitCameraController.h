@@ -34,8 +34,14 @@ public:
     float rotationSpeed = 0.25f;
     float movementSpeed = 0.1f;
 
-    const char* Name() const override { return "Orbit"; }
-    const char* Help() const override { return "LMB rotate, RMB drag / wheel zoom, MMB pan; touch: drag rotate, pinch zoom"; }
+    const char* Name() const override
+    {
+        return "Orbit";
+    }
+    const char* Help() const override
+    {
+        return "LMB rotate, RMB drag / wheel zoom, MMB pan; touch: drag rotate, pinch zoom";
+    }
 
     // Vulkan-glTF-PBR's resetCamera(): rotation 0, position (0, 0, 1), i.e. the center seen from +Z at distance L.
     void ResetView(camera::Camera& camera) override;
@@ -47,7 +53,10 @@ public:
 
 private:
     // Scene units per Vulkan-glTF-PBR unit.
-    float UnitLength() const { return 2.0f * m_scene.MaxExtent(); }
+    float UnitLength() const
+    {
+        return 2.0f * m_scene.MaxExtent();
+    }
     void ApplyTo(camera::Camera& camera) const;
     void AdoptFrom(const camera::Camera& camera);
     void UpdateTouches(const CameraInput& input, float pixelsPerPoint);

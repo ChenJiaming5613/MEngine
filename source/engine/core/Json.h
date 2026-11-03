@@ -16,9 +16,14 @@ class JsonValue
 {
 public:
     JsonValue() = default;
-    explicit JsonValue(const tg3json_value* value) : m_value(value) {}
+    explicit JsonValue(const tg3json_value* value) : m_value(value)
+    {
+    }
 
-    bool IsValid() const { return m_value != nullptr; }
+    bool IsValid() const
+    {
+        return m_value != nullptr;
+    }
     bool IsObject() const;
     bool IsArray() const;
     bool IsNumber() const;

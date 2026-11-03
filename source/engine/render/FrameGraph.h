@@ -41,7 +41,10 @@ enum class FrameGraphNodeType : uint8_t
 struct FrameGraphResourceId
 {
     uint32_t index = ~0u;
-    bool IsValid() const { return index != ~0u; }
+    bool IsValid() const
+    {
+        return index != ~0u;
+    }
 };
 
 struct FrameGraphTextureDesc
@@ -76,12 +79,21 @@ public:
     // Records the pass. Graphics passes run inside their render pass, compute passes outside any.
     virtual void Execute(FrameGraphContext& context) = 0;
     // Checked every frame. An inactive pass is skipped (with its barriers); textures it writes keep their content.
-    virtual bool IsActive() const { return true; }
+    virtual bool IsActive() const
+    {
+        return true;
+    }
     // Called after every Compile() that schedules the pass: textures and render passes may have been recreated.
-    virtual void OnCompiled(const FrameGraphResources& resources) { (void)resources; }
+    virtual void OnCompiled(const FrameGraphResources& resources)
+    {
+        (void)resources;
+    }
 
     // Shown by the frame graph viewer; nullptr for none.
-    virtual const char* Description() const { return nullptr; }
+    virtual const char* Description() const
+    {
+        return nullptr;
+    }
     // ImGui editor for the settings the pass consumes. Returns false when it has none.
     virtual bool DrawInspector(RenderSettings& settings)
     {
@@ -103,8 +115,8 @@ public:
     FrameGraphResourceId ImportBackbuffer(std::string_view name);
 
     // Attachments of a graphics pass, in color slot order. Load on a texture nothing wrote this frame becomes Clear.
-    FrameGraphResourceId ColorAttachment(std::string_view name, rhi::RenderPassOperation operation,
-        const glm::vec4& clearColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    FrameGraphResourceId ColorAttachment(
+        std::string_view name, rhi::RenderPassOperation operation, const glm::vec4& clearColor = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
     FrameGraphResourceId DepthAttachment(std::string_view name, rhi::RenderPassOperation operation, float clearDepth = 1.0f);
 
     // Non-attachment accesses; the graph moves the resource into `state` before the pass.
@@ -120,7 +132,9 @@ public:
 
 private:
     friend class FrameGraph;
-    FrameGraphBuilder(FrameGraph& graph, uint32_t node) : m_graph(graph), m_node(node) {}
+    FrameGraphBuilder(FrameGraph& graph, uint32_t node) : m_graph(graph), m_node(node)
+    {
+    }
 
     FrameGraph& m_graph;
     uint32_t m_node;
@@ -137,7 +151,9 @@ public:
 
 private:
     friend class FrameGraph;
-    FrameGraphResources(const FrameGraph& graph, uint32_t node) : m_graph(graph), m_node(node) {}
+    FrameGraphResources(const FrameGraph& graph, uint32_t node) : m_graph(graph), m_node(node)
+    {
+    }
 
     const FrameGraph& m_graph;
     uint32_t m_node;
@@ -216,7 +232,10 @@ public:
     // writer is not scheduled; readers that must not see it check this.
     bool IsScheduled(std::string_view name) const;
     void SetAliasingEnabled(bool enabled);
-    bool IsAliasingEnabled() const { return m_aliasingEnabled; }
+    bool IsAliasingEnabled() const
+    {
+        return m_aliasingEnabled;
+    }
     // A structural change, or a swapchain size or format other than the last compile's.
     bool NeedsCompile() const;
 
@@ -226,12 +245,21 @@ public:
     // Call outside a render pass. Every pass and render pass group is timed on the CPU (recording) and the GPU, inside
     // one root scope named kProfileRootName.
     void Execute(rhi::CommandBuffer& commandBuffer, const RenderView& view);
-    const CpuProfiler& GetCpuProfiler() const { return m_cpuProfiler; }
+    const CpuProfiler& GetCpuProfiler() const
+    {
+        return m_cpuProfiler;
+    }
     static constexpr const char* kProfileRootName = "Frame Graph";
 
-    const FrameGraphDebugInfo& GetDebugInfo() const { return m_debugInfo; }
+    const FrameGraphDebugInfo& GetDebugInfo() const
+    {
+        return m_debugInfo;
+    }
     // Indexed like FrameGraphDebugInfo::nodes (AddPass order); nullptr when out of range.
-    FrameGraphPass* GetPass(uint32_t node) const { return node < m_nodes.size() ? m_nodes[node].pass : nullptr; }
+    FrameGraphPass* GetPass(uint32_t node) const
+    {
+        return node < m_nodes.size() ? m_nodes[node].pass : nullptr;
+    }
 
 private:
     friend class FrameGraphBuilder;

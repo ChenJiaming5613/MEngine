@@ -145,8 +145,7 @@ struct DescriptorSetCreateInfo
 
     // For UNIFORM_BUFFER_DYNAMIC bindings range must be the size of one element of the dynamic buffer.
     // Every element of an arrayed binding must be written.
-    DescriptorSetCreateInfo& AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range = VK_WHOLE_SIZE,
-        uint32_t arrayElement = 0);
+    DescriptorSetCreateInfo& AddBuffer(BufferHandle buffer, uint32_t binding, VkDeviceSize range = VK_WHOLE_SIZE, uint32_t arrayElement = 0);
     DescriptorSetCreateInfo& AddTexture(TextureHandle texture, uint32_t binding, SamplerHandle sampler = {}, uint32_t arrayElement = 0);
 };
 
@@ -204,8 +203,7 @@ struct BlendStateCreateInfo
     VkBlendFactor sourceAlpha = VK_BLEND_FACTOR_ONE;
     VkBlendFactor destinationAlpha = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     VkBlendOp alphaOperation = VK_BLEND_OP_ADD;
-    VkColorComponentFlags writeMask =
-        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    VkColorComponentFlags writeMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 };
 
 // Describes the attachments of a render pass. Pipelines are built against it, and the device caches one VkRenderPass per
@@ -233,7 +231,10 @@ struct RenderPassOutput
 
 struct RenderPassOutputHash
 {
-    size_t operator()(const RenderPassOutput& output) const { return static_cast<size_t>(output.Hash()); }
+    size_t operator()(const RenderPassOutput& output) const
+    {
+        return static_cast<size_t>(output.Hash());
+    }
 };
 
 struct RenderPassCreateInfo
@@ -329,7 +330,10 @@ struct ExecutionBarrier
     ExecutionBarrier& AddBuffer(BufferHandle buffer, ResourceStates oldState, ResourceStates newState);
     ExecutionBarrier& AddBuffer(const BufferBarrier& barrier);
     ExecutionBarrier& SetGlobal(ResourceStates oldState, ResourceStates newState);
-    bool IsEmpty() const { return imageCount == 0 && bufferCount == 0 && !global.has_value(); }
+    bool IsEmpty() const
+    {
+        return imageCount == 0 && bufferCount == 0 && !global.has_value();
+    }
 };
 
 struct Buffer

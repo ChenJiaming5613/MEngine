@@ -42,15 +42,13 @@ asset::Ktx2Image LoadKtx2(const std::string& path, uint32_t expectedFormat, uint
     }
     if (image->vkFormat != expectedFormat || image->faceCount != expectedFaces)
     {
-        throw std::runtime_error(path + ": expected VkFormat " + std::to_string(expectedFormat) + " with " +
-                                 std::to_string(expectedFaces) + " faces, got VkFormat " + std::to_string(image->vkFormat) +
-                                 " with " + std::to_string(image->faceCount));
+        throw std::runtime_error(path + ": expected VkFormat " + std::to_string(expectedFormat) + " with " + std::to_string(expectedFaces)
+            + " faces, got VkFormat " + std::to_string(image->vkFormat) + " with " + std::to_string(image->faceCount));
     }
     return std::move(*image);
 }
 
-rhi::TextureHandle CreateEnvironmentTexture(rhi::GfxDevice& device, const asset::Ktx2Image& image, VkFormat format,
-    const std::string& name)
+rhi::TextureHandle CreateEnvironmentTexture(rhi::GfxDevice& device, const asset::Ktx2Image& image, VkFormat format, const std::string& name)
 {
     const std::vector<uint8_t> data = Concatenate(image);
     rhi::TextureCreateInfo createInfo;
@@ -93,12 +91,11 @@ void CreateFallback(rhi::GfxDevice& device, Environment& environment)
     // A uniform environment has E / pi equal to its radiance. The LUT stores (A, B) = (1, 0), so the specular term
     // reduces to radiance * F0: the fallback only keeps metals from turning black and is not a split sum result.
     const std::array<float, 2> lut = {1.0f, 0.0f};
-    environment.specular = CreateEnvironmentTexture(device,
-        SolidImage(asset::kVkFormatR16G16B16A16Sfloat, 6, radiance), VK_FORMAT_R16G16B16A16_SFLOAT, "FallbackSpecular");
-    environment.irradiance = CreateEnvironmentTexture(device,
-        SolidImage(asset::kVkFormatR16G16B16A16Sfloat, 6, radiance), VK_FORMAT_R16G16B16A16_SFLOAT, "FallbackIrradiance");
-    environment.brdfLut = CreateEnvironmentTexture(device, SolidImage(asset::kVkFormatR16G16Sfloat, 1, lut),
-        VK_FORMAT_R16G16_SFLOAT, "FallbackBrdfLut");
+    environment.specular =
+        CreateEnvironmentTexture(device, SolidImage(asset::kVkFormatR16G16B16A16Sfloat, 6, radiance), VK_FORMAT_R16G16B16A16_SFLOAT, "FallbackSpecular");
+    environment.irradiance =
+        CreateEnvironmentTexture(device, SolidImage(asset::kVkFormatR16G16B16A16Sfloat, 6, radiance), VK_FORMAT_R16G16B16A16_SFLOAT, "FallbackIrradiance");
+    environment.brdfLut = CreateEnvironmentTexture(device, SolidImage(asset::kVkFormatR16G16Sfloat, 1, lut), VK_FORMAT_R16G16_SFLOAT, "FallbackBrdfLut");
     environment.specularMipCount = 1;
     environment.isFallback = true;
     environment.directory.clear();
@@ -142,27 +139,21 @@ void LoadEnvironment(rhi::GfxDevice& device, std::optional<std::string_view> dir
         const std::string base(*directory);
         try
         {
-            const asset::Ktx2Image specular =
-                LoadKtx2(JoinPath(base, "specular.ktx2"), asset::kVkFormatR16G16B16A16Sfloat, 6);
-            const asset::Ktx2Image irradiance =
-                LoadKtx2(JoinPath(base, "irradiance.ktx2"), asset::kVkFormatR16G16B16A16Sfloat, 6);
+            const asset::Ktx2Image specular = LoadKtx2(JoinPath(base, "specular.ktx2"), asset::kVkFormatR16G16B16A16Sfloat, 6);
+            const asset::Ktx2Image irradiance = LoadKtx2(JoinPath(base, "irradiance.ktx2"), asset::kVkFormatR16G16B16A16Sfloat, 6);
             const asset::Ktx2Image brdfLut = LoadKtx2(JoinPath(base, "brdf_lut.ktx2"), asset::kVkFormatR16G16Sfloat, 1);
 
             rhi::UploadBatchScope batch(device);
-            environment.specular = CreateEnvironmentTexture(device, specular, VK_FORMAT_R16G16B16A16_SFLOAT,
-                JoinPath(base, "specular.ktx2"));
-            environment.irradiance = CreateEnvironmentTexture(device, irradiance, VK_FORMAT_R16G16B16A16_SFLOAT,
-                JoinPath(base, "irradiance.ktx2"));
-            environment.brdfLut =
-                CreateEnvironmentTexture(device, brdfLut, VK_FORMAT_R16G16_SFLOAT, JoinPath(base, "brdf_lut.ktx2"));
+            environment.specular = CreateEnvironmentTexture(device, specular, VK_FORMAT_R16G16B16A16_SFLOAT, JoinPath(base, "specular.ktx2"));
+            environment.irradiance = CreateEnvironmentTexture(device, irradiance, VK_FORMAT_R16G16B16A16_SFLOAT, JoinPath(base, "irradiance.ktx2"));
+            environment.brdfLut = CreateEnvironmentTexture(device, brdfLut, VK_FORMAT_R16G16_SFLOAT, JoinPath(base, "brdf_lut.ktx2"));
             batch.End();
 
             environment.specularMipCount = static_cast<uint32_t>(specular.levels.size());
             environment.isFallback = false;
             environment.directory = base;
-            MENGINE_LOG_INFO("Loaded environment %s: specular %ux%u with %u mips, irradiance %ux%u, BRDF LUT %ux%u",
-                base.c_str(), specular.width, specular.height, environment.specularMipCount, irradiance.width,
-                irradiance.height, brdfLut.width, brdfLut.height);
+            MENGINE_LOG_INFO("Loaded environment %s: specular %ux%u with %u mips, irradiance %ux%u, BRDF LUT %ux%u", base.c_str(), specular.width,
+                specular.height, environment.specularMipCount, irradiance.width, irradiance.height, brdfLut.width, brdfLut.height);
             return;
         }
         catch (const std::exception& exception)

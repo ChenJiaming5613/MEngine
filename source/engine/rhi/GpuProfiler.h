@@ -19,7 +19,10 @@ public:
     void Init(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t queueFamily, uint32_t queriesPerFrame);
     void Shutdown();
 
-    bool IsSupported() const { return m_queryPool != VK_NULL_HANDLE; }
+    bool IsSupported() const
+    {
+        return m_queryPool != VK_NULL_HANDLE;
+    }
 
     // Called at the start of a frame's command buffer, after its fence wait. Must be outside a render pass.
     void BeginFrame(VkCommandBuffer commandBuffer, uint32_t frameSlot, uint64_t frame);
@@ -28,10 +31,19 @@ public:
     void Pop(VkCommandBuffer commandBuffer);
 
     // Timings of the most recently resolved frame (kMaxFramesInFlight behind the recording one), in push order.
-    const std::vector<ScopeTiming>& Timings() const { return m_resolvedTimings; }
+    const std::vector<ScopeTiming>& Timings() const
+    {
+        return m_resolvedTimings;
+    }
     // Frame number passed to the BeginFrame of Timings(); ~0 before the first resolve.
-    uint64_t TimingsFrame() const { return m_resolvedFrame; }
-    double TimestampPeriodNanoseconds() const { return m_nanosecondsPerTick; }
+    uint64_t TimingsFrame() const
+    {
+        return m_resolvedFrame;
+    }
+    double TimestampPeriodNanoseconds() const
+    {
+        return m_nanosecondsPerTick;
+    }
 
 private:
     struct Scope

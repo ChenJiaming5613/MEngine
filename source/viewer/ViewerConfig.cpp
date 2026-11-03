@@ -116,8 +116,7 @@ std::optional<ViewerConfig> LoadViewerConfig(std::string_view assetPath)
         return std::nullopt;
     }
     std::string error;
-    const std::optional<JsonDocument> document =
-        JsonDocument::Parse(std::string_view(reinterpret_cast<const char*>(bytes->data()), bytes->size()), &error);
+    const std::optional<JsonDocument> document = JsonDocument::Parse(std::string_view(reinterpret_cast<const char*>(bytes->data()), bytes->size()), &error);
     if (!document)
     {
         MENGINE_LOG_ERROR("%s: %s", path.c_str(), error.c_str());

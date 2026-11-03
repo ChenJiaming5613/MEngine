@@ -27,10 +27,9 @@ ResourceStates AttachmentFinalState(const RenderPassOutput& output, bool depth)
 
 bool CoversWholeTexture(const ImageBarrier& barrier, const Texture& texture)
 {
-    const bool allLevels = barrier.baseMipLevel == 0
-        && (barrier.mipLevelCount == VK_REMAINING_MIP_LEVELS || barrier.mipLevelCount >= texture.mipLevels);
-    const bool allLayers = barrier.baseArrayLayer == 0
-        && (barrier.arrayLayerCount == VK_REMAINING_ARRAY_LAYERS || barrier.arrayLayerCount >= texture.layerCount);
+    const bool allLevels = barrier.baseMipLevel == 0 && (barrier.mipLevelCount == VK_REMAINING_MIP_LEVELS || barrier.mipLevelCount >= texture.mipLevels);
+    const bool allLayers =
+        barrier.baseArrayLayer == 0 && (barrier.arrayLayerCount == VK_REMAINING_ARRAY_LAYERS || barrier.arrayLayerCount >= texture.layerCount);
     return allLevels && allLayers;
 }
 
@@ -286,8 +285,8 @@ void CommandBuffer::DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uin
     vkCmdDrawIndexed(m_commandBuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 }
 
-const Buffer* CommandBuffer::AccessIndirectBuffer(BufferHandle handle, VkDeviceSize offset, VkDeviceSize recordSize, uint32_t drawCount,
-    uint32_t stride, const char* command) const
+const Buffer* CommandBuffer::AccessIndirectBuffer(
+    BufferHandle handle, VkDeviceSize offset, VkDeviceSize recordSize, uint32_t drawCount, uint32_t stride, const char* command) const
 {
     const Buffer* buffer = m_device->AccessBuffer(handle);
     if (buffer == nullptr)
@@ -314,16 +313,15 @@ const Buffer* CommandBuffer::AccessIndirectBuffer(BufferHandle handle, VkDeviceS
         }
         if (stride % 4 != 0 || stride < recordSize)
         {
-            MENGINE_LOG_ERROR("%s: stride %u must be a multiple of 4 and at least %llu", command, stride,
-                static_cast<unsigned long long>(recordSize));
+            MENGINE_LOG_ERROR("%s: stride %u must be a multiple of 4 and at least %llu", command, stride, static_cast<unsigned long long>(recordSize));
             return nullptr;
         }
     }
     const VkDeviceSize end = drawCount == 0 ? offset : offset + VkDeviceSize{drawCount - 1} * stride + recordSize;
     if (end > buffer->size)
     {
-        MENGINE_LOG_ERROR("%s: records end at byte %llu of %s, which holds %llu", command, static_cast<unsigned long long>(end),
-            buffer->name.c_str(), static_cast<unsigned long long>(buffer->size));
+        MENGINE_LOG_ERROR("%s: records end at byte %llu of %s, which holds %llu", command, static_cast<unsigned long long>(end), buffer->name.c_str(),
+            static_cast<unsigned long long>(buffer->size));
         return nullptr;
     }
     return buffer;
@@ -342,8 +340,7 @@ void CommandBuffer::DrawIndirect(BufferHandle bufferHandle, VkDeviceSize offset,
 void CommandBuffer::DrawIndexedIndirect(BufferHandle bufferHandle, VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
 {
     MENGINE_ASSERT(m_insidePass);
-    const Buffer* buffer =
-        AccessIndirectBuffer(bufferHandle, offset, sizeof(VkDrawIndexedIndirectCommand), drawCount, stride, "DrawIndexedIndirect");
+    const Buffer* buffer = AccessIndirectBuffer(bufferHandle, offset, sizeof(VkDrawIndexedIndirectCommand), drawCount, stride, "DrawIndexedIndirect");
     if (buffer != nullptr)
     {
         vkCmdDrawIndexedIndirect(m_commandBuffer, buffer->buffer, offset, drawCount, stride);
@@ -383,8 +380,8 @@ void CommandBuffer::FillBuffer(BufferHandle bufferHandle, uint32_t value, VkDevi
         MENGINE_LOG_ERROR("FillBuffer: needs a valid buffer outside render passes");
         return;
     }
-    if ((buffer->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0 || offset % 4 != 0 || (size != VK_WHOLE_SIZE && size % 4 != 0)
-        || offset >= buffer->size || (size != VK_WHOLE_SIZE && size > buffer->size - offset))
+    if ((buffer->usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) == 0 || offset % 4 != 0 || (size != VK_WHOLE_SIZE && size % 4 != 0) || offset >= buffer->size
+        || (size != VK_WHOLE_SIZE && size > buffer->size - offset))
     {
         MENGINE_LOG_ERROR("FillBuffer: %s needs TRANSFER_DST usage and a 4-byte aligned range inside the buffer", buffer->name.c_str());
         return;
@@ -448,13 +445,14 @@ void CommandBuffer::Barrier(const ExecutionBarrier& barrier)
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = texture->image,
-            .subresourceRange = {
-                .aspectMask = BarrierAspectOf(texture->format),
-                .baseMipLevel = entry.baseMipLevel,
-                .levelCount = entry.mipLevelCount,
-                .baseArrayLayer = entry.baseArrayLayer,
-                .layerCount = entry.arrayLayerCount,
-            },
+            .subresourceRange =
+                {
+                    .aspectMask = BarrierAspectOf(texture->format),
+                    .baseMipLevel = entry.baseMipLevel,
+                    .levelCount = entry.mipLevelCount,
+                    .baseArrayLayer = entry.baseArrayLayer,
+                    .layerCount = entry.arrayLayerCount,
+                },
         };
         sourceStages |= ToVkPipelineStages(oldState);
         destinationStages |= ToVkPipelineStages(entry.newState);
@@ -508,8 +506,8 @@ void CommandBuffer::Barrier(const ExecutionBarrier& barrier)
     {
         return;
     }
-    vkCmdPipelineBarrier(m_commandBuffer, sourceStages, destinationStages, 0, memoryCount, &memoryBarrier, bufferCount,
-        bufferBarriers.data(), imageCount, imageBarriers.data());
+    vkCmdPipelineBarrier(
+        m_commandBuffer, sourceStages, destinationStages, 0, memoryCount, &memoryBarrier, bufferCount, bufferBarriers.data(), imageCount, imageBarriers.data());
 }
 
 void CommandBuffer::TextureBarrier(TextureHandle texture, ResourceStates newState)
