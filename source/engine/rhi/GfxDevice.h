@@ -248,17 +248,17 @@ public:
     }
     const VkPhysicalDeviceProperties& GetProperties() const
     {
-        return m_properties;
+        return m_physicalDeviceProperties;
     }
     // What the physical device supports, queried once at Init. Supported is not enabled: GetEnabledFeatures and
     // ExtensionInfo::enabled say what the device was created with.
     const DeviceCapabilities& GetCapabilities() const
     {
-        return m_capabilities;
+        return m_deviceCapabilities;
     }
     const VkPhysicalDeviceFeatures& GetEnabledFeatures() const
     {
-        return m_enabledFeatures;
+        return m_enabledDeviceFeatures;
     }
     // Per memory heap: the driver's budget and usage (VK_EXT_memory_budget, else 0) and MEngine's VMA statistics.
     std::vector<HeapUsage> QueryHeapUsage() const;
@@ -297,7 +297,7 @@ public:
     }
     uint32_t GetQueueFamily() const
     {
-        return m_queueFamily;
+        return m_queueFamilyIndex;
     }
     VmaAllocator GetAllocator() const
     {
@@ -402,13 +402,13 @@ private:
     VkInstance m_instance = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT m_debugMessenger = VK_NULL_HANDLE;
     VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
-    VkPhysicalDeviceProperties m_properties{};
+    VkPhysicalDeviceProperties m_physicalDeviceProperties{};
     uint32_t m_instanceVersion = 0;
     std::vector<const char*> m_enabledInstanceExtensions;
-    DeviceCapabilities m_capabilities;
-    VkPhysicalDeviceFeatures m_enabledFeatures{};
+    DeviceCapabilities m_deviceCapabilities;
+    VkPhysicalDeviceFeatures m_enabledDeviceFeatures{};
     VkDevice m_device = VK_NULL_HANDLE;
-    uint32_t m_queueFamily = 0;
+    uint32_t m_queueFamilyIndex = 0;
     VkQueue m_queue = VK_NULL_HANDLE;
     VmaAllocator m_allocator = VK_NULL_HANDLE;
     VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;

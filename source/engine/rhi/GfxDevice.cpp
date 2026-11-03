@@ -226,7 +226,7 @@ void GfxDevice::Init(const GfxDeviceCreateInfo& createInfo)
         .instance = m_instance,
         .physicalDevice = m_physicalDevice,
         .device = m_device,
-        .queueFamily = m_queueFamily,
+        .queueFamily = m_queueFamilyIndex,
     });
     m_swapchain.SetSurfaceFormat(m_swapchain.ChooseSurfaceFormat());
 
@@ -248,7 +248,7 @@ void GfxDevice::Init(const GfxDeviceCreateInfo& createInfo)
 
     CreateFrameData();
     CreateDescriptorPool();
-    m_profiler.Init(m_device, m_physicalDevice, m_queueFamily, createInfo.timestampQueriesPerFrame);
+    m_profiler.Init(m_device, m_physicalDevice, m_queueFamilyIndex, createInfo.timestampQueriesPerFrame);
 
     // The swapchain pass has a single color attachment and no depth: the HDR scene is resolved into it by later passes.
     m_swapchainOutput = RenderPassOutput{};
@@ -261,7 +261,7 @@ void GfxDevice::Init(const GfxDeviceCreateInfo& createInfo)
     swapchainPass->isSwapchain = true;
     swapchainPass->name = "Swapchain";
 
-    m_dynamicBytesPerFrame = static_cast<uint32_t>(AlignUp(createInfo.dynamicBufferBytesPerFrame, m_properties.limits.minUniformBufferOffsetAlignment));
+    m_dynamicBytesPerFrame = static_cast<uint32_t>(AlignUp(createInfo.dynamicBufferBytesPerFrame, m_physicalDeviceProperties.limits.minUniformBufferOffsetAlignment));
     m_dynamicBuffer = CreateBuffer(BufferCreateInfo{
         .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         .resourceUsage = ResourceUsage::Dynamic,
@@ -385,7 +385,7 @@ void GfxDevice::PickPhysicalDevice()
         {
             bestScore = score;
             m_physicalDevice = device;
-            m_queueFamily = *queueFamily;
+            m_queueFamilyIndex = *queueFamily;
         }
     }
 
@@ -394,9 +394,9 @@ void GfxDevice::PickPhysicalDevice()
         throw std::runtime_error("No GPU supports Vulkan 1.1 with graphics, present and swapchain");
     }
 
-    vkGetPhysicalDeviceProperties(m_physicalDevice, &m_properties);
-    MENGINE_LOG_INFO("GPU: %s (Vulkan %u.%u.%u)", m_properties.deviceName, VK_API_VERSION_MAJOR(m_properties.apiVersion),
-        VK_API_VERSION_MINOR(m_properties.apiVersion), VK_API_VERSION_PATCH(m_properties.apiVersion));
+    vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);
+    MENGINE_LOG_INFO("GPU: %s (Vulkan %u.%u.%u)", m_physicalDeviceProperties.deviceName, VK_API_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion),
+        VK_API_VERSION_MINOR(m_physicalDeviceProperties.apiVersion), VK_API_VERSION_PATCH(m_physicalDeviceProperties.apiVersion));
 }
 
 void GfxDevice::CreateLogicalDevice()
@@ -404,18 +404,18 @@ void GfxDevice::CreateLogicalDevice()
     const float queuePriority = 1.0f;
     const VkDeviceQueueCreateInfo queueInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = m_queueFamily,
+        .queueFamilyIndex = m_queueFamilyIndex,
         .queueCount = 1,
         .pQueuePriorities = &queuePriority,
     };
 
     const std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-    m_capabilities = QueryDeviceCapabilities(m_instance, m_physicalDevice, m_instanceVersion, m_queueFamily, m_swapchain.Surface());
-    MarkEnabledExtensions(m_capabilities.deviceExtensions, deviceExtensions);
-    MarkEnabledExtensions(m_capabilities.instanceExtensions, m_enabledInstanceExtensions);
+    m_deviceCapabilities = QueryDeviceCapabilities(m_instance, m_physicalDevice, m_instanceVersion, m_queueFamilyIndex, m_swapchain.Surface());
+    MarkEnabledExtensions(m_deviceCapabilities.deviceExtensions, deviceExtensions);
+    MarkEnabledExtensions(m_deviceCapabilities.instanceExtensions, m_enabledInstanceExtensions);
 
-    const VkPhysicalDeviceFeatures& supported = m_capabilities.features;
+    const VkPhysicalDeviceFeatures& supported = m_deviceCapabilities.features;
     VkPhysicalDeviceFeatures enabled{};
     m_samplerAnisotropy = supported.samplerAnisotropy == VK_TRUE;
     enabled.samplerAnisotropy = supported.samplerAnisotropy;
@@ -426,17 +426,17 @@ void GfxDevice::CreateLogicalDevice()
     enabled.multiDrawIndirect = supported.multiDrawIndirect;
     m_drawIndirectFirstInstance = supported.drawIndirectFirstInstance == VK_TRUE;
     enabled.drawIndirectFirstInstance = supported.drawIndirectFirstInstance;
-    m_enabledFeatures = enabled;
+    m_enabledDeviceFeatures = enabled;
 
-    m_computeSupported = m_capabilities.graphicsQueueCompute;
-    MENGINE_LOG_INFO("Queue family %u: compute %s, multiDrawIndirect %s, drawIndirectFirstInstance %s", m_queueFamily, m_computeSupported ? "yes" : "no",
+    m_computeSupported = m_deviceCapabilities.graphicsQueueCompute;
+    MENGINE_LOG_INFO("Queue family %u: compute %s, multiDrawIndirect %s, drawIndirectFirstInstance %s", m_queueFamilyIndex, m_computeSupported ? "yes" : "no",
         m_multiDrawIndirect ? "yes" : "no", m_drawIndirectFirstInstance ? "yes" : "no");
     MENGINE_LOG_INFO("Device tier %s (%s): %zu device extensions, bindless %s, drawIndirectCount %s, timeline %s, "
                      "async compute %s, mesh %s, ray tracing %s",
-        DeviceTierName(m_capabilities.tier), DeviceTierDescription(m_capabilities.tier), m_capabilities.deviceExtensions.size(),
-        m_capabilities.descriptorIndexing.Bindless() ? "yes" : "no", m_capabilities.drawIndirectCount ? "yes" : "no",
-        m_capabilities.timelineSemaphore ? "yes" : "no", m_capabilities.dedicatedComputeQueue ? "yes" : "no",
-        m_capabilities.meshShading.Available() ? "yes" : "no", m_capabilities.rayTracingPipeline && m_capabilities.accelerationStructure ? "yes" : "no");
+        DeviceTierName(m_deviceCapabilities.tier), DeviceTierDescription(m_deviceCapabilities.tier), m_deviceCapabilities.deviceExtensions.size(),
+        m_deviceCapabilities.descriptorIndexing.Bindless() ? "yes" : "no", m_deviceCapabilities.drawIndirectCount ? "yes" : "no",
+        m_deviceCapabilities.timelineSemaphore ? "yes" : "no", m_deviceCapabilities.dedicatedComputeQueue ? "yes" : "no",
+        m_deviceCapabilities.meshShading.Available() ? "yes" : "no", m_deviceCapabilities.rayTracingPipeline && m_deviceCapabilities.accelerationStructure ? "yes" : "no");
 
     const VkDeviceCreateInfo deviceInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -447,7 +447,7 @@ void GfxDevice::CreateLogicalDevice()
         .pEnabledFeatures = &enabled,
     };
     CheckVk(vkCreateDevice(m_physicalDevice, &deviceInfo, nullptr, &m_device), "vkCreateDevice");
-    vkGetDeviceQueue(m_device, m_queueFamily, 0, &m_queue);
+    vkGetDeviceQueue(m_device, m_queueFamilyIndex, 0, &m_queue);
 }
 
 std::vector<HeapUsage> GfxDevice::QueryHeapUsage() const
@@ -457,7 +457,7 @@ std::vector<HeapUsage> GfxDevice::QueryHeapUsage() const
     {
         return heaps;
     }
-    const VkPhysicalDeviceMemoryProperties& memory = m_capabilities.memory;
+    const VkPhysicalDeviceMemoryProperties& memory = m_deviceCapabilities.memory;
     heaps.resize(memory.memoryHeapCount);
     for (uint32_t heap = 0; heap < memory.memoryHeapCount; ++heap)
     {
@@ -478,7 +478,7 @@ std::vector<HeapUsage> GfxDevice::QueryHeapUsage() const
     }
 
     // Physical-device-level functionality of a supported device extension; usable without enabling it (API 1.1).
-    if (m_capabilities.memoryBudget)
+    if (m_deviceCapabilities.memoryBudget)
     {
         // vkGetPhysicalDeviceMemoryProperties2 is resolved by volkLoadInstance for Vulkan 1.1+ loaders.
         if (vkGetPhysicalDeviceMemoryProperties2 != nullptr)
@@ -519,7 +519,7 @@ void GfxDevice::CreatePipelineCache()
     std::vector<uint8_t> initialData;
     if (!m_pipelineCachePath.empty())
     {
-        initialData = LoadPipelineCacheBlob(m_pipelineCachePath, m_properties);
+        initialData = LoadPipelineCacheBlob(m_pipelineCachePath, m_physicalDeviceProperties);
     }
     VkPipelineCacheCreateInfo cacheInfo{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
@@ -567,7 +567,7 @@ void GfxDevice::SavePipelineCache()
         return;
     }
     data.resize(size);
-    if (SavePipelineCacheBlob(m_pipelineCachePath, m_properties, data))
+    if (SavePipelineCacheBlob(m_pipelineCachePath, m_physicalDeviceProperties, data))
     {
         m_lastSavedCacheSize = size;
         MENGINE_LOG_INFO("Pipeline cache: saved %zu bytes to %s", size, m_pipelineCachePath.c_str());
@@ -579,7 +579,7 @@ void GfxDevice::CreateFrameData()
     const VkCommandPoolCreateInfo framePoolInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-        .queueFamilyIndex = m_queueFamily,
+        .queueFamilyIndex = m_queueFamilyIndex,
     };
     const VkSemaphoreCreateInfo semaphoreInfo{.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     const VkFenceCreateInfo signaledFenceInfo{
@@ -604,7 +604,7 @@ void GfxDevice::CreateFrameData()
     const VkCommandPoolCreateInfo uploadPoolInfo{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-        .queueFamilyIndex = m_queueFamily,
+        .queueFamilyIndex = m_queueFamilyIndex,
     };
     const VkFenceCreateInfo uploadFenceInfo{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     for (UploadSlot& slot : m_uploadSlots)
@@ -1487,7 +1487,7 @@ SamplerHandle GfxDevice::CreateSampler(const SamplerCreateInfo& createInfo)
         .addressModeV = createInfo.addressModeV,
         .addressModeW = createInfo.addressModeW,
         .anisotropyEnable = anisotropy ? VK_TRUE : VK_FALSE,
-        .maxAnisotropy = anisotropy ? std::min(createInfo.maxAnisotropy, m_properties.limits.maxSamplerAnisotropy) : 1.0f,
+        .maxAnisotropy = anisotropy ? std::min(createInfo.maxAnisotropy, m_physicalDeviceProperties.limits.maxSamplerAnisotropy) : 1.0f,
         .compareEnable = createInfo.compareEnable ? VK_TRUE : VK_FALSE,
         .compareOp = createInfo.compareOp,
         .minLod = 0.0f,
@@ -2512,7 +2512,7 @@ DynamicAllocation GfxDevice::DynamicAllocate(uint32_t size)
 {
     AssertOwnerThread();
     MENGINE_ASSERT(m_frameActive);
-    const auto offset = static_cast<uint32_t>(AlignUp(m_dynamicUsed, m_properties.limits.minUniformBufferOffsetAlignment));
+    const auto offset = static_cast<uint32_t>(AlignUp(m_dynamicUsed, m_physicalDeviceProperties.limits.minUniformBufferOffsetAlignment));
     if (offset + size > m_dynamicBytesPerFrame)
     {
         throw std::runtime_error(
